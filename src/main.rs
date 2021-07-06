@@ -1,4 +1,4 @@
-use riscv2llvm::run;
+use riscv2llvm::Translator;
 use std::fs;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -15,11 +15,11 @@ struct Opt {
 
 fn main() {
     let opt = Opt::from_args();
-    let rv = fs::read_to_string(&opt.input).expect("Unable to read the input file.");
-    let ll = run(&rv);
-    let output = opt
+    let source = fs::read_to_string(&opt.input).expect("Unable to read the input file.");
+    let output = Translator::new().run(source);
+    let path = opt
         .output
         .clone()
         .unwrap_or_else(|| opt.input.with_extension("ll"));
-    fs::write(&output, &ll).expect("Unable to write the output file.");
+    fs::write(&path, &output).expect("Unable to write the output file.");
 }
