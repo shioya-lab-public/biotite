@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -9,6 +11,7 @@ mod riscv_parser;
 mod cfg;
 mod llvm_isa;
 mod riscv_isa;
+mod riscv_macro;
 
 use cfg_builder::CfgBuilder;
 use cfg_translator::CfgTranslator;
