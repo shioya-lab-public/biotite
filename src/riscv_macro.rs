@@ -41,12 +41,34 @@ macro_rules! define_instruction {
             $(
                 $inst {
                     label: Option<String>,
-                    address: usize,
+                    address: RiscvAddress,
                     $(
                         $field: $field!(),
                     )*
                 },
             )*
+        }
+
+        impl RiscvInstruction {
+            pub fn label(&self) -> &Option<String> {
+                use RiscvInstruction::*;
+                
+                match self {
+                    $(
+                        $inst { label, .. } => label,
+                    )*
+                }
+            }
+
+            pub fn address(&self) -> &RiscvAddress {
+                use RiscvInstruction::*;
+                
+                match self {
+                    $(
+                        $inst { address, .. } => address,
+                    )*
+                }
+            }
         }
     };
 }
@@ -72,7 +94,7 @@ macro_rules! build_instruction {
                     let caps = $regex.captures(line).unwrap();
                     $inst {
                         $label,
-                        address: usize::from_str_radix(&caps["address"], 16).unwrap(),
+                        address: RiscvAddress::from_str(&caps["address"]),
                         $(
                             $field: <$field!()>::from_str(
                                 caps.name(stringify!($field))
