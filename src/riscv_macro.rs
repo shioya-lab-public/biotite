@@ -36,7 +36,7 @@ macro_rules! addr {
 #[macro_export]
 macro_rules! define_instruction {
     ( $( $inst:ident ( $( $field:ident ),* ) ),* $(,)? ) => {
-        #[derive(Debug, PartialEq)]
+        #[derive(Debug, PartialEq, Clone)]
         pub enum RiscvInstruction {
             $(
                 $inst {
@@ -45,6 +45,7 @@ macro_rules! define_instruction {
                     $(
                         $field: $field!(),
                     )*
+                    comment: Option<String>,
                 },
             )*
         }
@@ -52,7 +53,7 @@ macro_rules! define_instruction {
         impl RiscvInstruction {
             pub fn label(&self) -> &Option<String> {
                 use RiscvInstruction::*;
-                
+
                 match self {
                     $(
                         $inst { label, .. } => label,
@@ -62,7 +63,7 @@ macro_rules! define_instruction {
 
             pub fn address(&self) -> &RiscvAddress {
                 use RiscvInstruction::*;
-                
+
                 match self {
                     $(
                         $inst { address, .. } => address,
@@ -99,9 +100,10 @@ macro_rules! build_instruction {
                             $field: <$field!()>::from_str(
                                 caps.name(stringify!($field))
                                     .map(|m| m.as_str())
-                                    .unwrap_or("ra")
+                                    .unwrap_or("default")
                             ),
                         )*
+                        comment: caps.name("comm").map(|m| m.as_str().to_string()),
                     }
                 }
             )*
@@ -122,6 +124,7 @@ macro_rules! build_test {
                     $(
                         $field: $value,
                     )*
+                    comment: None,
                 };
                 assert_eq!(inst, expected);
             }

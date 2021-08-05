@@ -30,8 +30,9 @@ impl Translator {
     }
 
     pub fn run(&mut self, source: String) -> String {
-        let riscv_insts = riscv_parser::parse(source);
-        let cfg = self.cfg_builder.run(riscv_insts);
+        let potential_targets = riscv_parser::parse_rodata(&source);
+        let riscv_insts = riscv_parser::parse_text(source);
+        let cfg = self.cfg_builder.run(riscv_insts, potential_targets);
         let llvm_insts = self.cfg_translator.run(cfg);
         llvm_serializer::serialize(llvm_insts)
     }

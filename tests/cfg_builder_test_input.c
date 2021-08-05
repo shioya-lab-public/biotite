@@ -26,7 +26,7 @@ void f(void)
         "bne a0, a1, f \n"
         "beqz a0, f \n"
         "bnez a0, f \n"
-        "jal f \n");
+        "j f \n");
 }
 
 int main(void)

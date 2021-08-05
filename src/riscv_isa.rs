@@ -92,7 +92,9 @@ pub type RiscvImmediate = i64;
 
 impl FromStr for RiscvImmediate {
     fn from_str(s: &str) -> Self {
-        if let Some(s) = s.strip_prefix("0x") {
+        if s == "default" {
+            0
+        } else if let Some(s) = s.strip_prefix("0x") {
             RiscvImmediate::from_str_radix(s, 16).unwrap()
         } else {
             s.parse().unwrap()
@@ -108,7 +110,7 @@ impl FromStr for RiscvAddress {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum RiscvRegister {
     Zero,
     Ra,
@@ -181,6 +183,7 @@ impl FromStr for RiscvRegister {
             "t4" => T4,
             "t5" => T5,
             "t6" => T6,
+            "default" => Ra,
             _ => unreachable!(),
         }
     }
@@ -197,7 +200,7 @@ pub mod riscv_regex {
     const RS2: &str = r"(?P<rs2>\S+)";
     const IMM: &str = r"(?P<imm>\S+)";
     const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
-    const COMM: &str = r"(\s+#.+)?";
+    const COMM: &str = r"(?P<comm>\s+#.+)?";
 
     define_regex! {
         // function labels
@@ -220,7 +223,9 @@ pub mod riscv_regex {
         EBREAK(r"{}:.+\s+ebreak{}", ADDRESS, COMM),
         ECALL(r"{}:.+\s+ecall{}", ADDRESS, COMM),
         JAL(r"{}:.+\s+jal\s+{},{}{}", ADDRESS, RD, ADDR, COMM),
-        JALR(r"{}:.+\s+jalr\s+({},)?{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
+        JALR(r"{}:.+\s+jalr\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
+        JALR_IMPLICIT(r"{}:.+\s+jalr\s+{}\({}\){}", ADDRESS, IMM, RS1, COMM),
+        JALR_MORE_IMPLICIT(r"{}:.+\s+jalr\s+{}{}", ADDRESS, RS1, COMM),
         LB(r"{}:.+\s+lb\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
         LBU(r"{}:.+\s+lbu\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
         LD(r"{}:.+\s+ld\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),

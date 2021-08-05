@@ -1,12 +1,42 @@
-use crate::riscv_isa::{riscv_regex, RiscvInstruction};
+use crate::riscv_isa::{riscv_regex, RiscvAddress, RiscvInstruction};
 use crate::{addr, build_instruction, imm, rd, rs1, rs2};
+use regex::Regex;
 
-pub fn parse(source: String) -> Vec<RiscvInstruction> {
+lazy_static! {
+    static ref TARGET: Regex = Regex::new(r":\s+(.+?)\s+").unwrap();
+}
+
+pub fn parse_rodata(source: &str) -> Vec<RiscvAddress> {
+    let addrs: Vec<_> = source
+        .lines()
+        .skip_while(|line| !line.contains(".rodata"))
+        .skip(3)
+        .map(|line| line.trim())
+        .take_while(|line| !line.is_empty())
+        .map(|line| TARGET.captures(line).unwrap()[1].to_string())
+        .collect();
+    if addrs.is_empty() {
+        return Vec::new();
+    }
+    let mut addrs_iter = addrs.iter();
+    let mut potential_targets = Vec::new();
+    while let (Some(lh), Some(hh)) = (addrs_iter.next(), addrs_iter.next()) {
+        let s = format!("{}{}", hh, lh);
+        let target = RiscvAddress::from_str_radix(&s, 16).unwrap();
+        potential_targets.push(target);
+    }
+    potential_targets.sort();
+    potential_targets.dedup();
+    potential_targets
+}
+
+pub fn parse_text(source: String) -> Vec<RiscvInstruction> {
     let lines: Vec<_> = source
         .lines()
         .skip_while(|line| !line.contains(".text"))
         .skip(1)
-        .map(|s| s.trim())
+        .map(|line| line.trim())
+        .take_while(|line| !line.starts_with("Disassembly"))
         .collect();
     let mut label = None;
     let mut insts = Vec::new();
@@ -62,6 +92,8 @@ fn build_instruction(line: &str, label: Option<String>) -> RiscvInstruction {
         riscv_regex::ECALL => Ecall(),
         riscv_regex::JAL => Jal(rd, addr),
         riscv_regex::JALR => Jalr(rd, rs1, imm),
+        riscv_regex::JALR_IMPLICIT => Jalr(rd, rs1, imm),
+        riscv_regex::JALR_MORE_IMPLICIT => Jalr(rd, rs1, imm),
         riscv_regex::LB => Lb(rd, rs1, imm),
         riscv_regex::LBU => Lbu(rd, rs1, imm),
         riscv_regex::LD => Ld(rd, rs1, imm),
@@ -120,6 +152,68 @@ mod tests {
     use crate::riscv_isa::RiscvRegister::*;
 
     #[test]
+    fn minimal() {
+        let source = "
+Disassembly of section .text:
+
+00000000000104bc <main>:
+   104da:	8082                	ret
+        ";
+        let potential_targets = super::parse_rodata(source);
+        assert_eq!(potential_targets, Vec::new());
+        let insts = super::parse_text(source.to_string());
+        let expected = vec![Ret {
+            label: Some(String::from("main")),
+            address: 66778,
+            comment: None,
+        }];
+        assert_eq!(insts, expected);
+    }
+
+    #[test]
+    fn potential_targets() {
+        let source = "
+
+examples/test:     file format elf64-littleriscv
+
+
+Disassembly of section .plt:
+
+0000000000010380 <_PROCEDURE_LINKAGE_TABLE_>:
+   10380:	97 23 00 00 33 03 c3 41 03 be 03 c8 13 03 43 fd     .#..3..A......C.
+   10390:	93 82 03 c8 13 53 13 00 83 b2 82 00 67 00 0e 00     .....S......g...
+
+00000000000103a0 <__libc_start_main@plt>:
+   103a0:	00002e17          	auipc	t3,0x2
+   103a4:	c70e3e03          	ld	t3,-912(t3) # 12010 <__libc_start_main@GLIBC_2.27>
+   103a8:	000e0367          	jalr	t1,t3
+   103ac:	00000013          	nop
+
+Disassembly of section .text:
+
+00000000000103de <load_gp>:
+   103de:	00002197          	auipc	gp,0x2
+   103e2:	42218193          	addi	gp,gp,1058 # 12800 <__global_pointer$>
+   103e6:	8082                	ret
+	...
+
+0000000000010650 <__libc_csu_fini>:
+   10650:	8082                	ret
+
+Disassembly of section .rodata:
+
+0000000000010538 <.rodata>:
+   10538:	0486                	slli	s1,s1,0x1
+   1053a:	0001                	nop
+   10538:	0486                	slli	s1,s1,0x1
+   1053a:	0001                	nop
+        ";
+        let potential_targets = super::parse_rodata(source);
+        let expected = vec![66694];
+        assert_eq!(potential_targets, expected);
+    }
+
+    #[test]
     fn label() {
         let source = "
 
@@ -149,14 +243,22 @@ Disassembly of section .text:
 0000000000010650 <__libc_csu_fini>:
    10650:	8082                	ret
 
+Disassembly of section .rodata:
+
+0000000000010538 <.rodata>:
+   10538:	0486                	slli	s1,s1,0x1
+   1053a:	0001                	nop
+   10538:	0486                	slli	s1,s1,0x1
+   1053a:	0001                	nop
         ";
-        let insts = super::parse(source.to_string());
+        let insts = super::parse_text(source.to_string());
         let expected = vec![
             Auipc {
                 label: Some(String::from("load_gp")),
                 address: 66526,
                 rd: Gp,
                 imm: 2,
+                comment: None,
             },
             Addi {
                 label: None,
@@ -164,14 +266,17 @@ Disassembly of section .text:
                 rd: Gp,
                 rs1: Gp,
                 imm: 1058,
+                comment: Some(String::from(" # 12800 <__global_pointer$>")),
             },
             Ret {
                 label: None,
                 address: 66534,
+                comment: None,
             },
             Ret {
                 label: Some(String::from("__libc_csu_fini")),
                 address: 67152,
+                comment: None,
             },
         ];
         assert_eq!(insts, expected);
@@ -198,7 +303,7 @@ Disassembly of section .text:
             }
         ),
         addi(
-            "1045e:	00150293          	addi	t0,a0,1 # 12001 <__TMC_END__+0x1>",
+            "1045e:	00150293          	addi	t0,a0,1",
             Addi {
                 address: 66654,
                 rd: T0,
@@ -324,8 +429,17 @@ Disassembly of section .text:
                 imm: 1,
             }
         ),
+        jalr_more_implicit(
+            "104b4:   9782                    jalr    a5",
+            Jalr {
+                address: 66740,
+                rd: Ra,
+                rs1: A5,
+                imm: 0,
+            }
+        ),
         jalr(
-            "10456:	001502e7          	jalr	t0,1(a0) # 12001 <__TMC_END__+0x1>",
+            "10456:	001502e7          	jalr	t0,1(a0)",
             Jalr {
                 address: 66646,
                 rd: T0,
