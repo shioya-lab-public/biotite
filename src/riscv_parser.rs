@@ -30,7 +30,7 @@ pub fn parse_rodata(source: &str) -> Vec<RiscvAddress> {
     potential_targets
 }
 
-pub fn parse_text(source: String) -> Vec<RiscvInstruction> {
+pub fn parse_text(source: &str) -> Vec<RiscvInstruction> {
     let lines: Vec<_> = source
         .lines()
         .skip_while(|line| !line.contains(".text"))
@@ -142,6 +142,9 @@ fn build_instruction(line: &str, label: Option<String>) -> RiscvInstruction {
         riscv_regex::RET => Ret(),
         riscv_regex::SEQZ => Seqz(rd, rs1),
         riscv_regex::SNEZ => Snez(rd, rs1),
+
+        // Misc
+        riscv_regex::SEXTW => SextW(rd, rs1),
     }
 }
 
@@ -161,7 +164,7 @@ Disassembly of section .text:
         ";
         let potential_targets = super::parse_rodata(source);
         assert_eq!(potential_targets, Vec::new());
-        let insts = super::parse_text(source.to_string());
+        let insts = super::parse_text(source);
         let expected = vec![Ret {
             label: Some(String::from("main")),
             address: 66778,
@@ -251,7 +254,7 @@ Disassembly of section .rodata:
    10538:	0486                	slli	s1,s1,0x1
    1053a:	0001                	nop
         ";
-        let insts = super::parse_text(source.to_string());
+        let insts = super::parse_text(source);
         let expected = vec![
             Auipc {
                 label: Some(String::from("load_gp")),
@@ -347,7 +350,7 @@ Disassembly of section .rodata:
             }
         ),
         beq(
-            "10472:	16b50b63          	beq	a0,a1,105e8 <main>",
+            "10472:	16b50b63          	beq	a0,a1,105e8",
             Beq {
                 address: 66674,
                 rs1: A0,
@@ -356,7 +359,7 @@ Disassembly of section .rodata:
             }
         ),
         bge(
-            "10476:	16b55963          	bge	a0,a1,105e8 <main>",
+            "10476:	16b55963          	bge	a0,a1,105e8",
             Bge {
                 address: 66678,
                 rs1: A0,
@@ -365,7 +368,7 @@ Disassembly of section .rodata:
             }
         ),
         bgeu(
-            "1047a:	16b57763          	bgeu	a0,a1,105e8 <main>",
+            "1047a:	16b57763          	bgeu	a0,a1,105e8",
             Bgeu {
                 address: 66682,
                 rs1: A0,
@@ -374,7 +377,7 @@ Disassembly of section .rodata:
             }
         ),
         blt(
-            "1047e:	16b54563          	blt	a0,a1,105e8 <main>",
+            "1047e:	16b54563          	blt	a0,a1,105e8",
             Blt {
                 address: 66686,
                 rs1: A0,
@@ -383,7 +386,7 @@ Disassembly of section .rodata:
             }
         ),
         bltu(
-            "10482:	16b56363          	bltu	a0,a1,105e8 <main>",
+            "10482:	16b56363          	bltu	a0,a1,105e8",
             Bltu {
                 address: 66690,
                 rs1: A0,
@@ -392,7 +395,7 @@ Disassembly of section .rodata:
             }
         ),
         bne(
-            "10486:	16b51163          	bne	a0,a1,105e8 <main>",
+            "10486:	16b51163          	bne	a0,a1,105e8",
             Bne {
                 address: 66694,
                 rs1: A0,
@@ -413,7 +416,7 @@ Disassembly of section .rodata:
             }
         ),
         jal(
-            "10490:	158000ef          	jal	ra,105e8 <main>",
+            "10490:	158000ef          	jal	ra,105e8",
             Jal {
                 address: 66704,
                 rd: Ra,
@@ -430,9 +433,9 @@ Disassembly of section .rodata:
             }
         ),
         jalr_more_implicit(
-            "104b4:   9782                    jalr    a5",
+            "1051a:	9782                	jalr	a5",
             Jalr {
-                address: 66740,
+                address: 66842,
                 rd: Ra,
                 rs1: A5,
                 imm: 0,
@@ -755,7 +758,7 @@ Disassembly of section .rodata:
 
         // Pseudo
         beqz(
-            "1052c:	cd55                	beqz	a0,105e8 <main>",
+            "1052c:	cd55                	beqz	a0,105e8",
             Beqz {
                 address: 66860,
                 rs1: A0,
@@ -763,7 +766,7 @@ Disassembly of section .rodata:
             }
         ),
         bnez(
-            "1052e:	ed4d                	bnez	a0,105e8 <main>",
+            "1052e:	ed4d                	bnez	a0,105e8",
             Bnez {
                 address: 66862,
                 rs1: A0,
@@ -771,7 +774,7 @@ Disassembly of section .rodata:
             }
         ),
         j(
-            "10530:	a865                	j	105e8 <main>",
+            "10530:	a865                	j	105e8",
             J {
                 address: 66864,
                 addr: 67048,
@@ -842,6 +845,16 @@ Disassembly of section .rodata:
                 address: 66896,
                 rd: T0,
                 rs1: A0,
+            }
+        ),
+
+        // Misc
+        sextw(
+            "10460:	2781                	sext.w	a5,a5",
+            SextW {
+                address: 66656,
+                rd: A5,
+                rs1: A5,
             }
         ),
 

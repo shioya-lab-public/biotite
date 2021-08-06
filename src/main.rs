@@ -1,4 +1,3 @@
-use riscv2llvm::Translator;
 use std::fs;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -16,7 +15,7 @@ struct Opt {
 fn main() {
     let opt = Opt::from_args();
     let source = fs::read_to_string(&opt.input).expect("Unable to read the input file.");
-    let output = Translator::new().run(source);
+    let output = riscv2llvm::run(source);
     let path = opt
         .output
         .clone()

@@ -86,6 +86,9 @@ define_instruction! {
     Ret(),
     Seqz(rd, rs1),
     Snez(rd, rs1),
+
+    // Misc
+    SextW(rd, rs1),
 }
 
 pub type RiscvImmediate = i64;
@@ -200,7 +203,7 @@ pub mod riscv_regex {
     const RS2: &str = r"(?P<rs2>\S+)";
     const IMM: &str = r"(?P<imm>\S+)";
     const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
-    const COMM: &str = r"(?P<comm>\s+#.+)?";
+    const COMM: &str = r"(?P<comm>\s+.+)?";
 
     define_regex! {
         // function labels
@@ -274,5 +277,8 @@ pub mod riscv_regex {
         RET(r"{}:.+\s+ret{}", ADDRESS, COMM),
         SEQZ(r"{}:.+\s+seqz\s+{},{}{}", ADDRESS, RD, RS1, COMM),
         SNEZ(r"{}:.+\s+snez\s+{},{}{}", ADDRESS, RD, RS1, COMM),
+
+        // Misc
+        SEXTW(r"{}:.+\s+sext.w\s+{},{}{}", ADDRESS, RD, RS1, COMM),
     }
 }
