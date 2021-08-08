@@ -20,6 +20,6 @@ pub fn run(source: String) -> String {
     let potential_targets = riscv_parser::parse_rodata(&source);
     let riscv_insts = riscv_parser::parse_text(&source);
     let cfg = CfgBuilder::new(riscv_insts, potential_targets).run();
-    let llvm_insts = CfgTranslator::new().run(cfg);
-    llvm_serializer::serialize(llvm_insts)
+    let program = CfgTranslator::new().run(cfg);
+    llvm_serializer::serialize(program)
 }

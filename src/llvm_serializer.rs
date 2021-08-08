@@ -1,5 +1,5 @@
-use crate::llvm_isa::LlvmProgram;
+use crate::llvm_isa::Program;
 
-pub fn serialize(program: LlvmProgram) -> String {
+pub fn serialize(program: Program) -> String {
     todo!();
 }

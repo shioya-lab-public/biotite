@@ -1,9 +1,9 @@
 use crate::riscv_isa::RiscvInstruction;
 
-pub type Cfg = Vec<Function>;
+pub type Cfg = Vec<RiscvFunction>;
 
 #[derive(Debug, PartialEq)]
-pub struct Function {
+pub struct RiscvFunction {
     pub name: String,
     pub basic_blocks: Vec<BasicBlock>,
     pub potential_targets: Vec<usize>,

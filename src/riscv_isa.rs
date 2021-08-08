@@ -1,4 +1,9 @@
 use crate::{addr, define_instruction, imm, rd, rs1, rs2};
+use regex::Regex;
+
+lazy_static! {
+    pub static ref FUNCTION: Regex = Regex::new(r"<(.+)>").unwrap();
+}
 
 pub trait FromStr {
     fn from_str(s: &str) -> Self;

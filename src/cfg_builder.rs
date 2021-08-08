@@ -1,12 +1,7 @@
-use crate::cfg::{BasicBlock, Cfg, Function};
-use crate::riscv_isa::{RiscvAddress, RiscvInstruction};
-use regex::Regex;
+use crate::cfg::{BasicBlock, Cfg, RiscvFunction};
+use crate::riscv_isa::{RiscvAddress, RiscvInstruction, FUNCTION};
 use std::collections::HashSet;
 use std::mem;
-
-lazy_static! {
-    static ref FUNCTION: Regex = Regex::new(r"<(.+)>").unwrap();
-}
 
 pub struct CfgBuilder {
     functions: HashSet<String>,
@@ -38,7 +33,7 @@ impl CfgBuilder {
             .position(|inst| inst.label() == &Some(name.to_string()))
             .unwrap();
         let (basic_blocks, potential_targets) = self.build_basic_blocks(index);
-        let func = Function {
+        let func = RiscvFunction {
             name: name.to_string(),
             basic_blocks,
             potential_targets,
@@ -203,7 +198,7 @@ Disassembly of section .rodata:
         let riscv_insts = riscv_parser::parse_text(source);
         let cfg = CfgBuilder::new(riscv_insts, potential_targets).run();
         let expected = vec![
-            Function {
+            RiscvFunction {
                 name: String::from("s"),
                 basic_blocks: vec![
                     BasicBlock {
@@ -235,7 +230,7 @@ Disassembly of section .rodata:
                 ],
                 potential_targets: vec![1],
             },
-            Function {
+            RiscvFunction {
                 name: String::from("f"),
                 basic_blocks: vec![
                     BasicBlock {
@@ -355,7 +350,7 @@ Disassembly of section .rodata:
                 ],
                 potential_targets: vec![],
             },
-            Function {
+            RiscvFunction {
                 name: String::from("main"),
                 basic_blocks: vec![BasicBlock {
                     instructions: vec![
