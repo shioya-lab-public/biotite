@@ -145,6 +145,7 @@ fn build_instruction(line: &str, label: Option<String>) -> RiscvInstruction {
 
         // Misc
         riscv_regex::SEXTW => SextW(rd, rs1),
+        riscv_regex::BLEZ => Blez(rs1, rs2, addr),
     }
 }
 

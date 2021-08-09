@@ -1,5 +1,5 @@
 use crate::riscv_isa::{RiscvImmediate, RiscvRegister};
-// use std::fmt::{Display, Formatter, Result};
+use std::fmt::{Display, Formatter, Result};
 
 pub type Program = Vec<LlvmFunction>;
 
@@ -8,22 +8,7 @@ pub struct LlvmFunction {
     pub body: Vec<LlvmInstruction>,
 }
 
-// impl Display for LlvmFunction {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-//         let mut body_str = self
-//             .body
-//             .iter()
-//             .map(|inst| format!("    {}\n", inst))
-//             .reduce(|insts, inst| insts + &inst)
-//             .unwrap();
-//         write!(
-//             f,
-//             "define {} @{}({}) {{\n{}}}\n",
-//             self.return_type, self.name, param_str, body_str
-//         )
-//     }
-// }
-
+#[derive(Debug)]
 pub enum LlvmCondition {
     Eq,
     Ne,
@@ -31,8 +16,26 @@ pub enum LlvmCondition {
     Uge,
     Slt,
     Ult,
+    Sle,
 }
 
+impl Display for LlvmCondition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        use LlvmCondition::*;
+
+        match self {
+            Eq => write!(f, "eq",),
+            Ne => write!(f, "ne",),
+            Sge => write!(f, "sge",),
+            Uge => write!(f, "uge",),
+            Slt => write!(f, "slt",),
+            Ult => write!(f, "ult",),
+            Sle => write!(f, "sle",),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum LlvmType {
     I8,
     U8,
@@ -43,6 +46,23 @@ pub enum LlvmType {
     I64,
 }
 
+impl Display for LlvmType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        use LlvmType::*;
+
+        match self {
+            I8 => write!(f, "i8",),
+            U8 => write!(f, "u8",),
+            I16 => write!(f, "i16",),
+            U16 => write!(f, "u16",),
+            I32 => write!(f, "i32",),
+            U32 => write!(f, "u32",),
+            I64 => write!(f, "i64",),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum LlvmInstruction {
     Label(String),
     Add {
@@ -153,11 +173,3 @@ pub enum LlvmInstruction {
     },
     Ret,
 }
-
-// impl Display for LlvmInstruction {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-//         match self {
-//             LlvmInstruction::Ret(ty, val) => write!(f, "ret {} {}", ty, val),
-//         }
-//     }
-// }

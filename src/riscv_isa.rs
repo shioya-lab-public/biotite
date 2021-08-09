@@ -1,5 +1,6 @@
 use crate::{addr, define_instruction, imm, rd, rs1, rs2};
 use regex::Regex;
+use std::fmt::{Display, Formatter, Result};
 
 lazy_static! {
     pub static ref FUNCTION: Regex = Regex::new(r"<(.+)>").unwrap();
@@ -94,6 +95,7 @@ define_instruction! {
 
     // Misc
     SextW(rd, rs1),
+    Blez(rs1, rs2, addr),
 }
 
 pub type RiscvImmediate = i64;
@@ -197,6 +199,47 @@ impl FromStr for RiscvRegister {
     }
 }
 
+impl Display for RiscvRegister {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        use RiscvRegister::*;
+
+        match self {
+            Zero => write!(f, "zero"),
+            Ra => write!(f, "ra"),
+            Sp => write!(f, "sp"),
+            Gp => write!(f, "gp"),
+            Tp => write!(f, "tp"),
+            T0 => write!(f, "t0"),
+            T1 => write!(f, "t1"),
+            T2 => write!(f, "t2"),
+            S0 => write!(f, "s0"),
+            S1 => write!(f, "s1"),
+            A0 => write!(f, "a0"),
+            A1 => write!(f, "a1"),
+            A2 => write!(f, "a2"),
+            A3 => write!(f, "a3"),
+            A4 => write!(f, "a4"),
+            A5 => write!(f, "a5"),
+            A6 => write!(f, "a6"),
+            A7 => write!(f, "a7"),
+            S2 => write!(f, "s2"),
+            S3 => write!(f, "s3"),
+            S4 => write!(f, "s4"),
+            S5 => write!(f, "s5"),
+            S6 => write!(f, "s6"),
+            S7 => write!(f, "s7"),
+            S8 => write!(f, "s8"),
+            S9 => write!(f, "s9"),
+            S10 => write!(f, "s10"),
+            S11 => write!(f, "s11"),
+            T3 => write!(f, "t3"),
+            T4 => write!(f, "t4"),
+            T5 => write!(f, "t5"),
+            T6 => write!(f, "t6"),
+        }
+    }
+}
+
 pub mod riscv_regex {
     use crate::define_regex;
     use regex::Regex;
@@ -232,7 +275,7 @@ pub mod riscv_regex {
         ECALL(r"{}:.+\s+ecall{}", ADDRESS, COMM),
         JAL(r"{}:.+\s+jal\s+{},{}{}", ADDRESS, RD, ADDR, COMM),
         JALR(r"{}:.+\s+jalr\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
-        JALR_IMPLICIT(r"{}:.+\s+jalr\s+{}\({}\){}", ADDRESS, IMM, RS1, COMM),
+        JALR_IMPLICIT(r"{}:.+\s+j(al)?r\s+{}\({}\){}", ADDRESS, IMM, RS1, COMM), // 10472:	faa30067          	jr	-86(t1) # 10418 <register_tm_clones>
         JALR_MORE_IMPLICIT(r"{}:.+\s+jalr\s+{}{}", ADDRESS, RS1, COMM),
         LB(r"{}:.+\s+lb\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
         LBU(r"{}:.+\s+lbu\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
@@ -285,5 +328,6 @@ pub mod riscv_regex {
 
         // Misc
         SEXTW(r"{}:.+\s+sext.w\s+{},{}{}", ADDRESS, RD, RS1, COMM),
+        BLEZ(r"{}:.+\s+blez\s+{},{}{}", ADDRESS, RS1, ADDR, COMM),
     }
 }

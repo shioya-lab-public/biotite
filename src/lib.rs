@@ -14,12 +14,11 @@ mod riscv_isa;
 mod riscv_macro;
 
 use cfg_builder::CfgBuilder;
-use cfg_translator::CfgTranslator;
 
 pub fn run(source: String) -> String {
     let potential_targets = riscv_parser::parse_rodata(&source);
     let riscv_insts = riscv_parser::parse_text(&source);
     let cfg = CfgBuilder::new(riscv_insts, potential_targets).run();
-    let program = CfgTranslator::new().run(cfg);
+    let program = cfg_translator::run(cfg);
     llvm_serializer::serialize(program)
 }

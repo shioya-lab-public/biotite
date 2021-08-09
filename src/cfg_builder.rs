@@ -64,7 +64,8 @@ impl CfgBuilder {
                 | Bltu { addr, .. }
                 | Bne { addr, .. }
                 | Beqz { addr, .. }
-                | Bnez { addr, .. } => {
+                | Bnez { addr, .. }
+                | Blez { addr, .. } => {
                     let index = self.address_to_index(addr);
                     targets.push((idx + 1, Some(idx + 1), Some(index)));
                     heads.extend(vec![idx + 1, index]);

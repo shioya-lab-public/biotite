@@ -1,37 +1,37 @@
-void s(char n)
-{
-    switch (n)
-    {
-    case '1':
-        break;
-    case '2':
-        break;
-    case '3':
-        break;
-    case '4':
-        break;
-    case '5':
-        break;
+int s(int n) {
+    switch (n) {
+        case 1:
+            ++n;
+            break;
+        case 2:
+            ++n;
+            break;
+        case 3:
+            ++n;
+            break;
+        case 4:
+            ++n;
+            break;
+        case 5:
+            ++n;
+            break;
     }
+    return n;
 }
 
-void f(void)
-{
-    asm volatile(
-        "beq a0, a1, f \n"
-        "bge a0, a1, f \n"
-        "bgeu a0, a1, f \n"
-        "blt a0, a1, f \n"
-        "bltu a0, a1, f \n"
-        "bne a0, a1, f \n"
-        "beqz a0, f \n"
-        "bnez a0, f \n"
-        "jal f \n");
-}
-
-int main(void)
-{
-    s('1');
-    f();
-    return 0;
+int main(void) {
+    int n = 0;
+    for (int i = 0; i < 1; ++i) {
+        ++n;
+    }
+    while (n < 2) {
+        ++n;
+    }
+    do {
+        ++n;
+    } while (0);
+    if (1) {
+        n = s(n);
+    }
+    return n;  // `echo $?` => 4
 }
