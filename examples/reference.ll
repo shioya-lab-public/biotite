@@ -24,25 +24,25 @@ define dso_local i32 @s(i32 %0) #0 {
 
 7:                                                ; preds = %1
   %8 = load i32, i32* %2, align 4
-  %9 = add nsw i32 %8, 1
+  %9 = add nsw i32 %8, 2
   store i32 %9, i32* %2, align 4
   br label %19
 
 10:                                               ; preds = %1
   %11 = load i32, i32* %2, align 4
-  %12 = add nsw i32 %11, 1
+  %12 = add nsw i32 %11, 3
   store i32 %12, i32* %2, align 4
   br label %19
 
 13:                                               ; preds = %1
   %14 = load i32, i32* %2, align 4
-  %15 = add nsw i32 %14, 1
+  %15 = add nsw i32 %14, 4
   store i32 %15, i32* %2, align 4
   br label %19
 
 16:                                               ; preds = %1
   %17 = load i32, i32* %2, align 4
-  %18 = add nsw i32 %17, 1
+  %18 = add nsw i32 %17, 5
   store i32 %18, i32* %2, align 4
   br label %19
 

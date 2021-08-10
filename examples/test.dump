@@ -94,19 +94,19 @@ Disassembly of section .text:
    10484:	fef42623          	sw	a5,-20(s0)
    10488:	a80d                	j	104ba <s+0x6a>
    1048a:	fec42783          	lw	a5,-20(s0)
-   1048e:	2785                	addiw	a5,a5,1
+   1048e:	2789                	addiw	a5,a5,2
    10490:	fef42623          	sw	a5,-20(s0)
    10494:	a01d                	j	104ba <s+0x6a>
    10496:	fec42783          	lw	a5,-20(s0)
-   1049a:	2785                	addiw	a5,a5,1
+   1049a:	278d                	addiw	a5,a5,3
    1049c:	fef42623          	sw	a5,-20(s0)
    104a0:	a829                	j	104ba <s+0x6a>
    104a2:	fec42783          	lw	a5,-20(s0)
-   104a6:	2785                	addiw	a5,a5,1
+   104a6:	2791                	addiw	a5,a5,4
    104a8:	fef42623          	sw	a5,-20(s0)
    104ac:	a039                	j	104ba <s+0x6a>
    104ae:	fec42783          	lw	a5,-20(s0)
-   104b2:	2785                	addiw	a5,a5,1
+   104b2:	2795                	addiw	a5,a5,5
    104b4:	fef42623          	sw	a5,-20(s0)
    104b8:	0001                	nop
    104ba:	fec42783          	lw	a5,-20(s0)

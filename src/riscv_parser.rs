@@ -1,33 +1,38 @@
 use crate::riscv_isa::{riscv_regex, RiscvAddress, RiscvInstruction};
 use crate::{addr, build_instruction, imm, rd, rs1, rs2};
 use regex::Regex;
+use std::collections::HashMap;
 
 lazy_static! {
-    static ref TARGET: Regex = Regex::new(r":\s+(.+?)\s+").unwrap();
+    static ref TARGET: Regex = Regex::new(r"(.+):\s+(.+?)\s+").unwrap();
 }
 
-pub fn parse_rodata(source: &str) -> Vec<RiscvAddress> {
+pub fn parse_rodata(source: &str) -> HashMap<RiscvAddress, RiscvAddress> {
     let addrs: Vec<_> = source
         .lines()
         .skip_while(|line| !line.contains(".rodata"))
         .skip(3)
         .map(|line| line.trim())
         .take_while(|line| !line.is_empty())
-        .map(|line| TARGET.captures(line).unwrap()[1].to_string())
+        .map(|line| {
+            let caps = TARGET.captures(line).unwrap();
+            (caps[1].to_string(), caps[2].to_string())
+        })
         .collect();
     if addrs.is_empty() {
-        return Vec::new();
+        return HashMap::new();
     }
     let mut addrs_iter = addrs.iter();
     let mut potential_targets = Vec::new();
     while let (Some(lh), Some(hh)) = (addrs_iter.next(), addrs_iter.next()) {
-        let s = format!("{}{}", hh, lh);
-        let target = RiscvAddress::from_str_radix(&s, 16).unwrap();
-        potential_targets.push(target);
+        let addr = RiscvAddress::from_str_radix(&lh.0, 16).unwrap();
+        let target_s = format!("{}{}", hh.1, lh.1);
+        let target = RiscvAddress::from_str_radix(&target_s, 16).unwrap();
+        potential_targets.push((addr, target));
     }
-    potential_targets.sort();
+    potential_targets.sort_unstable();
     potential_targets.dedup();
-    potential_targets
+    potential_targets.into_iter().collect()
 }
 
 pub fn parse_text(source: &str) -> Vec<RiscvInstruction> {
@@ -154,6 +159,7 @@ mod tests {
     use crate::build_test;
     use crate::riscv_isa::RiscvInstruction::*;
     use crate::riscv_isa::RiscvRegister::*;
+    use std::collections::HashMap;
 
     #[test]
     fn minimal() {
@@ -164,7 +170,7 @@ Disassembly of section .text:
    104da:	8082                	ret
         ";
         let potential_targets = super::parse_rodata(source);
-        assert_eq!(potential_targets, Vec::new());
+        assert_eq!(potential_targets, HashMap::new());
         let insts = super::parse_text(source);
         let expected = vec![Ret {
             label: Some(String::from("main")),
@@ -213,7 +219,7 @@ Disassembly of section .rodata:
    1053a:	0001                	nop
         ";
         let potential_targets = super::parse_rodata(source);
-        let expected = vec![66694];
+        let expected = vec![(66872, 66694)].into_iter().collect();
         assert_eq!(potential_targets, expected);
     }
 

@@ -1,4 +1,5 @@
-use crate::riscv_isa::{RiscvImmediate, RiscvRegister};
+use crate::riscv_isa::{RiscvAddress, RiscvImmediate, RiscvRegister};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result};
 
 pub type Program = Vec<LlvmFunction>;
@@ -52,11 +53,11 @@ impl Display for LlvmType {
 
         match self {
             I8 => write!(f, "i8",),
-            U8 => write!(f, "u8",),
+            U8 => write!(f, "i8",), // LLVM does not distinguish signed and unsigned integers.
             I16 => write!(f, "i16",),
-            U16 => write!(f, "u16",),
+            U16 => write!(f, "i16",),
             I32 => write!(f, "i32",),
-            U32 => write!(f, "u32",),
+            U32 => write!(f, "i32",),
             I64 => write!(f, "i64",),
         }
     }
@@ -95,9 +96,9 @@ pub enum LlvmInstruction {
         iffalse: String,
     },
     DirectBr(String),
-    IndirectBr {
+    Switch {
         register: RiscvRegister,
-        labels: Vec<String>,
+        targets: HashMap<RiscvAddress, RiscvAddress>,
     },
     Call(String),
     Load {

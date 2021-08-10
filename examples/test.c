@@ -1,19 +1,19 @@
 int s(int n) {
     switch (n) {
         case 1:
-            ++n;
+            n += 1;
             break;
         case 2:
-            ++n;
+            n += 2;
             break;
         case 3:
-            ++n;
+            n += 3;
             break;
         case 4:
-            ++n;
+            n += 4;
             break;
         case 5:
-            ++n;
+            n += 5;
             break;
     }
     return n;
@@ -33,5 +33,5 @@ int main(void) {
     if (1) {
         n = s(n);
     }
-    return n;  // `echo $?` => 4
+    return n;  // `echo $?` => 6
 }

@@ -1,9 +1,10 @@
 use crate::cfg::{BasicBlock, Cfg, RiscvFunction};
 use crate::llvm_isa::{LlvmCondition, LlvmFunction, LlvmInstruction, LlvmType, Program};
-use crate::riscv_isa::{RiscvInstruction, RiscvRegister, FUNCTION};
+use crate::riscv_isa::{RiscvAddress, RiscvInstruction, RiscvRegister, FUNCTION};
+use std::collections::HashMap;
 
 pub fn run(cfg: Cfg) -> Program {
-    cfg.into_iter().map(|f| translate_function(f)).collect()
+    cfg.into_iter().map(translate_function).collect()
 }
 
 fn translate_function(function: RiscvFunction) -> LlvmFunction {
@@ -26,7 +27,7 @@ fn translate_function(function: RiscvFunction) -> LlvmFunction {
 fn translate_basic_block(
     index: usize,
     basic_block: BasicBlock,
-    potential_targets: &Vec<usize>,
+    potential_targets: &HashMap<RiscvAddress, usize>,
 ) -> Vec<LlvmInstruction> {
     let mut llvm_insts = vec![LlvmInstruction::Label(format!("L{}", index))];
     let BasicBlock {
@@ -293,16 +294,17 @@ fn translate_basic_block(
                     iffalse: format!("L{}", continue_target.unwrap()),
                 },
             ],
-            RiscvInstruction::J { .. } => vec![LlvmInstruction::DirectBr(format!(
-                "L{}",
-                jump_target.unwrap()
-            ))],
-            RiscvInstruction::Jr { rs1, .. } => vec![LlvmInstruction::IndirectBr {
+            RiscvInstruction::J { addr, .. } => {
+                let target = if addr == 0 {
+                    continue_target.unwrap()
+                } else {
+                    jump_target.unwrap()
+                };
+                vec![LlvmInstruction::DirectBr(format!("L{}", target))]
+            }
+            RiscvInstruction::Jr { rs1, .. } => vec![LlvmInstruction::Switch {
                 register: rs1,
-                labels: potential_targets
-                    .iter()
-                    .map(|index| format!("L{}", index))
-                    .collect(),
+                targets: potential_targets.clone(),
             }],
             RiscvInstruction::Li { rd, imm, .. } => vec![LlvmInstruction::Addi {
                 result: rd,
@@ -330,7 +332,11 @@ fn translate_basic_block(
             RiscvInstruction::Snez { .. } => todo!(),
 
             // Misc
-            RiscvInstruction::SextW { .. } => vec![],
+            RiscvInstruction::SextW { rd, rs1, .. } => vec![LlvmInstruction::Addi {
+                result: rd,
+                op1: rs1,
+                op2: 0,
+            }],
             RiscvInstruction::Blez { rs1, .. } => vec![
                 LlvmInstruction::Icmp {
                     condition: LlvmCondition::Sle,

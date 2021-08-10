@@ -1,9 +1,15 @@
 use crate::llvm_isa::{LlvmFunction, LlvmInstruction, Program};
 use crate::riscv_isa::RiscvRegister;
 
-const GLOBAL: &str = "@zero = global i64 0
+const GLOBAL: &str = "
+; @.str = private unnamed_addr constant [8 x i8] c\"### %d\\0A\\00\", align 1
+; declare dso_local i32 @printf(i8*, ...)
+; %val = load i64, i64* @zero
+; call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str, i64 0, i64 0), i64 %val)
+
+@zero = global i64 0
 @ra = global i64 0
-@sp = global i64 0
+@sp = global i64 1023
 @gp = global i64 0
 @tp = global i64 0
 @t0 = global i64 0
@@ -42,10 +48,16 @@ pub fn serialize(program: Program) -> String {
     let mut program_str = GLOBAL.to_string();
     for LlvmFunction { name, body } in program {
         let mut counter = 0;
-        program_str += &format!("define void @{}() {{\n", name);
+        program_str += &format!("define i64 @{}() {{\n", name);
+        let mut inst_str = String::new();
         for inst in body {
-            program_str += &serialize_instruction(&inst, &mut counter);
+            if !matches!(inst, LlvmInstruction::Switch { .. }) {
+                program_str += &inst_str;
+            }
+            program_str += &format!("    ; {:?}\n", inst);
+            inst_str = serialize_instruction(&inst, &mut counter);
         }
+        program_str += &inst_str;
         program_str.pop();
         program_str += "}\n\n";
     }
@@ -62,7 +74,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
             let s = serialize_register_load(*counter, op1)
                 + &serialize_register_load(*counter + 1, op2)
                 + &format!(
-                    "    %temp{} = add i64 %temp{}, %temp{}\n",
+                    "    %temp_{} = add i64 %temp_{}, %temp_{}\n",
                     *counter + 2,
                     *counter,
                     *counter + 1
@@ -75,7 +87,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
         Addi { result, op1, op2 } => {
             let s = serialize_register_load(*counter, op1)
                 + &format!(
-                    "    %temp{} = add i64 %temp{}, {}\n",
+                    "    %temp_{} = add i64 %temp_{}, {}\n",
                     *counter + 1,
                     *counter,
                     op2
@@ -89,7 +101,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
             let s = serialize_register_load(*counter, op1)
                 + &serialize_register_load(*counter + 1, op2)
                 + &format!(
-                    "    %temp{} = and i64 %temp{}, %temp{}\n",
+                    "    %temp_{} = and i64 %temp_{}, %temp_{}\n",
                     *counter + 2,
                     *counter,
                     *counter + 1
@@ -102,7 +114,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
         Andi { result, op1, op2 } => {
             let s = serialize_register_load(*counter, op1)
                 + &format!(
-                    "    %temp{} = and i64 %temp{}, {}\n",
+                    "    %temp_{} = and i64 %temp_{}, {}\n",
                     *counter + 1,
                     *counter,
                     op2
@@ -120,69 +132,94 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
             let s = serialize_register_load(*counter, op1)
                 + &serialize_register_load(*counter + 1, op2)
                 + &format!(
-                    "    %temp{} = icmp {} i64 %temp{}, %temp{}\n",
+                    "    %temp_{} = icmp {} i64 %temp_{}, %temp_{}\n",
                     *counter + 2,
                     condition,
                     *counter,
                     *counter + 1
-                );
+                )
+                + "\n";
             *counter += 3;
             s
         }
         Br { iftrue, iffalse } => format!(
-            "    br i1 %temp{}, label %{}, label %{}\n\n",
+            "    br i1 %temp_{}, label %{}, label %{}\n\n",
             *counter - 1,
             iftrue,
             iffalse
         ),
         DirectBr(label) => format!("    br label %{}\n\n", label),
-        IndirectBr { register, labels } => {
-            let mut s = format!("    indirectbr i64* @{}, [", register);
-            for label in labels {
-                s += &format!("label %{}, ", label);
+        Switch { register, targets } => {
+            let mut s = serialize_register_load(*counter, register)
+                + &format!(
+                    "    switch i64 %temp_{}, label %L{} [ ",
+                    *counter,
+                    *counter + 1
+                );
+            for (addr, target) in targets {
+                s += &format!("i64 {}, label %L{} ", addr, target);
             }
-            s.pop();
-            s.pop();
-            s += "]\n\n";
+            s += "]\n";
+            s += &format!("L{}:\n", *counter + 1);
+            s += "    unreachable\n\n";
+            *counter += 2;
             s
         }
-        Call(func) => format!("    call void @{}()\n\n", func),
+        Call(func) => format!("    call i64 @{}()\n\n", func),
         Load {
             ty,
             result,
             op1,
             op2,
         } => {
-            let s =
+            let mut s =
                 serialize_register_load(*counter, op1)
                     + &format!(
-                        "    %temp{} = add i64 %temp{}, {}\n",
+                        "    %temp_{} = add i64 %temp_{}, {}\n",
                         *counter + 1,
                         *counter,
-                        -op2
+                        op2
                     )
                     + &format!(
-                    "    %temp{} = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 {}\n",
-                    *counter + 2,
-                    *counter + 1,
-                ) + &format!(
-                    "    %temp{} = bitcast i8* %temp{} to {}*\n",
+                        "    %temp_{} = sub i64 1023, %temp_{}\n",
+                        *counter + 2,
+                        *counter + 1,
+                    )
+                    + &format!(
+                    "    %temp_{} = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_{}\n",
                     *counter + 3,
                     *counter + 2,
+                ) + &format!(
+                    "    %temp_{} = bitcast i8* %temp_{} to {}*\n",
+                    *counter + 4,
+                    *counter + 3,
                     ty
                 ) + &format!(
-                    "    %temp{} = load {}, {}* %temp{}\n",
+                    "    %temp_{} = load {}, {}* %temp_{}\n",
+                    *counter + 5,
+                    ty,
+                    ty,
                     *counter + 4,
+                );
+            if &format!("{}", ty) != "i64" {
+                s += &format!(
+                    "    %temp_{} = sext {} %temp_{} to i64\n",
+                    *counter + 6,
                     ty,
-                    ty,
-                    *counter + 3,
-                ) + &serialize_register_store(*counter + 4, result)
-                    + "\n";
-            *counter += 5;
+                    *counter + 5,
+                );
+                s += &serialize_register_store(*counter + 6, result);
+                s += "\n";
+                *counter += 7;
+            } else {
+                s += &serialize_register_store(*counter + 5, result);
+                s += "\n";
+                *counter += 6;
+            }
             s
         }
         Shli12 { result, op1 } => {
-            let s = format!("    %temp{} = shli i64 %{}, 12\n", *counter, op1,)
+            let s = format!("    %temp_{} = shl i64 {}, 12\n", *counter, op1,)
                 + &serialize_register_store(*counter, result)
                 + "\n";
             *counter += 1;
@@ -192,7 +229,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
             let s = serialize_register_load(*counter, op1)
                 + &serialize_register_load(*counter + 1, op2)
                 + &format!(
-                    "    %temp{} = or i64 %temp{}, %temp{}\n",
+                    "    %temp_{} = or i64 %temp_{}, %temp_{}\n",
                     *counter + 2,
                     *counter,
                     *counter + 1
@@ -205,7 +242,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
         Ori { result, op1, op2 } => {
             let s = serialize_register_load(*counter, op1)
                 + &format!(
-                    "    %temp{} = or i64 %temp{}, {}\n",
+                    "    %temp_{} = or i64 %temp_{}, {}\n",
                     *counter + 1,
                     *counter,
                     op2
@@ -221,40 +258,61 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
             op2,
             source,
         } => {
-            let s =
+            let mut s =
                 serialize_register_load(*counter, op1)
                     + &format!(
-                        "    %temp{} = add i64 %temp{}, {}\n",
+                        "    %temp_{} = add i64 %temp_{}, {}\n",
                         *counter + 1,
                         *counter,
-                        -op2
+                        op2
                     )
                     + &format!(
-                    "    %temp{} = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 {}\n",
-                    *counter + 2,
-                    *counter + 1,
-                ) + &format!(
-                    "    %temp{} = bitcast i8* %temp{} to {}*\n",
+                        "    %temp_{} = sub i64 1023, %temp_{}\n",
+                        *counter + 2,
+                        *counter + 1,
+                    )
+                    + &format!(
+                    "    %temp_{} = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_{}\n",
                     *counter + 3,
                     *counter + 2,
+                ) + &format!(
+                    "    %temp_{} = bitcast i8* %temp_{} to {}*\n",
+                    *counter + 4,
+                    *counter + 3,
                     ty
-                ) + &serialize_register_load(*counter + 4, source)
-                    + &format!(
-                        "    store {} {}, {}* %temp{}\n",
-                        ty,
-                        *counter + 4,
-                        ty,
-                        *counter + 3,
-                    )
-                    + "\n";
-            *counter += 5;
+                ) + &serialize_register_load(*counter + 5, source);
+            if &format!("{}", ty) != "i64" {
+                s += &format!(
+                    "    %temp_{} = trunc i64 %temp_{} to {}\n",
+                    *counter + 6,
+                    *counter + 5,
+                    ty
+                );
+                s += &format!(
+                    "    store {} %temp_{}, {}* %temp_{}\n",
+                    ty,
+                    *counter + 6,
+                    ty,
+                    *counter + 4,
+                );
+                s += "\n";
+                *counter += 7;
+            } else {
+                s += &format!(
+                    "    store i64 %temp_{}, i64* %temp_{}\n",
+                    *counter + 5,
+                    *counter + 4,
+                );
+                s += "\n";
+                *counter += 6;
+            }
             s
         }
         Shl { result, op1, op2 } => {
             let s = serialize_register_load(*counter, op1)
                 + &serialize_register_load(*counter + 1, op2)
                 + &format!(
-                    "    %temp{} = shl i64 %temp{}, %temp{}\n",
+                    "    %temp_{} = shl i64 %temp_{}, %temp_{}\n",
                     *counter + 2,
                     *counter,
                     *counter + 1
@@ -267,7 +325,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
         Shli { result, op1, op2 } => {
             let s = serialize_register_load(*counter, op1)
                 + &format!(
-                    "    %temp{} = shl i64 %temp{}, {}\n",
+                    "    %temp_{} = shl i64 %temp_{}, {}\n",
                     *counter + 1,
                     *counter,
                     op2
@@ -281,7 +339,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
             let s = serialize_register_load(*counter, op1)
                 + &serialize_register_load(*counter + 1, op2)
                 + &format!(
-                    "    %temp{} = ashr i64 %temp{}, %temp{}\n",
+                    "    %temp_{} = ashr i64 %temp_{}, %temp_{}\n",
                     *counter + 2,
                     *counter,
                     *counter + 1
@@ -294,7 +352,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
         Ashri { result, op1, op2 } => {
             let s = serialize_register_load(*counter, op1)
                 + &format!(
-                    "    %temp{} = ashr i64 %temp{}, {}\n",
+                    "    %temp_{} = ashr i64 %temp_{}, {}\n",
                     *counter + 1,
                     *counter,
                     op2
@@ -308,7 +366,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
             let s = serialize_register_load(*counter, op1)
                 + &serialize_register_load(*counter + 1, op2)
                 + &format!(
-                    "    %temp{} = lshr i64 %temp{}, %temp{}\n",
+                    "    %temp_{} = lshr i64 %temp_{}, %temp_{}\n",
                     *counter + 2,
                     *counter,
                     *counter + 1
@@ -321,7 +379,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
         Lshri { result, op1, op2 } => {
             let s = serialize_register_load(*counter, op1)
                 + &format!(
-                    "    %temp{} = lshr i64 %temp{}, {}\n",
+                    "    %temp_{} = lshr i64 %temp_{}, {}\n",
                     *counter + 1,
                     *counter,
                     op2
@@ -335,7 +393,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
             let s = serialize_register_load(*counter, op1)
                 + &serialize_register_load(*counter + 1, op2)
                 + &format!(
-                    "    %temp{} = sub i64 %temp{}, %temp{}\n",
+                    "    %temp_{} = sub i64 %temp_{}, %temp_{}\n",
                     *counter + 2,
                     *counter,
                     *counter + 1
@@ -349,7 +407,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
             let s = serialize_register_load(*counter, op1)
                 + &serialize_register_load(*counter + 1, op2)
                 + &format!(
-                    "    %temp{} = xor i64 %temp{}, %temp{}\n",
+                    "    %temp_{} = xor i64 %temp_{}, %temp_{}\n",
                     *counter + 2,
                     *counter,
                     *counter + 1
@@ -362,7 +420,7 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
         Xori { result, op1, op2 } => {
             let s = serialize_register_load(*counter, op1)
                 + &format!(
-                    "    %temp{} = xor i64 %temp{}, {}\n",
+                    "    %temp_{} = xor i64 %temp_{}, {}\n",
                     *counter + 1,
                     *counter,
                     op2
@@ -372,14 +430,22 @@ fn serialize_instruction(instruction: &LlvmInstruction, counter: &mut usize) -> 
             *counter += 2;
             s
         }
-        Ret => format!("    ret\n\n"),
+        Ret => {
+            serialize_register_load(*counter, &RiscvRegister::A0)
+                + &format!("    ret i64 %temp_{}\n", *counter)
+                + "\n"
+        }
     }
 }
 
 fn serialize_register_load(counter: usize, register: &RiscvRegister) -> String {
-    format!("    %temp{} = load i64, i64* @{}\n", counter, register)
+    format!("    %temp_{} = load i64, i64* @{}\n", counter, register)
 }
 
 fn serialize_register_store(counter: usize, register: &RiscvRegister) -> String {
-    format!("    store i64 %temp{}, i64* @{}\n", counter, register)
+    if let RiscvRegister::Zero = register {
+        String::new()
+    } else {
+        format!("    store i64 %temp_{}, i64* @{}\n", counter, register)
+    }
 }

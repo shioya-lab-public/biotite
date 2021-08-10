@@ -1,6 +1,12 @@
+
+; @.str = private unnamed_addr constant [8 x i8] c"### %d\0A\00", align 1
+; declare dso_local i32 @printf(i8*, ...)
+; %val = load i64, i64* @zero
+; call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str, i64 0, i64 0), i64 %val)
+
 @zero = global i64 0
 @ra = global i64 0
-@sp = global i64 0
+@sp = global i64 1023
 @gp = global i64 0
 @tp = global i64 0
 @t0 = global i64 0
@@ -33,423 +39,609 @@
 
 @stack = global [1024 x i8] zeroinitializer
 
-define void @s() {
+define i64 @s() {
+    ; Label("Entry")
 Entry:
+    ; DirectBr("L0")
     br label %L0
 
+    ; Label("L0")
 L0:
-    %temp0 = load i64, i64* @sp
-    %temp1 = add i64 %temp0, -32
-    store i64 %temp1, i64* @sp
+    ; Addi { result: Sp, op1: Sp, op2: -32 }
+    %temp_0 = load i64, i64* @sp
+    %temp_1 = add i64 %temp_0, -32
+    store i64 %temp_1, i64* @sp
 
-    %temp2 = load i64, i64* @sp
-    %temp3 = add i64 %temp2, 24
-    %temp4 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 3
-    %temp5 = bitcast i8* %temp4 to i64*
-    %temp6 = load i64, i64* @s0
-    store i64 6, i64* %temp5
+    ; Save { ty: I64, op1: Sp, op2: 24, source: S0 }
+    %temp_2 = load i64, i64* @sp
+    %temp_3 = add i64 %temp_2, 24
+    %temp_4 = sub i64 1023, %temp_3
+    %temp_5 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_4
+    %temp_6 = bitcast i8* %temp_5 to i64*
+    %temp_7 = load i64, i64* @s0
+    store i64 %temp_7, i64* %temp_6
 
-    %temp7 = load i64, i64* @sp
-    %temp8 = add i64 %temp7, 32
-    store i64 %temp8, i64* @s0
+    ; Addi { result: S0, op1: Sp, op2: 32 }
+    %temp_8 = load i64, i64* @sp
+    %temp_9 = add i64 %temp_8, 32
+    store i64 %temp_9, i64* @s0
 
-    %temp9 = load i64, i64* @zero
-    %temp10 = load i64, i64* @a0
-    %temp11 = add i64 %temp9, %temp10
-    store i64 %temp11, i64* @a5
+    ; Add { result: A5, op1: Zero, op2: A0 }
+    %temp_10 = load i64, i64* @zero
+    %temp_11 = load i64, i64* @a0
+    %temp_12 = add i64 %temp_10, %temp_11
+    store i64 %temp_12, i64* @a5
 
-    %temp12 = load i64, i64* @s0
-    %temp13 = add i64 %temp12, -20
-    %temp14 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 13
-    %temp15 = bitcast i8* %temp14 to i32*
-    %temp16 = load i64, i64* @a5
-    store i32 16, i32* %temp15
+    ; Save { ty: I32, op1: S0, op2: -20, source: A5 }
+    %temp_13 = load i64, i64* @s0
+    %temp_14 = add i64 %temp_13, -20
+    %temp_15 = sub i64 1023, %temp_14
+    %temp_16 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_15
+    %temp_17 = bitcast i8* %temp_16 to i32*
+    %temp_18 = load i64, i64* @a5
+    %temp_19 = trunc i64 %temp_18 to i32
+    store i32 %temp_19, i32* %temp_17
 
-    %temp17 = load i64, i64* @s0
-    %temp18 = add i64 %temp17, -20
-    %temp19 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 18
-    %temp20 = bitcast i8* %temp19 to i32*
-    %temp21 = load i32, i32* %temp20
-    store i64 %temp21, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_20 = load i64, i64* @s0
+    %temp_21 = add i64 %temp_20, -20
+    %temp_22 = sub i64 1023, %temp_21
+    %temp_23 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_22
+    %temp_24 = bitcast i8* %temp_23 to i32*
+    %temp_25 = load i32, i32* %temp_24
+    %temp_26 = sext i32 %temp_25 to i64
+    store i64 %temp_26, i64* @a5
 
-    %temp22 = load i64, i64* @zero
-    %temp23 = add i64 %temp22, 5
-    store i64 %temp23, i64* @a5
+    ; Addi { result: A4, op1: A5, op2: 0 }
+    %temp_27 = load i64, i64* @a5
+    %temp_28 = add i64 %temp_27, 0
+    store i64 %temp_28, i64* @a4
 
-    %temp24 = load i64, i64* @a5
-    %temp25 = load i64, i64* @a4
-    %temp26 = icmp ult i64 %temp24, %temp25
-    br i1 %temp26, label %L7, label %L1
+    ; Addi { result: A5, op1: Zero, op2: 5 }
+    %temp_29 = load i64, i64* @zero
+    %temp_30 = add i64 %temp_29, 5
+    store i64 %temp_30, i64* @a5
 
+    ; Icmp { condition: Ult, op1: A5, op2: A4 }
+    %temp_31 = load i64, i64* @a5
+    %temp_32 = load i64, i64* @a4
+    %temp_33 = icmp ult i64 %temp_31, %temp_32
+
+    ; Br { iftrue: "L7", iffalse: "L1" }
+    br i1 %temp_33, label %L7, label %L1
+
+    ; Label("L1")
 L1:
-    %temp27 = load i64, i64* @s0
-    %temp28 = add i64 %temp27, -20
-    %temp29 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 28
-    %temp30 = bitcast i8* %temp29 to u32*
-    %temp31 = load u32, u32* %temp30
-    store i64 %temp31, i64* @a5
+    ; Load { ty: U32, result: A5, op1: S0, op2: -20 }
+    %temp_34 = load i64, i64* @s0
+    %temp_35 = add i64 %temp_34, -20
+    %temp_36 = sub i64 1023, %temp_35
+    %temp_37 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_36
+    %temp_38 = bitcast i8* %temp_37 to i32*
+    %temp_39 = load i32, i32* %temp_38
+    %temp_40 = sext i32 %temp_39 to i64
+    store i64 %temp_40, i64* @a5
 
-    %temp32 = load i64, i64* @a5
-    %temp33 = shl i64 %temp32, 2
-    store i64 %temp33, i64* @a4
+    ; Shli { result: A4, op1: A5, op2: 2 }
+    %temp_41 = load i64, i64* @a5
+    %temp_42 = shl i64 %temp_41, 2
+    store i64 %temp_42, i64* @a4
 
-    %temp34 = shli i64 %16, 12
-    store i64 %temp34, i64* @a5
+    ; Shli12 { result: A5, op1: 16 }
+    %temp_43 = shl i64 16, 12
+    store i64 %temp_43, i64* @a5
 
-    %temp35 = load i64, i64* @a5
-    %temp36 = add i64 %temp35, 1428
-    store i64 %temp36, i64* @a5
+    ; Addi { result: A5, op1: A5, op2: 1428 }
+    %temp_44 = load i64, i64* @a5
+    %temp_45 = add i64 %temp_44, 1428
+    store i64 %temp_45, i64* @a5
 
-    %temp37 = load i64, i64* @a5
-    %temp38 = load i64, i64* @a4
-    %temp39 = add i64 %temp37, %temp38
-    store i64 %temp39, i64* @a5
+    ; Add { result: A5, op1: A5, op2: A4 }
+    %temp_46 = load i64, i64* @a5
+    %temp_47 = load i64, i64* @a4
+    %temp_48 = add i64 %temp_46, %temp_47
+    store i64 %temp_48, i64* @a5
 
-    %temp40 = load i64, i64* @a5
-    %temp41 = add i64 %temp40, 0
-    %temp42 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 41
-    %temp43 = bitcast i8* %temp42 to i32*
-    %temp44 = load i32, i32* %temp43
-    store i64 %temp44, i64* @a5
+    ; Load { ty: I32, result: A5, op1: A5, op2: 0 }
+    ; Switch { register: A5, targets: {66980: 5, 66984: 6, 66968: 2, 66964: 7, 66976: 4, 66972: 3} }
+    %temp_56 = load i64, i64* @a5
+    switch i64 %temp_56, label %L57 [ i64 66980, label %L5 i64 66984, label %L6 i64 66968, label %L2 i64 66964, label %L7 i64 66976, label %L4 i64 66972, label %L3 ]
+L57:
+    unreachable
 
-    indirectbr i64* @a5, [label %L71, label %L75, label %L79, label %L83, label %L87, label %L91]
-
+    ; Label("L2")
 L2:
-    %temp45 = load i64, i64* @s0
-    %temp46 = add i64 %temp45, -20
-    %temp47 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 46
-    %temp48 = bitcast i8* %temp47 to i32*
-    %temp49 = load i32, i32* %temp48
-    store i64 %temp49, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_58 = load i64, i64* @s0
+    %temp_59 = add i64 %temp_58, -20
+    %temp_60 = sub i64 1023, %temp_59
+    %temp_61 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_60
+    %temp_62 = bitcast i8* %temp_61 to i32*
+    %temp_63 = load i32, i32* %temp_62
+    %temp_64 = sext i32 %temp_63 to i64
+    store i64 %temp_64, i64* @a5
 
-    %temp50 = load i64, i64* @a5
-    %temp51 = add i64 %temp50, 1
-    store i64 %temp51, i64* @a5
+    ; Addi { result: A5, op1: A5, op2: 1 }
+    %temp_65 = load i64, i64* @a5
+    %temp_66 = add i64 %temp_65, 1
+    store i64 %temp_66, i64* @a5
 
-    %temp52 = load i64, i64* @s0
-    %temp53 = add i64 %temp52, -20
-    %temp54 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 53
-    %temp55 = bitcast i8* %temp54 to i32*
-    %temp56 = load i64, i64* @a5
-    store i32 56, i32* %temp55
+    ; Save { ty: I32, op1: S0, op2: -20, source: A5 }
+    %temp_67 = load i64, i64* @s0
+    %temp_68 = add i64 %temp_67, -20
+    %temp_69 = sub i64 1023, %temp_68
+    %temp_70 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_69
+    %temp_71 = bitcast i8* %temp_70 to i32*
+    %temp_72 = load i64, i64* @a5
+    %temp_73 = trunc i64 %temp_72 to i32
+    store i32 %temp_73, i32* %temp_71
 
+    ; DirectBr("L7")
     br label %L7
 
+    ; Label("L3")
 L3:
-    %temp57 = load i64, i64* @s0
-    %temp58 = add i64 %temp57, -20
-    %temp59 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 58
-    %temp60 = bitcast i8* %temp59 to i32*
-    %temp61 = load i32, i32* %temp60
-    store i64 %temp61, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_74 = load i64, i64* @s0
+    %temp_75 = add i64 %temp_74, -20
+    %temp_76 = sub i64 1023, %temp_75
+    %temp_77 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_76
+    %temp_78 = bitcast i8* %temp_77 to i32*
+    %temp_79 = load i32, i32* %temp_78
+    %temp_80 = sext i32 %temp_79 to i64
+    store i64 %temp_80, i64* @a5
 
-    %temp62 = load i64, i64* @a5
-    %temp63 = add i64 %temp62, 1
-    store i64 %temp63, i64* @a5
+    ; Addi { result: A5, op1: A5, op2: 2 }
+    %temp_81 = load i64, i64* @a5
+    %temp_82 = add i64 %temp_81, 2
+    store i64 %temp_82, i64* @a5
 
-    %temp64 = load i64, i64* @s0
-    %temp65 = add i64 %temp64, -20
-    %temp66 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 65
-    %temp67 = bitcast i8* %temp66 to i32*
-    %temp68 = load i64, i64* @a5
-    store i32 68, i32* %temp67
+    ; Save { ty: I32, op1: S0, op2: -20, source: A5 }
+    %temp_83 = load i64, i64* @s0
+    %temp_84 = add i64 %temp_83, -20
+    %temp_85 = sub i64 1023, %temp_84
+    %temp_86 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_85
+    %temp_87 = bitcast i8* %temp_86 to i32*
+    %temp_88 = load i64, i64* @a5
+    %temp_89 = trunc i64 %temp_88 to i32
+    store i32 %temp_89, i32* %temp_87
 
+    ; DirectBr("L7")
     br label %L7
 
+    ; Label("L4")
 L4:
-    %temp69 = load i64, i64* @s0
-    %temp70 = add i64 %temp69, -20
-    %temp71 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 70
-    %temp72 = bitcast i8* %temp71 to i32*
-    %temp73 = load i32, i32* %temp72
-    store i64 %temp73, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_90 = load i64, i64* @s0
+    %temp_91 = add i64 %temp_90, -20
+    %temp_92 = sub i64 1023, %temp_91
+    %temp_93 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_92
+    %temp_94 = bitcast i8* %temp_93 to i32*
+    %temp_95 = load i32, i32* %temp_94
+    %temp_96 = sext i32 %temp_95 to i64
+    store i64 %temp_96, i64* @a5
 
-    %temp74 = load i64, i64* @a5
-    %temp75 = add i64 %temp74, 1
-    store i64 %temp75, i64* @a5
+    ; Addi { result: A5, op1: A5, op2: 3 }
+    %temp_97 = load i64, i64* @a5
+    %temp_98 = add i64 %temp_97, 3
+    store i64 %temp_98, i64* @a5
 
-    %temp76 = load i64, i64* @s0
-    %temp77 = add i64 %temp76, -20
-    %temp78 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 77
-    %temp79 = bitcast i8* %temp78 to i32*
-    %temp80 = load i64, i64* @a5
-    store i32 80, i32* %temp79
+    ; Save { ty: I32, op1: S0, op2: -20, source: A5 }
+    %temp_99 = load i64, i64* @s0
+    %temp_100 = add i64 %temp_99, -20
+    %temp_101 = sub i64 1023, %temp_100
+    %temp_102 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_101
+    %temp_103 = bitcast i8* %temp_102 to i32*
+    %temp_104 = load i64, i64* @a5
+    %temp_105 = trunc i64 %temp_104 to i32
+    store i32 %temp_105, i32* %temp_103
 
+    ; DirectBr("L7")
     br label %L7
 
+    ; Label("L5")
 L5:
-    %temp81 = load i64, i64* @s0
-    %temp82 = add i64 %temp81, -20
-    %temp83 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 82
-    %temp84 = bitcast i8* %temp83 to i32*
-    %temp85 = load i32, i32* %temp84
-    store i64 %temp85, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_106 = load i64, i64* @s0
+    %temp_107 = add i64 %temp_106, -20
+    %temp_108 = sub i64 1023, %temp_107
+    %temp_109 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_108
+    %temp_110 = bitcast i8* %temp_109 to i32*
+    %temp_111 = load i32, i32* %temp_110
+    %temp_112 = sext i32 %temp_111 to i64
+    store i64 %temp_112, i64* @a5
 
-    %temp86 = load i64, i64* @a5
-    %temp87 = add i64 %temp86, 1
-    store i64 %temp87, i64* @a5
+    ; Addi { result: A5, op1: A5, op2: 4 }
+    %temp_113 = load i64, i64* @a5
+    %temp_114 = add i64 %temp_113, 4
+    store i64 %temp_114, i64* @a5
 
-    %temp88 = load i64, i64* @s0
-    %temp89 = add i64 %temp88, -20
-    %temp90 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 89
-    %temp91 = bitcast i8* %temp90 to i32*
-    %temp92 = load i64, i64* @a5
-    store i32 92, i32* %temp91
+    ; Save { ty: I32, op1: S0, op2: -20, source: A5 }
+    %temp_115 = load i64, i64* @s0
+    %temp_116 = add i64 %temp_115, -20
+    %temp_117 = sub i64 1023, %temp_116
+    %temp_118 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_117
+    %temp_119 = bitcast i8* %temp_118 to i32*
+    %temp_120 = load i64, i64* @a5
+    %temp_121 = trunc i64 %temp_120 to i32
+    store i32 %temp_121, i32* %temp_119
 
+    ; DirectBr("L7")
     br label %L7
 
+    ; Label("L6")
 L6:
-    %temp93 = load i64, i64* @s0
-    %temp94 = add i64 %temp93, -20
-    %temp95 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 94
-    %temp96 = bitcast i8* %temp95 to i32*
-    %temp97 = load i32, i32* %temp96
-    store i64 %temp97, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_122 = load i64, i64* @s0
+    %temp_123 = add i64 %temp_122, -20
+    %temp_124 = sub i64 1023, %temp_123
+    %temp_125 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_124
+    %temp_126 = bitcast i8* %temp_125 to i32*
+    %temp_127 = load i32, i32* %temp_126
+    %temp_128 = sext i32 %temp_127 to i64
+    store i64 %temp_128, i64* @a5
 
-    %temp98 = load i64, i64* @a5
-    %temp99 = add i64 %temp98, 1
-    store i64 %temp99, i64* @a5
+    ; Addi { result: A5, op1: A5, op2: 5 }
+    %temp_129 = load i64, i64* @a5
+    %temp_130 = add i64 %temp_129, 5
+    store i64 %temp_130, i64* @a5
 
-    %temp100 = load i64, i64* @s0
-    %temp101 = add i64 %temp100, -20
-    %temp102 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 101
-    %temp103 = bitcast i8* %temp102 to i32*
-    %temp104 = load i64, i64* @a5
-    store i32 104, i32* %temp103
+    ; Save { ty: I32, op1: S0, op2: -20, source: A5 }
+    %temp_131 = load i64, i64* @s0
+    %temp_132 = add i64 %temp_131, -20
+    %temp_133 = sub i64 1023, %temp_132
+    %temp_134 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_133
+    %temp_135 = bitcast i8* %temp_134 to i32*
+    %temp_136 = load i64, i64* @a5
+    %temp_137 = trunc i64 %temp_136 to i32
+    store i32 %temp_137, i32* %temp_135
 
+    ; DirectBr("L7")
+    br label %L7
+
+    ; Label("L7")
 L7:
-    %temp105 = load i64, i64* @s0
-    %temp106 = add i64 %temp105, -20
-    %temp107 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 106
-    %temp108 = bitcast i8* %temp107 to i32*
-    %temp109 = load i32, i32* %temp108
-    store i64 %temp109, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_138 = load i64, i64* @s0
+    %temp_139 = add i64 %temp_138, -20
+    %temp_140 = sub i64 1023, %temp_139
+    %temp_141 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_140
+    %temp_142 = bitcast i8* %temp_141 to i32*
+    %temp_143 = load i32, i32* %temp_142
+    %temp_144 = sext i32 %temp_143 to i64
+    store i64 %temp_144, i64* @a5
 
-    %temp110 = load i64, i64* @zero
-    %temp111 = load i64, i64* @a5
-    %temp112 = add i64 %temp110, %temp111
-    store i64 %temp112, i64* @a0
+    ; Add { result: A0, op1: Zero, op2: A5 }
+    %temp_145 = load i64, i64* @zero
+    %temp_146 = load i64, i64* @a5
+    %temp_147 = add i64 %temp_145, %temp_146
+    store i64 %temp_147, i64* @a0
 
-    %temp113 = load i64, i64* @sp
-    %temp114 = add i64 %temp113, 24
-    %temp115 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 114
-    %temp116 = bitcast i8* %temp115 to i64*
-    %temp117 = load i64, i64* %temp116
-    store i64 %temp117, i64* @s0
+    ; Load { ty: I64, result: S0, op1: Sp, op2: 24 }
+    %temp_148 = load i64, i64* @sp
+    %temp_149 = add i64 %temp_148, 24
+    %temp_150 = sub i64 1023, %temp_149
+    %temp_151 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_150
+    %temp_152 = bitcast i8* %temp_151 to i64*
+    %temp_153 = load i64, i64* %temp_152
+    store i64 %temp_153, i64* @s0
 
-    %temp118 = load i64, i64* @sp
-    %temp119 = add i64 %temp118, 32
-    store i64 %temp119, i64* @sp
+    ; Addi { result: Sp, op1: Sp, op2: 32 }
+    %temp_154 = load i64, i64* @sp
+    %temp_155 = add i64 %temp_154, 32
+    store i64 %temp_155, i64* @sp
 
-    ret
+    ; Ret
+    %temp_156 = load i64, i64* @a0
+    ret i64 %temp_156
 }
 
-define void @main() {
+define i64 @main() {
+    ; Label("Entry")
 Entry:
+    ; DirectBr("L0")
     br label %L0
 
+    ; Label("L0")
 L0:
-    %temp0 = load i64, i64* @sp
-    %temp1 = add i64 %temp0, -32
-    store i64 %temp1, i64* @sp
+    ; Addi { result: Sp, op1: Sp, op2: -32 }
+    %temp_0 = load i64, i64* @sp
+    %temp_1 = add i64 %temp_0, -32
+    store i64 %temp_1, i64* @sp
 
-    %temp2 = load i64, i64* @sp
-    %temp3 = add i64 %temp2, 24
-    %temp4 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 3
-    %temp5 = bitcast i8* %temp4 to i64*
-    %temp6 = load i64, i64* @ra
-    store i64 6, i64* %temp5
+    ; Save { ty: I64, op1: Sp, op2: 24, source: Ra }
+    %temp_2 = load i64, i64* @sp
+    %temp_3 = add i64 %temp_2, 24
+    %temp_4 = sub i64 1023, %temp_3
+    %temp_5 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_4
+    %temp_6 = bitcast i8* %temp_5 to i64*
+    %temp_7 = load i64, i64* @ra
+    store i64 %temp_7, i64* %temp_6
 
-    %temp7 = load i64, i64* @sp
-    %temp8 = add i64 %temp7, 16
-    %temp9 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 8
-    %temp10 = bitcast i8* %temp9 to i64*
-    %temp11 = load i64, i64* @s0
-    store i64 11, i64* %temp10
+    ; Save { ty: I64, op1: Sp, op2: 16, source: S0 }
+    %temp_8 = load i64, i64* @sp
+    %temp_9 = add i64 %temp_8, 16
+    %temp_10 = sub i64 1023, %temp_9
+    %temp_11 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_10
+    %temp_12 = bitcast i8* %temp_11 to i64*
+    %temp_13 = load i64, i64* @s0
+    store i64 %temp_13, i64* %temp_12
 
-    %temp12 = load i64, i64* @sp
-    %temp13 = add i64 %temp12, 32
-    store i64 %temp13, i64* @s0
+    ; Addi { result: S0, op1: Sp, op2: 32 }
+    %temp_14 = load i64, i64* @sp
+    %temp_15 = add i64 %temp_14, 32
+    store i64 %temp_15, i64* @s0
 
-    %temp14 = load i64, i64* @s0
-    %temp15 = add i64 %temp14, -20
-    %temp16 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 15
-    %temp17 = bitcast i8* %temp16 to i32*
-    %temp18 = load i64, i64* @zero
-    store i32 18, i32* %temp17
+    ; Save { ty: I32, op1: S0, op2: -20, source: Zero }
+    %temp_16 = load i64, i64* @s0
+    %temp_17 = add i64 %temp_16, -20
+    %temp_18 = sub i64 1023, %temp_17
+    %temp_19 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_18
+    %temp_20 = bitcast i8* %temp_19 to i32*
+    %temp_21 = load i64, i64* @zero
+    %temp_22 = trunc i64 %temp_21 to i32
+    store i32 %temp_22, i32* %temp_20
 
-    %temp19 = load i64, i64* @s0
-    %temp20 = add i64 %temp19, -24
-    %temp21 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 20
-    %temp22 = bitcast i8* %temp21 to i32*
-    %temp23 = load i64, i64* @zero
-    store i32 23, i32* %temp22
+    ; Save { ty: I32, op1: S0, op2: -24, source: Zero }
+    %temp_23 = load i64, i64* @s0
+    %temp_24 = add i64 %temp_23, -24
+    %temp_25 = sub i64 1023, %temp_24
+    %temp_26 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_25
+    %temp_27 = bitcast i8* %temp_26 to i32*
+    %temp_28 = load i64, i64* @zero
+    %temp_29 = trunc i64 %temp_28 to i32
+    store i32 %temp_29, i32* %temp_27
 
+    ; DirectBr("L2")
     br label %L2
 
+    ; Label("L1")
 L1:
-    %temp24 = load i64, i64* @s0
-    %temp25 = add i64 %temp24, -20
-    %temp26 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 25
-    %temp27 = bitcast i8* %temp26 to i32*
-    %temp28 = load i32, i32* %temp27
-    store i64 %temp28, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_30 = load i64, i64* @s0
+    %temp_31 = add i64 %temp_30, -20
+    %temp_32 = sub i64 1023, %temp_31
+    %temp_33 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_32
+    %temp_34 = bitcast i8* %temp_33 to i32*
+    %temp_35 = load i32, i32* %temp_34
+    %temp_36 = sext i32 %temp_35 to i64
+    store i64 %temp_36, i64* @a5
 
-    %temp29 = load i64, i64* @a5
-    %temp30 = add i64 %temp29, 1
-    store i64 %temp30, i64* @a5
+    ; Addi { result: A5, op1: A5, op2: 1 }
+    %temp_37 = load i64, i64* @a5
+    %temp_38 = add i64 %temp_37, 1
+    store i64 %temp_38, i64* @a5
 
-    %temp31 = load i64, i64* @s0
-    %temp32 = add i64 %temp31, -20
-    %temp33 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 32
-    %temp34 = bitcast i8* %temp33 to i32*
-    %temp35 = load i64, i64* @a5
-    store i32 35, i32* %temp34
+    ; Save { ty: I32, op1: S0, op2: -20, source: A5 }
+    %temp_39 = load i64, i64* @s0
+    %temp_40 = add i64 %temp_39, -20
+    %temp_41 = sub i64 1023, %temp_40
+    %temp_42 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_41
+    %temp_43 = bitcast i8* %temp_42 to i32*
+    %temp_44 = load i64, i64* @a5
+    %temp_45 = trunc i64 %temp_44 to i32
+    store i32 %temp_45, i32* %temp_43
 
-    %temp36 = load i64, i64* @s0
-    %temp37 = add i64 %temp36, -24
-    %temp38 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 37
-    %temp39 = bitcast i8* %temp38 to i32*
-    %temp40 = load i32, i32* %temp39
-    store i64 %temp40, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -24 }
+    %temp_46 = load i64, i64* @s0
+    %temp_47 = add i64 %temp_46, -24
+    %temp_48 = sub i64 1023, %temp_47
+    %temp_49 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_48
+    %temp_50 = bitcast i8* %temp_49 to i32*
+    %temp_51 = load i32, i32* %temp_50
+    %temp_52 = sext i32 %temp_51 to i64
+    store i64 %temp_52, i64* @a5
 
-    %temp41 = load i64, i64* @a5
-    %temp42 = add i64 %temp41, 1
-    store i64 %temp42, i64* @a5
+    ; Addi { result: A5, op1: A5, op2: 1 }
+    %temp_53 = load i64, i64* @a5
+    %temp_54 = add i64 %temp_53, 1
+    store i64 %temp_54, i64* @a5
 
-    %temp43 = load i64, i64* @s0
-    %temp44 = add i64 %temp43, -24
-    %temp45 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 44
-    %temp46 = bitcast i8* %temp45 to i32*
-    %temp47 = load i64, i64* @a5
-    store i32 47, i32* %temp46
+    ; Save { ty: I32, op1: S0, op2: -24, source: A5 }
+    %temp_55 = load i64, i64* @s0
+    %temp_56 = add i64 %temp_55, -24
+    %temp_57 = sub i64 1023, %temp_56
+    %temp_58 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_57
+    %temp_59 = bitcast i8* %temp_58 to i32*
+    %temp_60 = load i64, i64* @a5
+    %temp_61 = trunc i64 %temp_60 to i32
+    store i32 %temp_61, i32* %temp_59
 
+    ; DirectBr("L2")
+    br label %L2
+
+    ; Label("L2")
 L2:
-    %temp48 = load i64, i64* @s0
-    %temp49 = add i64 %temp48, -24
-    %temp50 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 49
-    %temp51 = bitcast i8* %temp50 to i32*
-    %temp52 = load i32, i32* %temp51
-    store i64 %temp52, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -24 }
+    %temp_62 = load i64, i64* @s0
+    %temp_63 = add i64 %temp_62, -24
+    %temp_64 = sub i64 1023, %temp_63
+    %temp_65 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_64
+    %temp_66 = bitcast i8* %temp_65 to i32*
+    %temp_67 = load i32, i32* %temp_66
+    %temp_68 = sext i32 %temp_67 to i64
+    store i64 %temp_68, i64* @a5
 
-    %temp53 = load i64, i64* @a5
-    %temp54 = load i64, i64* @zero
-    %temp55 = icmp sle i64 %temp53, %temp54
-    br i1 %temp55, label %L1, label %L3
+    ; Addi { result: A5, op1: A5, op2: 0 }
+    %temp_69 = load i64, i64* @a5
+    %temp_70 = add i64 %temp_69, 0
+    store i64 %temp_70, i64* @a5
 
+    ; Icmp { condition: Sle, op1: A5, op2: Zero }
+    %temp_71 = load i64, i64* @a5
+    %temp_72 = load i64, i64* @zero
+    %temp_73 = icmp sle i64 %temp_71, %temp_72
+
+    ; Br { iftrue: "L1", iffalse: "L3" }
+    br i1 %temp_73, label %L1, label %L3
+
+    ; Label("L3")
 L3:
+    ; DirectBr("L5")
     br label %L5
 
+    ; Label("L4")
 L4:
-    %temp56 = load i64, i64* @s0
-    %temp57 = add i64 %temp56, -20
-    %temp58 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 57
-    %temp59 = bitcast i8* %temp58 to i32*
-    %temp60 = load i32, i32* %temp59
-    store i64 %temp60, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_74 = load i64, i64* @s0
+    %temp_75 = add i64 %temp_74, -20
+    %temp_76 = sub i64 1023, %temp_75
+    %temp_77 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_76
+    %temp_78 = bitcast i8* %temp_77 to i32*
+    %temp_79 = load i32, i32* %temp_78
+    %temp_80 = sext i32 %temp_79 to i64
+    store i64 %temp_80, i64* @a5
 
-    %temp61 = load i64, i64* @a5
-    %temp62 = add i64 %temp61, 1
-    store i64 %temp62, i64* @a5
+    ; Addi { result: A5, op1: A5, op2: 1 }
+    %temp_81 = load i64, i64* @a5
+    %temp_82 = add i64 %temp_81, 1
+    store i64 %temp_82, i64* @a5
 
-    %temp63 = load i64, i64* @s0
-    %temp64 = add i64 %temp63, -20
-    %temp65 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 64
-    %temp66 = bitcast i8* %temp65 to i32*
-    %temp67 = load i64, i64* @a5
-    store i32 67, i32* %temp66
+    ; Save { ty: I32, op1: S0, op2: -20, source: A5 }
+    %temp_83 = load i64, i64* @s0
+    %temp_84 = add i64 %temp_83, -20
+    %temp_85 = sub i64 1023, %temp_84
+    %temp_86 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_85
+    %temp_87 = bitcast i8* %temp_86 to i32*
+    %temp_88 = load i64, i64* @a5
+    %temp_89 = trunc i64 %temp_88 to i32
+    store i32 %temp_89, i32* %temp_87
 
+    ; DirectBr("L5")
+    br label %L5
+
+    ; Label("L5")
 L5:
-    %temp68 = load i64, i64* @s0
-    %temp69 = add i64 %temp68, -20
-    %temp70 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 69
-    %temp71 = bitcast i8* %temp70 to i32*
-    %temp72 = load i32, i32* %temp71
-    store i64 %temp72, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_90 = load i64, i64* @s0
+    %temp_91 = add i64 %temp_90, -20
+    %temp_92 = sub i64 1023, %temp_91
+    %temp_93 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_92
+    %temp_94 = bitcast i8* %temp_93 to i32*
+    %temp_95 = load i32, i32* %temp_94
+    %temp_96 = sext i32 %temp_95 to i64
+    store i64 %temp_96, i64* @a5
 
-    %temp73 = load i64, i64* @zero
-    %temp74 = add i64 %temp73, 1
-    store i64 %temp74, i64* @a5
+    ; Addi { result: A4, op1: A5, op2: 0 }
+    %temp_97 = load i64, i64* @a5
+    %temp_98 = add i64 %temp_97, 0
+    store i64 %temp_98, i64* @a4
 
-    %temp75 = load i64, i64* @a5
-    %temp76 = load i64, i64* @a4
-    %temp77 = icmp sge i64 %temp75, %temp76
-    br i1 %temp77, label %L4, label %L6
+    ; Addi { result: A5, op1: Zero, op2: 1 }
+    %temp_99 = load i64, i64* @zero
+    %temp_100 = add i64 %temp_99, 1
+    store i64 %temp_100, i64* @a5
 
+    ; Icmp { condition: Sge, op1: A5, op2: A4 }
+    %temp_101 = load i64, i64* @a5
+    %temp_102 = load i64, i64* @a4
+    %temp_103 = icmp sge i64 %temp_101, %temp_102
+
+    ; Br { iftrue: "L4", iffalse: "L6" }
+    br i1 %temp_103, label %L4, label %L6
+
+    ; Label("L6")
 L6:
-    %temp78 = load i64, i64* @s0
-    %temp79 = add i64 %temp78, -20
-    %temp80 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 79
-    %temp81 = bitcast i8* %temp80 to i32*
-    %temp82 = load i32, i32* %temp81
-    store i64 %temp82, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_104 = load i64, i64* @s0
+    %temp_105 = add i64 %temp_104, -20
+    %temp_106 = sub i64 1023, %temp_105
+    %temp_107 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_106
+    %temp_108 = bitcast i8* %temp_107 to i32*
+    %temp_109 = load i32, i32* %temp_108
+    %temp_110 = sext i32 %temp_109 to i64
+    store i64 %temp_110, i64* @a5
 
-    %temp83 = load i64, i64* @a5
-    %temp84 = add i64 %temp83, 1
-    store i64 %temp84, i64* @a5
+    ; Addi { result: A5, op1: A5, op2: 1 }
+    %temp_111 = load i64, i64* @a5
+    %temp_112 = add i64 %temp_111, 1
+    store i64 %temp_112, i64* @a5
 
-    %temp85 = load i64, i64* @s0
-    %temp86 = add i64 %temp85, -20
-    %temp87 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 86
-    %temp88 = bitcast i8* %temp87 to i32*
-    %temp89 = load i64, i64* @a5
-    store i32 89, i32* %temp88
+    ; Save { ty: I32, op1: S0, op2: -20, source: A5 }
+    %temp_113 = load i64, i64* @s0
+    %temp_114 = add i64 %temp_113, -20
+    %temp_115 = sub i64 1023, %temp_114
+    %temp_116 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_115
+    %temp_117 = bitcast i8* %temp_116 to i32*
+    %temp_118 = load i64, i64* @a5
+    %temp_119 = trunc i64 %temp_118 to i32
+    store i32 %temp_119, i32* %temp_117
 
-    %temp90 = load i64, i64* @s0
-    %temp91 = add i64 %temp90, -20
-    %temp92 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 91
-    %temp93 = bitcast i8* %temp92 to i32*
-    %temp94 = load i32, i32* %temp93
-    store i64 %temp94, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_120 = load i64, i64* @s0
+    %temp_121 = add i64 %temp_120, -20
+    %temp_122 = sub i64 1023, %temp_121
+    %temp_123 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_122
+    %temp_124 = bitcast i8* %temp_123 to i32*
+    %temp_125 = load i32, i32* %temp_124
+    %temp_126 = sext i32 %temp_125 to i64
+    store i64 %temp_126, i64* @a5
 
-    %temp95 = load i64, i64* @zero
-    %temp96 = load i64, i64* @a5
-    %temp97 = add i64 %temp95, %temp96
-    store i64 %temp97, i64* @a0
+    ; Add { result: A0, op1: Zero, op2: A5 }
+    %temp_127 = load i64, i64* @zero
+    %temp_128 = load i64, i64* @a5
+    %temp_129 = add i64 %temp_127, %temp_128
+    store i64 %temp_129, i64* @a0
 
-    call void @s()
+    ; Call("s")
+    call i64 @s()
 
-    %temp98 = load i64, i64* @zero
-    %temp99 = load i64, i64* @a0
-    %temp100 = add i64 %temp98, %temp99
-    store i64 %temp100, i64* @a5
+    ; Add { result: A5, op1: Zero, op2: A0 }
+    %temp_130 = load i64, i64* @zero
+    %temp_131 = load i64, i64* @a0
+    %temp_132 = add i64 %temp_130, %temp_131
+    store i64 %temp_132, i64* @a5
 
-    %temp101 = load i64, i64* @s0
-    %temp102 = add i64 %temp101, -20
-    %temp103 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 102
-    %temp104 = bitcast i8* %temp103 to i32*
-    %temp105 = load i64, i64* @a5
-    store i32 105, i32* %temp104
+    ; Save { ty: I32, op1: S0, op2: -20, source: A5 }
+    %temp_133 = load i64, i64* @s0
+    %temp_134 = add i64 %temp_133, -20
+    %temp_135 = sub i64 1023, %temp_134
+    %temp_136 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_135
+    %temp_137 = bitcast i8* %temp_136 to i32*
+    %temp_138 = load i64, i64* @a5
+    %temp_139 = trunc i64 %temp_138 to i32
+    store i32 %temp_139, i32* %temp_137
 
-    %temp106 = load i64, i64* @s0
-    %temp107 = add i64 %temp106, -20
-    %temp108 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 107
-    %temp109 = bitcast i8* %temp108 to i32*
-    %temp110 = load i32, i32* %temp109
-    store i64 %temp110, i64* @a5
+    ; Load { ty: I32, result: A5, op1: S0, op2: -20 }
+    %temp_140 = load i64, i64* @s0
+    %temp_141 = add i64 %temp_140, -20
+    %temp_142 = sub i64 1023, %temp_141
+    %temp_143 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_142
+    %temp_144 = bitcast i8* %temp_143 to i32*
+    %temp_145 = load i32, i32* %temp_144
+    %temp_146 = sext i32 %temp_145 to i64
+    store i64 %temp_146, i64* @a5
 
-    %temp111 = load i64, i64* @zero
-    %temp112 = load i64, i64* @a5
-    %temp113 = add i64 %temp111, %temp112
-    store i64 %temp113, i64* @a0
+    ; Add { result: A0, op1: Zero, op2: A5 }
+    %temp_147 = load i64, i64* @zero
+    %temp_148 = load i64, i64* @a5
+    %temp_149 = add i64 %temp_147, %temp_148
+    store i64 %temp_149, i64* @a0
 
-    %temp114 = load i64, i64* @sp
-    %temp115 = add i64 %temp114, 24
-    %temp116 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 115
-    %temp117 = bitcast i8* %temp116 to i64*
-    %temp118 = load i64, i64* %temp117
-    store i64 %temp118, i64* @ra
+    ; Load { ty: I64, result: Ra, op1: Sp, op2: 24 }
+    %temp_150 = load i64, i64* @sp
+    %temp_151 = add i64 %temp_150, 24
+    %temp_152 = sub i64 1023, %temp_151
+    %temp_153 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_152
+    %temp_154 = bitcast i8* %temp_153 to i64*
+    %temp_155 = load i64, i64* %temp_154
+    store i64 %temp_155, i64* @ra
 
-    %temp119 = load i64, i64* @sp
-    %temp120 = add i64 %temp119, 16
-    %temp121 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 120
-    %temp122 = bitcast i8* %temp121 to i64*
-    %temp123 = load i64, i64* %temp122
-    store i64 %temp123, i64* @s0
+    ; Load { ty: I64, result: S0, op1: Sp, op2: 16 }
+    %temp_156 = load i64, i64* @sp
+    %temp_157 = add i64 %temp_156, 16
+    %temp_158 = sub i64 1023, %temp_157
+    %temp_159 = getelementptr [1024 x i8], [1024 x i8]* @stack, i8 0, i64 %temp_158
+    %temp_160 = bitcast i8* %temp_159 to i64*
+    %temp_161 = load i64, i64* %temp_160
+    store i64 %temp_161, i64* @s0
 
-    %temp124 = load i64, i64* @sp
-    %temp125 = add i64 %temp124, 32
-    store i64 %temp125, i64* @sp
+    ; Addi { result: Sp, op1: Sp, op2: 32 }
+    %temp_162 = load i64, i64* @sp
+    %temp_163 = add i64 %temp_162, 32
+    store i64 %temp_163, i64* @sp
 
-    ret
+    ; Ret
+    %temp_164 = load i64, i64* @a0
+    ret i64 %temp_164
 }

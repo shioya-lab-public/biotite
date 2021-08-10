@@ -1,17 +1,20 @@
 use crate::cfg::{BasicBlock, Cfg, RiscvFunction};
 use crate::riscv_isa::{RiscvAddress, RiscvInstruction, FUNCTION};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 
 pub struct CfgBuilder {
     functions: HashSet<String>,
     instructions: Vec<RiscvInstruction>,
-    potential_targets: Vec<RiscvAddress>,
+    potential_targets: HashMap<RiscvAddress, RiscvAddress>,
     cfg: Cfg,
 }
 
 impl CfgBuilder {
-    pub fn new(instructions: Vec<RiscvInstruction>, potential_targets: Vec<RiscvAddress>) -> Self {
+    pub fn new(
+        instructions: Vec<RiscvInstruction>,
+        potential_targets: HashMap<RiscvAddress, RiscvAddress>,
+    ) -> Self {
         CfgBuilder {
             functions: HashSet::new(),
             instructions,
@@ -26,13 +29,41 @@ impl CfgBuilder {
     }
 
     fn build_function(&mut self, name: &str) {
+        use RiscvInstruction::*;
+
         self.functions.insert(name.to_string());
         let index = self
             .instructions
             .iter()
             .position(|inst| inst.label() == &Some(name.to_string()))
             .unwrap();
-        let (basic_blocks, potential_targets) = self.build_basic_blocks(index);
+        let (mut basic_blocks, potential_targets) = self.build_basic_blocks(index);
+
+        for block in &mut basic_blocks {
+            if !matches!(
+                block.instructions.last().unwrap(),
+                Beq { .. }
+                    | Bge { .. }
+                    | Bgeu { .. }
+                    | Blt { .. }
+                    | Bltu { .. }
+                    | Bne { .. }
+                    | Beqz { .. }
+                    | Bnez { .. }
+                    | Blez { .. }
+                    | J { .. }
+                    | Jr { .. }
+                    | Ret { .. }
+            ) {
+                block.instructions.push(J {
+                    address: 0,
+                    label: None,
+                    addr: 0,
+                    comment: None,
+                });
+            }
+        }
+
         let func = RiscvFunction {
             name: name.to_string(),
             basic_blocks,
@@ -41,7 +72,10 @@ impl CfgBuilder {
         self.cfg.push(func);
     }
 
-    fn build_basic_blocks(&mut self, index: usize) -> (Vec<BasicBlock>, Vec<usize>) {
+    fn build_basic_blocks(
+        &mut self,
+        index: usize,
+    ) -> (Vec<BasicBlock>, HashMap<RiscvAddress, usize>) {
         use RiscvInstruction::*;
 
         // Store heads for basic blocks.
@@ -92,18 +126,24 @@ impl CfgBuilder {
         }
 
         // Find potential targets that lay within this function.
-        let potential_targets: Vec<_> = self
+        let potential_targets: HashMap<_, _> = self
             .potential_targets
             .iter()
-            .map(|addr| self.address_to_index(addr))
-            .filter(|i| &index <= i && i < &idx)
+            .map(|(addr, target)| (*addr, self.address_to_index(target)))
+            .filter(|(_, i)| &index <= i && i < &idx)
             .collect();
 
         // Find heads for basic blocks.
-        heads.extend(potential_targets.clone());
-        heads.sort();
+        heads.extend(potential_targets.values().cloned());
+        heads.sort_unstable();
         heads.dedup();
         heads.pop(); // Remove the `idx + 1` target for the final `ret`.
+
+        // Transform instruction indexes in `potential_targets` to basic block indexes.
+        let potential_targets: HashMap<_, _> = potential_targets
+            .into_iter()
+            .map(|(addr, index)| (addr, heads.iter().position(|i| i == &index).unwrap()))
+            .collect();
 
         // Build basic blocks.
         let mut blocks = Vec::new();
@@ -145,10 +185,10 @@ impl CfgBuilder {
         self.instructions
             .iter()
             .position(|inst| inst.address() == address)
-            .expect(&format!("Unknown address `{}`", address))
+            .unwrap_or_else(|| panic!("Unknown address `{}`", address))
     }
 
-    fn find_basic_block_index(&self, heads: &Vec<usize>, index: &usize) -> usize {
+    fn find_basic_block_index(&self, heads: &[usize], index: &usize) -> usize {
         heads.iter().position(|head| head == index).unwrap()
     }
 }
@@ -160,6 +200,7 @@ mod tests {
     use crate::riscv_isa::RiscvInstruction::*;
     use crate::riscv_isa::RiscvRegister::*;
     use crate::riscv_parser;
+    use std::collections::HashMap;
 
     #[test]
     fn build_cfg() {
@@ -229,7 +270,7 @@ Disassembly of section .rodata:
                         jump_target: None,
                     },
                 ],
-                potential_targets: vec![1],
+                potential_targets: vec![(66872, 1)].into_iter().collect(),
             },
             RiscvFunction {
                 name: String::from("f"),
@@ -349,7 +390,7 @@ Disassembly of section .rodata:
                         jump_target: Some(0),
                     },
                 ],
-                potential_targets: vec![],
+                potential_targets: HashMap::new(),
             },
             RiscvFunction {
                 name: String::from("main"),
@@ -386,7 +427,7 @@ Disassembly of section .rodata:
                     continue_target: None,
                     jump_target: None,
                 }],
-                potential_targets: vec![],
+                potential_targets: HashMap::new(),
             },
         ];
         assert_eq!(cfg, expected);
