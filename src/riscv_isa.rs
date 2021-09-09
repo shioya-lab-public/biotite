@@ -1,127 +1,9 @@
 use crate::{addr, define_instruction, imm, rd, rs1, rs2};
-use regex::Regex;
-use std::fmt::{Display, Formatter, Result};
+use regex::{Regex, RegexSet};
 
-lazy_static! {
-    pub static ref FUNCTION: Regex = Regex::new(r"<(.+)>").unwrap();
-}
-
-pub trait FromStr {
-    fn from_str(s: &str) -> Self;
-}
-
-define_instruction! {
-    // RV64I
-    Add(rd, rs1, rs2),
-    Addw(rd, rs1, rs2),
-    Addi(rd, rs1, imm),
-    Addiw(rd, rs1, imm),
-    And(rd, rs1, rs2),
-    Andi(rd, rs1, imm),
-    Auipc(rd, imm),
-    Beq(rs1, rs2, addr),
-    Bge(rs1, rs2, addr),
-    Bgeu(rs1, rs2, addr),
-    Blt(rs1, rs2, addr),
-    Bltu(rs1, rs2, addr),
-    Bne(rs1, rs2, addr),
-    // `csrrc` is not implemented.
-    // `csrrci` is not implemented.
-    // `csrrs` is not implemented.
-    // `csrrsi` is not implemented.
-    // `csrrw` is not implemented.
-    // `csrrwi` is not implemented.
-    Ebreak(),
-    Ecall(),
-    // `fence` is not implemented.
-    // `fence.i` is not implemented.
-    Jal(rd, addr),
-    Jalr(rd, rs1, imm),
-    Lb(rd, rs1, imm),
-    Lbu(rd, rs1, imm),
-    Ld(rd, rs1, imm),
-    Lh(rd, rs1, imm),
-    Lhu(rd, rs1, imm),
-    Lui(rd, imm),
-    Lw(rd, rs1, imm),
-    Lwu(rd, rs1, imm),
-    Or(rd, rs1, rs2),
-    Ori(rd, rs1, imm),
-    Sb(rs1, imm, rs2),
-    Sd(rs1, imm, rs2),
-    Sh(rs1, imm, rs2),
-    Sll(rd, rs1, rs2),
-    Sllw(rd, rs1, rs2),
-    Slli(rd, rs1, imm),
-    Slliw(rd, rs1, imm),
-    Slt(rd, rs1, rs2),
-    Slti(rd, rs1, imm),
-    Sltiu(rd, rs1, imm),
-    Sltu(rd, rs1, rs2),
-    Sra(rd, rs1, rs2),
-    Sraw(rd, rs1, rs2),
-    Srai(rd, rs1, imm),
-    Sraiw(rd, rs1, imm),
-    Srl(rd, rs1, rs2),
-    Srlw(rd, rs1, rs2),
-    Srli(rd, rs1, imm),
-    Srliw(rd, rs1, imm),
-    Sub(rd, rs1, rs2),
-    Subw(rd, rs1, rs2),
-    Sw(rs1, imm, rs2),
-    Xor(rd, rs1, rs2),
-    Xori(rd, rs1, imm),
-
-    // Pseudo
-    Beqz(rs1, addr),
-    Bnez(rs1, addr),
-    // `fabs.s` is not implemented.
-    // `fabs.d` is not implemented.
-    // `fmv.s` is not implemented.
-    // `fmv.d` is not implemented.
-    // `fneg.s` is not implemented.
-    // `fneg.d` is not implemented.
-    J(addr),
-    Jr(rs1),
-    // `la` will not appear in actual assembly.
-    Li(rd, imm),
-    Mv(rd, rs1),
-    Neg(rd, rs1),
-    Nop(),
-    Not(rd, rs1),
-    Ret(),
-    Seqz(rd, rs1),
-    Snez(rd, rs1),
-
-    // Misc
-    SextW(rd, rs1),
-    Blez(rs1, rs2, addr),
-}
-
-pub type RiscvImmediate = i64;
-
-impl FromStr for RiscvImmediate {
-    fn from_str(s: &str) -> Self {
-        if s == "default" {
-            0
-        } else if let Some(s) = s.strip_prefix("0x") {
-            RiscvImmediate::from_str_radix(s, 16).unwrap()
-        } else {
-            s.parse().unwrap()
-        }
-    }
-}
-
-pub type RiscvAddress = usize;
-
-impl FromStr for RiscvAddress {
-    fn from_str(s: &str) -> Self {
-        RiscvAddress::from_str_radix(s, 16).unwrap()
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub enum RiscvRegister {
+    // Integer
     Zero,
     Ra,
     Sp,
@@ -154,10 +36,44 @@ pub enum RiscvRegister {
     T4,
     T5,
     T6,
+
+    // Floating-Point
+    Ft0,
+    Ft1,
+    Ft2,
+    Ft3,
+    Ft4,
+    Ft5,
+    Ft6,
+    Ft7,
+    Fs0,
+    Fs1,
+    Fa0,
+    Fa1,
+    Fa2,
+    Fa3,
+    Fa4,
+    Fa5,
+    Fa6,
+    Fa7,
+    Fs2,
+    Fs3,
+    Fs4,
+    Fs5,
+    Fs6,
+    Fs7,
+    Fs8,
+    Fs9,
+    Fs10,
+    Fs11,
+    Ft8,
+    Ft9,
+    Ft10,
+    Ft11,
 }
 
-impl FromStr for RiscvRegister {
-    fn from_str(s: &str) -> Self {
+impl RiscvRegister {
+    fn new(s: &str) -> Self {
         use RiscvRegister::*;
 
         match s {
@@ -193,141 +109,68 @@ impl FromStr for RiscvRegister {
             "t4" => T4,
             "t5" => T5,
             "t6" => T6,
-            "default" => Ra,
+
+            "ft0" => Ft0,
+            "ft1" => Ft1,
+            "ft2" => Ft2,
+            "ft3" => Ft3,
+            "ft4" => Ft4,
+            "ft5" => Ft5,
+            "ft6" => Ft6,
+            "ft7" => Ft7,
+            "fs0" => Fs0,
+            "fs1" => Fs1,
+            "fa0" => Fa0,
+            "fa1" => Fa1,
+            "fa2" => Fa2,
+            "fa3" => Fa3,
+            "fa4" => Fa4,
+            "fa5" => Fa5,
+            "fa6" => Fa6,
+            "fa7" => Fa7,
+            "fs2" => Fs2,
+            "fs3" => Fs3,
+            "fs4" => Fs4,
+            "fs5" => Fs5,
+            "fs6" => Fs6,
+            "fs7" => Fs7,
+            "fs8" => Fs8,
+            "fs9" => Fs9,
+            "fs10" => Fs10,
+            "fs11" => Fs11,
+            "ft8" => Ft8,
+            "ft9" => Ft9,
+            "ft10" => Ft10,
+            "ft11" => Ft11,
+
             _ => unreachable!(),
         }
     }
 }
 
-impl Display for RiscvRegister {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        use RiscvRegister::*;
+#[derive(Debug, PartialEq)]
+pub struct RiscvImmediate(i64);
 
-        match self {
-            Zero => write!(f, "zero"),
-            Ra => write!(f, "ra"),
-            Sp => write!(f, "sp"),
-            Gp => write!(f, "gp"),
-            Tp => write!(f, "tp"),
-            T0 => write!(f, "t0"),
-            T1 => write!(f, "t1"),
-            T2 => write!(f, "t2"),
-            S0 => write!(f, "s0"),
-            S1 => write!(f, "s1"),
-            A0 => write!(f, "a0"),
-            A1 => write!(f, "a1"),
-            A2 => write!(f, "a2"),
-            A3 => write!(f, "a3"),
-            A4 => write!(f, "a4"),
-            A5 => write!(f, "a5"),
-            A6 => write!(f, "a6"),
-            A7 => write!(f, "a7"),
-            S2 => write!(f, "s2"),
-            S3 => write!(f, "s3"),
-            S4 => write!(f, "s4"),
-            S5 => write!(f, "s5"),
-            S6 => write!(f, "s6"),
-            S7 => write!(f, "s7"),
-            S8 => write!(f, "s8"),
-            S9 => write!(f, "s9"),
-            S10 => write!(f, "s10"),
-            S11 => write!(f, "s11"),
-            T3 => write!(f, "t3"),
-            T4 => write!(f, "t4"),
-            T5 => write!(f, "t5"),
-            T6 => write!(f, "t6"),
-        }
+impl RiscvImmediate {
+    pub fn new(s: &str) -> Self {
+        let imm = match s.strip_prefix("0x") {
+            Some(s) => i64::from_str_radix(s, 16).unwrap(),
+            None => s.parse().unwrap(),
+        };
+        RiscvImmediate(imm)
     }
 }
 
-pub mod riscv_regex {
-    use crate::define_regex;
-    use regex::Regex;
-
-    const ADDRESS: &str = r"(?P<address>[[:xdigit:]]+)";
-    const LAB: &str = r"<(?P<label>\S+)>";
-    const RD: &str = r"(?P<rd>\S+)";
-    const RS1: &str = r"(?P<rs1>\S+)";
-    const RS2: &str = r"(?P<rs2>\S+)";
-    const IMM: &str = r"(?P<imm>\S+)";
-    const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
-    const COMM: &str = r"(?P<comm>\s+.+)?";
-
-    define_regex! {
-        // function labels
-        LABEL(r"{} {}:", ADDRESS, LAB),
-
-        // RV64I
-        ADD(r"{}:.+\s+add\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        ADDW(r"{}:.+\s+addw\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        ADDI(r"{}:.+\s+addi\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        ADDIW(r"{}:.+\s+addiw\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        AND(r"{}:.+\s+and\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        ANDI(r"{}:.+\s+andi\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        AUIPC(r"{}:.+\s+auipc\s+{},{}{}", ADDRESS, RD, IMM, COMM),
-        BEQ(r"{}:.+\s+beq\s+{},{},{}{}", ADDRESS, RS1, RS2, ADDR, COMM),
-        BGE(r"{}:.+\s+bge\s+{},{},{}{}", ADDRESS, RS1, RS2, ADDR, COMM),
-        BGEU(r"{}:.+\s+bgeu\s+{},{},{}{}", ADDRESS, RS1, RS2, ADDR, COMM),
-        BLT(r"{}:.+\s+blt\s+{},{},{}{}", ADDRESS, RS1, RS2, ADDR, COMM),
-        BLTU(r"{}:.+\s+bltu\s+{},{},{}{}", ADDRESS, RS1, RS2, ADDR, COMM),
-        BNE(r"{}:.+\s+bne\s+{},{},{}{}", ADDRESS, RS1, RS2, ADDR, COMM),
-        EBREAK(r"{}:.+\s+ebreak{}", ADDRESS, COMM),
-        ECALL(r"{}:.+\s+ecall{}", ADDRESS, COMM),
-        JAL(r"{}:.+\s+jal\s+{},{}{}", ADDRESS, RD, ADDR, COMM),
-        JALR(r"{}:.+\s+jalr\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
-        JALR_IMPLICIT(r"{}:.+\s+j(al)?r\s+{}\({}\){}", ADDRESS, IMM, RS1, COMM), // 10472:	faa30067          	jr	-86(t1) # 10418 <register_tm_clones>
-        JALR_MORE_IMPLICIT(r"{}:.+\s+jalr\s+{}{}", ADDRESS, RS1, COMM),
-        LB(r"{}:.+\s+lb\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
-        LBU(r"{}:.+\s+lbu\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
-        LD(r"{}:.+\s+ld\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
-        LH(r"{}:.+\s+lh\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
-        LHU(r"{}:.+\s+lhu\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
-        LUI(r"{}:.+\s+lui\s+{},{}{}", ADDRESS, RD, IMM, COMM),
-        LW(r"{}:.+\s+lw\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
-        LWU(r"{}:.+\s+lwu\s+{},{}\({}\){}", ADDRESS, RD, IMM, RS1, COMM),
-        OR(r"{}:.+\s+or\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        ORI(r"{}:.+\s+ori\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        SB(r"{}:.+\s+sb\s+{},{}\({}\){}", ADDRESS, RS2, IMM, RS1, COMM),
-        SD(r"{}:.+\s+sd\s+{},{}\({}\){}", ADDRESS, RS2, IMM, RS1, COMM),
-        SH(r"{}:.+\s+sh\s+{},{}\({}\){}", ADDRESS, RS2, IMM, RS1, COMM),
-        SLL(r"{}:.+\s+sll\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        SLLW(r"{}:.+\s+sllw\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        SLLI(r"{}:.+\s+slli\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        SLLIW(r"{}:.+\s+slliw\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        SLT(r"{}:.+\s+slt\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        SLTI(r"{}:.+\s+slti\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        SLTIU(r"{}:.+\s+sltiu\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        SLTU(r"{}:.+\s+sltu\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        SRA(r"{}:.+\s+sra\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        SRAW(r"{}:.+\s+sraw\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        SRAI(r"{}:.+\s+srai\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        SRAIW(r"{}:.+\s+sraiw\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        SRL(r"{}:.+\s+srl\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        SRLW(r"{}:.+\s+srlw\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        SRLI(r"{}:.+\s+srli\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        SRLIW(r"{}:.+\s+srliw\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-        SUB(r"{}:.+\s+sub\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        SUBW(r"{}:.+\s+subw\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        SW(r"{}:.+\s+sw\s+{},{}\({}\){}", ADDRESS, RS2, IMM, RS1, COMM),
-        XOR(r"{}:.+\s+xor\s+{},{},{}{}", ADDRESS, RD, RS1, RS2, COMM),
-        XORI(r"{}:.+\s+xori\s+{},{},{}{}", ADDRESS, RD, RS1, IMM, COMM),
-
-        // Pseudo
-        BEQZ(r"{}:.+\s+beqz\s+{},{}{}", ADDRESS, RS1, ADDR, COMM),
-        BNEZ(r"{}:.+\s+bnez\s+{},{}{}", ADDRESS, RS1, ADDR, COMM),
-        J(r"{}:.+\s+j\s+{}{}", ADDRESS, ADDR, COMM),
-        JR(r"{}:.+\s+jr\s+{}{}", ADDRESS, RS1, COMM),
-        LI(r"{}:.+\s+li\s+{},{}{}", ADDRESS, RD, IMM, COMM),
-        MV(r"{}:.+\s+mv\s+{},{}{}", ADDRESS, RD, RS1, COMM),
-        NEG(r"{}:.+\s+neg\s+{},{}{}", ADDRESS, RD, RS1, COMM),
-        NOP(r"{}:.+\s+nop{}", ADDRESS, COMM),
-        NOT(r"{}:.+\s+not\s+{},{}{}", ADDRESS, RD, RS1, COMM),
-        RET(r"{}:.+\s+ret{}", ADDRESS, COMM),
-        SEQZ(r"{}:.+\s+seqz\s+{},{}{}", ADDRESS, RD, RS1, COMM),
-        SNEZ(r"{}:.+\s+snez\s+{},{}{}", ADDRESS, RD, RS1, COMM),
-
-        // Misc
-        SEXTW(r"{}:.+\s+sext.w\s+{},{}{}", ADDRESS, RD, RS1, COMM),
-        BLEZ(r"{}:.+\s+blez\s+{},{}{}", ADDRESS, RS1, ADDR, COMM),
+impl From<i64> for RiscvImmediate {
+    fn from(imm: i64) -> Self {
+        RiscvImmediate::new(&imm.to_string())
     }
+}
+
+pub type RiscvAddress = usize;
+
+define_instruction! {
+    Lui("lui", "{},{}", rd, imm),
+    Jalr("jalr", "{},{}\\({}\\)", rd, imm, rs1),
+    Ecall("ecall", ""),
 }

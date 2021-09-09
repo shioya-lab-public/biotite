@@ -14,11 +14,10 @@ struct Opt {
 
 fn main() {
     let opt = Opt::from_args();
-    let source = fs::read_to_string(&opt.input).expect("Unable to read the input file.");
-    let output = riscv2llvm::run(source);
-    let path = opt
-        .output
-        .clone()
-        .unwrap_or_else(|| opt.input.with_extension("ll"));
-    fs::write(&path, &output).expect("Unable to write the output file.");
+    let input = opt.input;
+    let output = opt.output;
+    let rv_source = fs::read_to_string(&input).expect("Unable to read the input file");
+    let ll_source = riscv2llvm::run(&rv_source);
+    let path = output.unwrap_or_else(|| input.with_extension("ll"));
+    fs::write(&path, &ll_source).expect("Unable to write the output file");
 }

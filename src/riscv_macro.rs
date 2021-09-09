@@ -1,49 +1,86 @@
 #[macro_export]
 macro_rules! rd {
-    () => {
+    ("uppercase") => {
+        RD
+    };
+    ("type") => {
         RiscvRegister
     };
 }
 
 #[macro_export]
 macro_rules! rs1 {
-    () => {
+    ("uppercase") => {
+        RS1
+    };
+    ("type") => {
         RiscvRegister
     };
 }
 
 #[macro_export]
 macro_rules! rs2 {
-    () => {
+    ("uppercase") => {
+        RS2
+    };
+    ("type") => {
         RiscvRegister
     };
 }
 
 #[macro_export]
 macro_rules! imm {
-    () => {
+    ("uppercase") => {
+        IMM
+    };
+    ("type") => {
         RiscvImmediate
     };
 }
 
 #[macro_export]
 macro_rules! addr {
-    () => {
+    ("uppercase") => {
+        ADDR
+    };
+    ("type") => {
         RiscvAddress
     };
 }
 
 #[macro_export]
 macro_rules! define_instruction {
-    ( $( $inst:ident ( $( $field:ident ),* ) ),* $(,)? ) => {
-        #[derive(Debug, PartialEq, Clone)]
+    ( $( $inst:ident ( $repr:literal, $regex:literal $(, $field:ident )* ), )* ) => {
+        const ADDRESS: &str = r"(?P<address>[[:xdigit:]]+)";
+        const RD: &str = r"(?P<rd>\S+)";
+        const RS1: &str = r"(?P<rs1>\S+)";
+        const RS2: &str = r"(?P<rs2>\S+)";
+        const IMM: &str = r"(?P<imm>\S+)";
+        const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
+        const COMMENT: &str = r"(?P<comment>\s+.+)?";
+        lazy_static! {
+            static ref REGEX: Vec<(&'static str, Regex)> = vec![
+                $(
+                    (
+                        stringify!($inst),
+                        Regex::new(&format!(
+                            concat!(r"{}:.+?", $repr, r"\s*",$regex, r"{}"),
+                            ADDRESS, $( $field!("uppercase"), )* COMMENT
+                        ))
+                        .unwrap()
+                    ),
+                )*
+            ];
+        }
+
+        #[derive(Debug, PartialEq)]
         pub enum RiscvInstruction {
             $(
                 $inst {
                     label: Option<String>,
                     address: RiscvAddress,
                     $(
-                        $field: $field!(),
+                        $field: $field!("type"),
                     )*
                     comment: Option<String>,
                 },
@@ -51,75 +88,48 @@ macro_rules! define_instruction {
         }
 
         impl RiscvInstruction {
-            pub fn label(&self) -> &Option<String> {
+            pub fn new(line: &str, label: Option<String>) -> RiscvInstruction {
                 use RiscvInstruction::*;
+                lazy_static! {
+                    static ref SET: RegexSet =
+                        RegexSet::new(REGEX.clone().into_iter().map(|(_, r)| r.to_string())).unwrap();
+                }
 
-                match self {
+                let matches: Vec<_> = SET.matches(line).into_iter().collect();
+                if matches.is_empty() {
+                    panic!("Unknown instruction: {}", line);
+                }
+                let (inst, regex) = &REGEX[matches[0]];
+                let caps = regex.captures(line).unwrap();
+                match *inst {
                     $(
-                        $inst { label, .. } => label,
+                        stringify!($inst) => {
+                            $inst {
+                                label,
+                                address: RiscvAddress::from_str_radix(caps.name("address").unwrap().as_str(), 16).unwrap(),
+                                $(
+                                    $field: <$field!("type")>::new(caps.name(stringify!($field)).unwrap().as_str()),
+                                )*
+                                comment: caps.name("comment").map(|m| m.as_str().to_string()),
+                            }
+                        }
                     )*
+                    _ => unreachable!(),
                 }
             }
-
-            pub fn address(&self) -> &RiscvAddress {
-                use RiscvInstruction::*;
-
-                match self {
-                    $(
-                        $inst { address, .. } => address,
-                    )*
-                }
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! define_regex {
-    ( $( $name:ident ( $( $arg:tt ),* ) ),* $(,)? ) => {
-        lazy_static! {
-            $(
-                pub static ref $name: Regex = Regex::new(&format!($($arg),*)).unwrap();
-            )*
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! build_instruction {
-    ( $line:ident, $label:ident, $( $regex:path => $inst:ident ( $( $field:ident ),* ) ),* $(,)? ) => {
-        use crate::riscv_isa::{RiscvImmediate, RiscvAddress, RiscvRegister, FromStr};
-        match $line {
-            $(
-                line if $regex.is_match(line) => {
-                    let caps = $regex.captures(line).unwrap();
-                    $inst {
-                        $label,
-                        address: RiscvAddress::from_str(&caps["address"]),
-                        $(
-                            $field: <$field!()>::from_str(
-                                caps.name(stringify!($field))
-                                    .map(|m| m.as_str())
-                                    .unwrap_or("default")
-                            ),
-                        )*
-                        comment: caps.name("comm").map(|m| m.as_str().to_string()),
-                    }
-                }
-            )*
-            line => panic!("Unknown RISC-V instruction `{}`", line),
         }
     };
 }
 
 #[macro_export]
 macro_rules! build_test {
-    ( $( $name:ident ( $source:literal, $inst:ident { $( $field:ident: $value:tt ),* $(,)? } ) ),* $(,)? ) => {
+    ( $( $func:ident ( $source:literal, $inst:ident { $( $field:ident: $value:expr ),* } ), )* ) => {
         $(
             #[test]
-            fn $name() {
-                let inst = super::build_instruction($source, None);
+            fn $func() {
+                let inst = RiscvInstruction::new(concat!("a1:	a1                	", $source), None);
                 let expected = $inst {
+                    address: 0xa1,
                     label: None,
                     $(
                         $field: $value,

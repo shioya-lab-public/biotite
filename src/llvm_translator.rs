@@ -3,7 +3,7 @@ use crate::llvm_isa::{LlvmCondition, LlvmFunction, LlvmInstruction, LlvmType, Pr
 use crate::riscv_isa::{RiscvAddress, RiscvInstruction, RiscvRegister, FUNCTION};
 use std::collections::HashMap;
 
-pub fn run(cfg: Cfg) -> Program {
+pub fn translate(cfg: Cfg) -> Program {
     cfg.into_iter().map(translate_function).collect()
 }
 

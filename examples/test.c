@@ -1,3 +1,26 @@
+// #include <fenv.h>
+// #pragma STDC FENV_ACCESS ON
+
+// // store the original rounding mode
+// int originalRounding = fegetround( );
+// // establish the desired rounding mode
+// fesetround((int)3072); //FE_TOWARDZERO
+// // do whatever you need to do ...
+
+// // ... and restore the original mode afterwards
+// fesetround(originalRounding);
+
+// int main(void) {
+//     fesetround(FE_DOWNWARD);
+//     // asm volatile("frcsr t0 \n");
+    
+//     return 0;
+// }
+
+// #include <stdio.h>
+
+// extern int aT;
+
 int s(int n) {
     switch (n) {
         case 1:

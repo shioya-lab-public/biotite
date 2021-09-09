@@ -114,6 +114,9 @@ impl CfgBuilder {
                     heads.push(idx + 1);
                 }
                 Jal { comment, .. } | Jalr { comment, .. } => {
+                    // lazy_static! {
+                    //     pub static ref FUNCTION: Regex = Regex::new(r"<(.+)>").unwrap();
+                    // }
                     let caps = FUNCTION.captures(comment.as_ref().unwrap()).unwrap();
                     let name = caps[1].to_string();
                     if !self.functions.contains(&name) {
