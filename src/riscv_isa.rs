@@ -167,10 +167,78 @@ impl From<i64> for RiscvImmediate {
     }
 }
 
-pub type RiscvAddress = usize;
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct RiscvAddress(usize);
+
+impl RiscvAddress {
+    pub fn new(s: &str) -> Self {
+        RiscvAddress(usize::from_str_radix(s, 16).unwrap())
+    }
+}
+
+impl From<usize> for RiscvAddress {
+    fn from(imm: usize) -> Self {
+        RiscvAddress(imm)
+    }
+}
 
 define_instruction! {
+    // RV32I
     Lui("lui", "{},{}", rd, imm),
+    Auipc("auipc", "{},{}", rd, imm),
+    Jal("jal", "{},{}", rd, addr),
     Jalr("jalr", "{},{}\\({}\\)", rd, imm, rs1),
+    Beq("beq", "{},{},{}", rs1, rs2, addr),
+    Bne("bne", "{},{},{}", rs1, rs2, addr),
+    Blt("blt", "{},{},{}", rs1, rs2, addr),
+    Bge("bge", "{},{},{}", rs1, rs2, addr),
+    Bltu("bltu", "{},{},{}", rs1, rs2, addr),
+    Bgeu("bgeu", "{},{},{}", rs1, rs2, addr),
+    Lb("lb", "{},{}\\({}\\)", rd, imm, rs1),
+    Lh("lh", "{},{}\\({}\\)", rd, imm, rs1),
+    Lw("lw", "{},{}\\({}\\)", rd, imm, rs1),
+    Lbu("lbu", "{},{}\\({}\\)", rd, imm, rs1),
+    Lhu("lhu", "{},{}\\({}\\)", rd, imm, rs1),
+    Sb("sb", "{},{}\\({}\\)", rs2, imm, rs1),
+    Sh("sh", "{},{}\\({}\\)", rs2, imm, rs1),
+    Sw("sw", "{},{}\\({}\\)", rs2, imm, rs1),
+    Addi("addi", "{},{},{}", rd, rs1, imm),
+    Slti("slti", "{},{},{}", rd, rs1, imm),
+    Sltiu("sltiu", "{},{},{}", rd, rs1, imm),
+    Xori("xori", "{},{},{}", rd, rs1, imm),
+    Ori("ori", "{},{},{}", rd, rs1, imm),
+    Andi("andi", "{},{},{}", rd, rs1, imm),
+    Slli("slli", "{},{},{}", rd, rs1, imm),
+    Srli("srli", "{},{},{}", rd, rs1, imm),
+    Srai("srai", "{},{},{}", rd, rs1, imm),
+    Add("add", "{},{},{}", rd, rs1, rs2),
+    Sub("sub", "{},{},{}", rd, rs1, rs2),
+    Sll("sll", "{},{},{}", rd, rs1, rs2),
+    Slt("slt", "{},{},{}", rd, rs1, rs2),
+    Sltu("sltu", "{},{},{}", rd, rs1, rs2),
+    Xor("xor", "{},{},{}", rd, rs1, rs2),
+    Srl("srl", "{},{},{}", rd, rs1, rs2),
+    Sra("sra", "{},{},{}", rd, rs1, rs2),
+    Or("or", "{},{},{}", rd, rs1, rs2),
+    And("and", "{},{},{}", rd, rs1, rs2),
+    Fence("fence", ".*"), // LLVM only supports `fence` in its most general form like this.
     Ecall("ecall", ""),
+    Ebreak("ebreak", ""),
+
+    // RV64I
+    Lwu("lwu", "{},{}\\({}\\)", rd, imm, rs1),
+    Ld("ld", "{},{}\\({}\\)", rd, imm, rs1),
+    Sd("sd", "{},{}\\({}\\)", rs2, imm, rs1),
+    Addiw("addiw", "{},{},{}", rd, rs1, imm),
+    Slliw("slliw", "{},{},{}", rd, rs1, imm),
+    Srliw("srliw", "{},{},{}", rd, rs1, imm),
+    Sraiw("sraiw", "{},{},{}", rd, rs1, imm),
+    Addw("addw", "{},{},{}", rd, rs1, rs2),
+    Subw("subw", "{},{},{}", rd, rs1, rs2),
+    Sllw("sllw", "{},{},{}", rd, rs1, rs2),
+    Srlw("srlw", "{},{},{}", rd, rs1, rs2),
+    Sraw("sraw", "{},{},{}", rd, rs1, rs2),
+
+    // RV32F
+    Flw("flw", "{},{}\\({}\\)", rd, imm, rs1),
 }

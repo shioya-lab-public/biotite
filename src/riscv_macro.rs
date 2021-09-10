@@ -57,14 +57,14 @@ macro_rules! define_instruction {
         const RS2: &str = r"(?P<rs2>\S+)";
         const IMM: &str = r"(?P<imm>\S+)";
         const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
-        const COMMENT: &str = r"(?P<comment>\s+.+)?";
+        const COMMENT: &str = r"(\s+(?P<comment>.+))?";
         lazy_static! {
             static ref REGEX: Vec<(&'static str, Regex)> = vec![
                 $(
                     (
                         stringify!($inst),
                         Regex::new(&format!(
-                            concat!(r"{}:.+?", $repr, r"\s*",$regex, r"{}"),
+                            concat!(r"{}:\s+\S+\s+", $repr, r"\s*",$regex, r"{}"),
                             ADDRESS, $( $field!("uppercase"), )* COMMENT
                         ))
                         .unwrap()
@@ -97,7 +97,7 @@ macro_rules! define_instruction {
 
                 let matches: Vec<_> = SET.matches(line).into_iter().collect();
                 if matches.is_empty() {
-                    panic!("Unknown instruction: {}", line);
+                    return RiscvInstruction::new_irregular(line, label);
                 }
                 let (inst, regex) = &REGEX[matches[0]];
                 let caps = regex.captures(line).unwrap();
@@ -106,7 +106,7 @@ macro_rules! define_instruction {
                         stringify!($inst) => {
                             $inst {
                                 label,
-                                address: RiscvAddress::from_str_radix(caps.name("address").unwrap().as_str(), 16).unwrap(),
+                                address: RiscvAddress::new(caps.name("address").unwrap().as_str()),
                                 $(
                                     $field: <$field!("type")>::new(caps.name(stringify!($field)).unwrap().as_str()),
                                 )*
@@ -115,6 +115,56 @@ macro_rules! define_instruction {
                         }
                     )*
                     _ => unreachable!(),
+                }
+            }
+
+            fn new_irregular(line: &str, label: Option<String>) -> RiscvInstruction {
+                use RiscvInstruction::*;
+                use RiscvRegister::*;
+                lazy_static! {
+                    static ref JALR_IMM_RS1: Regex =
+                        Regex::new(&format!(r"{}:.+?jalr\s*{}\({}\){}", ADDRESS, IMM, RS1, COMMENT)).unwrap();
+                    static ref JALR_RD_RS1: Regex =
+                        Regex::new(&format!(r"{}:.+?jalr\s*{},{}{}", ADDRESS, RD, RS1, COMMENT)).unwrap();
+                    static ref JALR_RS1: Regex =
+                        Regex::new(&format!(r"{}:.+?jalr\s*{}{}", ADDRESS, RS1, COMMENT)).unwrap();
+                }
+
+                match line {
+                    line if JALR_IMM_RS1.is_match(line) => {
+                        let caps = JALR_IMM_RS1.captures(line).unwrap();
+                        Jalr {
+                            label,
+                            address: RiscvAddress::new(caps.name("address").unwrap().as_str()),
+                            rd: Ra,
+                            imm: RiscvImmediate::new(caps.name("imm").unwrap().as_str()),
+                            rs1: RiscvRegister::new(caps.name("rs1").unwrap().as_str()),
+                            comment: caps.name("comment").map(|m| m.as_str().to_string()),
+                        }
+                    }
+                    line if JALR_RD_RS1.is_match(line) => {
+                        let caps = JALR_RD_RS1.captures(line).unwrap();
+                        Jalr {
+                            label,
+                            address: RiscvAddress::new(caps.name("address").unwrap().as_str()),
+                            rd: RiscvRegister::new(caps.name("rd").unwrap().as_str()),
+                            imm: 0.into(),
+                            rs1: RiscvRegister::new(caps.name("rs1").unwrap().as_str()),
+                            comment: caps.name("comment").map(|m| m.as_str().to_string()),
+                        }
+                    }
+                    line if JALR_RS1.is_match(line) => {
+                        let caps = JALR_RS1.captures(line).unwrap();
+                        Jalr {
+                            label,
+                            address: RiscvAddress::new(caps.name("address").unwrap().as_str()),
+                            rd: Ra,
+                            imm: 0.into(),
+                            rs1: RiscvRegister::new(caps.name("rs1").unwrap().as_str()),
+                            comment: caps.name("comment").map(|m| m.as_str().to_string()),
+                        }
+                    }
+                    _ => panic!("Unknown instruction: {}", line),
                 }
             }
         }
@@ -129,7 +179,7 @@ macro_rules! build_test {
             fn $func() {
                 let inst = RiscvInstruction::new(concat!("a1:	a1                	", $source), None);
                 let expected = $inst {
-                    address: 0xa1,
+                    address: 0xa1.into(),
                     label: None,
                     $(
                         $field: $value,
