@@ -29,6 +29,16 @@ macro_rules! rs2 {
 }
 
 #[macro_export]
+macro_rules! rs3 {
+    ("uppercase") => {
+        RS3
+    };
+    ("type") => {
+        RiscvRegister
+    };
+}
+
+#[macro_export]
 macro_rules! imm {
     ("uppercase") => {
         IMM
@@ -49,13 +59,25 @@ macro_rules! addr {
 }
 
 #[macro_export]
+macro_rules! ord {
+    ("uppercase") => {
+        ORD
+    };
+    ("type") => {
+        RiscvOrdering
+    };
+}
+
+#[macro_export]
 macro_rules! define_instruction {
     ( $( $inst:ident ( $repr:literal, $regex:literal $(, $field:ident )* ), )* ) => {
         const ADDRESS: &str = r"(?P<address>[[:xdigit:]]+)";
-        const RD: &str = r"(?P<rd>\S+)";
-        const RS1: &str = r"(?P<rs1>\S+)";
-        const RS2: &str = r"(?P<rs2>\S+)";
-        const IMM: &str = r"(?P<imm>\S+)";
+        const ORD: &str = r"(?P<ord>\s|[\S--,]+)";
+        const RD: &str = r"(?P<rd>[\S--,]+)";
+        const RS1: &str = r"(?P<rs1>[\S--,]+)";
+        const RS2: &str = r"(?P<rs2>[\S--,]+)";
+        const RS3: &str = r"(?P<rs3>[\S--,]+)";
+        const IMM: &str = r"(?P<imm>[\S--,]+)";
         const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
         const COMMENT: &str = r"(\s+(?P<comment>.+))?";
         lazy_static! {

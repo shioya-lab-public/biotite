@@ -1,4 +1,4 @@
-use crate::{addr, define_instruction, imm, rd, rs1, rs2};
+use crate::{addr, define_instruction, imm, ord, rd, rs1, rs2, rs3};
 use regex::{Regex, RegexSet};
 
 #[derive(Debug, PartialEq)]
@@ -143,7 +143,10 @@ impl RiscvRegister {
             "ft10" => Ft10,
             "ft11" => Ft11,
 
-            _ => unreachable!(),
+            // _ => unreachable!(),
+            s => {
+                panic!("### {}", s);
+            }
         }
     }
 }
@@ -179,6 +182,28 @@ impl RiscvAddress {
 impl From<usize> for RiscvAddress {
     fn from(imm: usize) -> Self {
         RiscvAddress(imm)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum RiscvOrdering {
+    Empty,
+    Aq,
+    Rl,
+    Aqrl,
+}
+
+impl RiscvOrdering {
+    pub fn new(s: &str) -> Self {
+        use RiscvOrdering::*;
+
+        match s {
+            s if s.trim().is_empty() => Empty,
+            ".aq" => Aq,
+            ".rl" => Rl,
+            ".aqrl" => Aqrl,
+            s => panic!("Unknown ordering: {}", s),
+        }
     }
 }
 
@@ -221,7 +246,7 @@ define_instruction! {
     Sra("sra", "{},{},{}", rd, rs1, rs2),
     Or("or", "{},{},{}", rd, rs1, rs2),
     And("and", "{},{},{}", rd, rs1, rs2),
-    Fence("fence", ".*"), // LLVM only supports `fence` in its most general form like this.
+    Fence("fence(\\.tso)?", ""), // LLVM only supports `fence` in its most general form like this.
     Ecall("ecall", ""),
     Ebreak("ebreak", ""),
 
@@ -239,6 +264,80 @@ define_instruction! {
     Srlw("srlw", "{},{},{}", rd, rs1, rs2),
     Sraw("sraw", "{},{},{}", rd, rs1, rs2),
 
-    // RV32F
+    // RV32M
+    Mul("mul", "{},{},{}", rd, rs1, rs2),
+    Mulh("mulh", "{},{},{}", rd, rs1, rs2),
+    Mulhsu("mulhsu", "{},{},{}", rd, rs1, rs2),
+    Mulhu("mulhu", "{},{},{}", rd, rs1, rs2),
+    Div("div", "{},{},{}", rd, rs1, rs2),
+    Divu("divu", "{},{},{}", rd, rs1, rs2),
+    Rem("rem", "{},{},{}", rd, rs1, rs2),
+    Remu("remu", "{},{},{}", rd, rs1, rs2),
+
+    // RV64M
+    Mulw("mulw", "{},{},{}", rd, rs1, rs2),
+    Divw("divw", "{},{},{}", rd, rs1, rs2),
+    Divuw("divuw", "{},{},{}", rd, rs1, rs2),
+    Remw("remw", "{},{},{}", rd, rs1, rs2),
+    Remuw("remuw", "{},{},{}", rd, rs1, rs2),
+
+    // RV32A
+    LrW("lr\\.w{}", "{},\\({}\\)", ord, rd, rs1),
+    ScW("sc\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmoswapW("amoswap\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmoaddW("amoadd\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmoxorW("amoxor\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmoandW("amoand\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmoorW("amoor\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmominW("amomin\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmomaxW("amomax\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmominuW("amominu\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmomaxuW("amomaxu\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+
+    // RV64A
+    LrD("lr\\.d{}", "{},\\({}\\)", ord, rd, rs1),
+    ScD("sc\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmoswapD("amoswap\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmoaddD("amoadd\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmoxorD("amoxor\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmoandD("amoand\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmoorD("amoor\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmominD("amomin\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmomaxD("amomax\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmominuD("amominu\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    AmomaxuD("amomaxu\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+
+    // RV32F (Rounding modes are ignored.)
     Flw("flw", "{},{}\\({}\\)", rd, imm, rs1),
+    Fsw("fsw", "{},{}\\({}\\)", rs2, imm, rs1),
+    FmaddS("fmadd\\.s", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
+    FmsubS("fmsub\\.s", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
+    FnmsubS("fnmsub\\.s", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
+    FnmaddS("fnmadd\\.s", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
+    FaddS("fadd\\.s", "{},{},{}\\S*", rd, rs1, rs2),
+    FsubS("fsub\\.s", "{},{},{}\\S*", rd, rs1, rs2),
+    FmulS("fmul\\.s", "{},{},{}\\S*", rd, rs1, rs2),
+    FdivS("fdiv\\.s", "{},{},{}\\S*", rd, rs1, rs2),
+    FsqrtS("fsqrt\\.s", "{},{}\\S*", rd, rs1),
+    FsgnjS("fsgnj\\.s", "{},{},{}", rd, rs1, rs2),
+    FsgnjnS("fsgnjn\\.s", "{},{},{}", rd, rs1, rs2),
+    FsgnjxS("fsgnjx\\.s", "{},{},{}", rd, rs1, rs2),
+    FminS("fmin\\.s", "{},{},{}", rd, rs1, rs2),
+    FmaxS("fmax\\.s", "{},{},{}", rd, rs1, rs2),
+    FcvtWS("fcvt\\.w\\.s", "{},{}\\S*", rd, rs1),
+    FcvtWuS("fcvt\\.wu\\.s", "{},{}\\S*", rd, rs1),
+    FmvXW("fmv\\.x\\.w", "{},{}", rd, rs1),
+    FeqS("feq\\.s", "{},{},{}", rd, rs1, rs2),
+    FltS("flt\\.s", "{},{},{}", rd, rs1, rs2),
+    FleS("fle\\.s", "{},{},{}", rd, rs1, rs2),
+    FclassS("fclass\\.s", "{},{}", rd, rs1),
+    FcvtSW("fcvt\\.s\\.w", "{},{}\\S*", rd, rs1),
+    FcvtSWu("fcvt\\.s\\.wu", "{},{}\\S*", rd, rs1),
+    FmvWX("fmv\\.w\\.x", "{},{}", rd, rs1),
+
+    // RV64F (Rounding modes are ignored.)
+    FcvtLS("fcvt\\.l\\.s", "{},{}\\S*", rd, rs1),
+    FcvtLuS("fcvt\\.lu\\.s", "{},{}\\S*", rd, rs1),
+    FcvtSL("fcvt\\.s\\.l", "{},{}\\S*", rd, rs1),
+    FcvtSLu("fcvt\\.s\\.lu", "{},{}\\S*", rd, rs1),
 }

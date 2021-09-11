@@ -231,6 +231,8 @@ riscv64-unknown-linux-gnu-objdump -d -j.text -j.rodata examples/test > examples/
 cargo run -- examples/test.dump -o examples/test.ll
 lli examples/test.ll
 echo $?
+
+riscv64-unknown-linux-gnu-g++ -pthread examples/test.cpp -o examples/test && riscv64-unknown-linux-gnu-objdump -d -j.text -j.rodata examples/test > examples/test.dump
 ```
 
 [LLVM Language Reference Manual](https://releases.llvm.org/12.0.0/docs/LangRef.html)
