@@ -246,7 +246,7 @@ define_instruction! {
     Sra("sra", "{},{},{}", rd, rs1, rs2),
     Or("or", "{},{},{}", rd, rs1, rs2),
     And("and", "{},{},{}", rd, rs1, rs2),
-    Fence("fence(\\.tso)?", ""), // LLVM only supports `fence` in its most general form like this.
+    Fence("fence(\\.tso)?", "\\S*"), // LLVM only supports `fence` in its most general form like this.
     Ecall("ecall", ""),
     Ebreak("ebreak", ""),
 
@@ -340,4 +340,76 @@ define_instruction! {
     FcvtLuS("fcvt\\.lu\\.s", "{},{}\\S*", rd, rs1),
     FcvtSL("fcvt\\.s\\.l", "{},{}\\S*", rd, rs1),
     FcvtSLu("fcvt\\.s\\.lu", "{},{}\\S*", rd, rs1),
+
+    // RV32D (Rounding modes are ignored.)
+    Fld("fld", "{},{}\\({}\\)", rd, imm, rs1),
+    Fsd("fsd", "{},{}\\({}\\)", rs2, imm, rs1),
+    FmaddD("fmadd\\.d", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
+    FmsubD("fmsub\\.d", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
+    FnmsubD("fnmsub\\.d", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
+    FnmaddD("fnmadd\\.d", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
+    FaddD("fadd\\.d", "{},{},{}\\S*", rd, rs1, rs2),
+    FsubD("fsub\\.d", "{},{},{}\\S*", rd, rs1, rs2),
+    FmulD("fmul\\.d", "{},{},{}\\S*", rd, rs1, rs2),
+    FdivD("fdiv\\.d", "{},{},{}\\S*", rd, rs1, rs2),
+    FsqrtD("fsqrt\\.d", "{},{}\\S*", rd, rs1),
+    FsgnjD("fsgnj\\.d", "{},{},{}", rd, rs1, rs2),
+    FsgnjnD("fsgnjn\\.d", "{},{},{}", rd, rs1, rs2),
+    FsgnjxD("fsgnjx\\.d", "{},{},{}", rd, rs1, rs2),
+    FminD("fmin\\.d", "{},{},{}", rd, rs1, rs2),
+    FmaxD("fmax\\.d", "{},{},{}", rd, rs1, rs2),
+    FcvtSD("fcvt\\.s\\.d", "{},{}\\S*", rd, rs1),
+    FcvtDS("fcvt\\.d\\.s", "{},{}\\S*", rd, rs1),
+    FeqD("feq\\.d", "{},{},{}", rd, rs1, rs2),
+    FltD("flt\\.d", "{},{},{}", rd, rs1, rs2),
+    FleD("fle\\.d", "{},{},{}", rd, rs1, rs2),
+    FclassD("fclass\\.d", "{},{}", rd, rs1),
+    FcvtWD("fcvt\\.w\\.d", "{},{}\\S*", rd, rs1),
+    FcvtWuD("fcvt\\.wu\\.d", "{},{}\\S*", rd, rs1),
+    FcvtDW("fcvt\\.d\\.w", "{},{}\\S*", rd, rs1),
+    FcvtDWu("fcvt\\.d\\.wu", "{},{}\\S*", rd, rs1),
+
+    // RV64D (Rounding modes are ignored.)
+    FcvtLD("fcvt\\.l\\.d", "{},{}\\S*", rd, rs1),
+    FcvtLuD("fcvt\\.lu\\.d", "{},{}\\S*", rd, rs1),
+    FmvXD("fmv\\.x\\.d", "{},{}", rd, rs1),
+    FcvtDL("fcvt\\.d\\.l", "{},{}\\S*", rd, rs1),
+    FcvtDLu("fcvt\\.d\\.lu", "{},{}\\S*", rd, rs1),
+    FmvDX("fmv\\.d\\.x", "{},{}", rd, rs1),
+
+    // Pseudoinstructions
+    Nop("nop", ""),
+    Li("li", "{},{}", rd, imm),
+    Mv("mv", "{},{}", rd, rs1),
+    Not("not", "{},{}", rd, rs1),
+    Neg("neg", "{},{}", rd, rs1),
+    Negw("negw", "{},{}", rd, rs1),
+    SextW("sext\\.w", "{},{}", rd, rs1),
+    Seqz("seqz", "{},{}", rd, rs1),
+    Snez("snez", "{},{}", rd, rs1),
+    Sltz("sltz", "{},{}", rd, rs1),
+    Sgtz("sgtz", "{},{}", rd, rs1),
+
+    FmvS("fmv\\.s", "{},{}", rd, rs1),
+    FabsS("fabs\\.s", "{},{}", rd, rs1),
+    FnegS("fneg\\.s", "{},{}", rd, rs1),
+    FmvD("fmv\\.d", "{},{}", rd, rs1),
+    FabsD("fabs\\.d", "{},{}", rd, rs1),
+    FnegD("fneg\\.d", "{},{}", rd, rs1),
+
+    Beqz("beqz", "{},{}", rs1, addr),
+    Bnez("bnez", "{},{}", rs1, addr),
+    Blez("blez", "{},{}", rs1, addr),
+    Bgez("bgez", "{},{}", rs1, addr),
+    Bltz("bltz", "{},{}", rs1, addr),
+    Bgtz("bgtz", "{},{}", rs1, addr),
+
+    J("j\\s", "{}", addr),
+    // `jal addr` is always disassembled to be `jal ra,addr`.
+    Jr("jr", "{}", rs1),
+    // `jalr rs1` is handled in `RiscvInstruction::new_irregular()`.
+    Ret("ret", ""),
+    // Currently GCC emits errors like `relocation truncated to fit: R_RISCV_JAL against `.L22'`
+    // when I try to use a far function call to test `call` and `tail` instructions. I will add
+    // these two instructions if later I spot them in real code.
 }
