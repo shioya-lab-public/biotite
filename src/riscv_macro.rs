@@ -95,7 +95,7 @@ macro_rules! define_instruction {
             ];
         }
 
-        #[derive(Debug, PartialEq)]
+        #[derive(Debug, PartialEq, Clone)]
         pub enum RiscvInstruction {
             $(
                 $inst {
@@ -187,6 +187,26 @@ macro_rules! define_instruction {
                         }
                     }
                     _ => panic!("Unknown instruction: {}", line),
+                }
+            }
+
+            pub fn label(&self) -> &Option<String> {
+                use RiscvInstruction::*;
+
+                match self {
+                    $(
+                        $inst { label, .. } => label,
+                    )*
+                }
+            }
+
+            pub fn address(&self) -> &RiscvAddress {
+                use RiscvInstruction::*;
+
+                match self {
+                    $(
+                        $inst { address, .. } => address,
+                    )*
                 }
             }
         }

@@ -21,13 +21,13 @@ pub fn parse_rodata(source: &str) -> HashMap<RiscvAddress, RiscvAddress> {
         return HashMap::new();
     }
     let mut addrs_iter = addrs.iter();
-    let mut jump_targets = Vec::new();
+    let mut indirect_targets = Vec::new();
     while let (Some(lh), Some(hh)) = (addrs_iter.next(), addrs_iter.next()) {
         let addr = RiscvAddress::new(&lh.0);
         let target = RiscvAddress::new(&(hh.1.clone() + &lh.1));
-        jump_targets.push((addr, target));
+        indirect_targets.push((addr, target));
     }
-    jump_targets.into_iter().collect()
+    indirect_targets.into_iter().collect()
 }
 
 pub fn parse_text(source: &str) -> Vec<RiscvInstruction> {
@@ -70,6 +70,7 @@ fn parse_line(line: &str, label: &mut Option<String>) -> Option<RiscvInstruction
     }
 }
 
+// 312 tests
 #[cfg(test)]
 mod tests {
     use crate::build_test;

@@ -1,7 +1,7 @@
 use crate::{addr, define_instruction, imm, ord, rd, rs1, rs2, rs3};
 use regex::{Regex, RegexSet};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum RiscvRegister {
     // Integer
     Zero,
@@ -151,7 +151,7 @@ impl RiscvRegister {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct RiscvImmediate(i64);
 
 impl RiscvImmediate {
@@ -170,7 +170,7 @@ impl From<i64> for RiscvImmediate {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct RiscvAddress(usize);
 
 impl RiscvAddress {
@@ -185,7 +185,7 @@ impl From<usize> for RiscvAddress {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum RiscvOrdering {
     Empty,
     Aq,

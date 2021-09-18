@@ -1,24 +1,25 @@
 use crate::cfg::{BasicBlock, Cfg, RiscvFunction};
-use crate::riscv_isa::{RiscvAddress, RiscvInstruction, FUNCTION};
+use crate::riscv_isa::{RiscvAddress, RiscvInstruction};
+use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
 pub struct CfgBuilder {
-    functions: HashSet<String>,
     instructions: Vec<RiscvInstruction>,
-    potential_targets: HashMap<RiscvAddress, RiscvAddress>,
+    indirect_targets: HashMap<RiscvAddress, RiscvAddress>,
+    functions: HashSet<String>,
     cfg: Cfg,
 }
 
 impl CfgBuilder {
     pub fn new(
         instructions: Vec<RiscvInstruction>,
-        potential_targets: HashMap<RiscvAddress, RiscvAddress>,
+        indirect_targets: HashMap<RiscvAddress, RiscvAddress>,
     ) -> Self {
         CfgBuilder {
-            functions: HashSet::new(),
             instructions,
-            potential_targets,
+            indirect_targets,
+            functions: HashSet::new(),
             cfg: Cfg::new(),
         }
     }
@@ -29,45 +30,17 @@ impl CfgBuilder {
     }
 
     fn build_function(&mut self, name: &str) {
-        use RiscvInstruction::*;
-
         self.functions.insert(name.to_string());
         let index = self
             .instructions
             .iter()
             .position(|inst| inst.label() == &Some(name.to_string()))
             .unwrap();
-        let (mut basic_blocks, potential_targets) = self.build_basic_blocks(index);
-
-        for block in &mut basic_blocks {
-            if !matches!(
-                block.instructions.last().unwrap(),
-                Beq { .. }
-                    | Bge { .. }
-                    | Bgeu { .. }
-                    | Blt { .. }
-                    | Bltu { .. }
-                    | Bne { .. }
-                    | Beqz { .. }
-                    | Bnez { .. }
-                    | Blez { .. }
-                    | J { .. }
-                    | Jr { .. }
-                    | Ret { .. }
-            ) {
-                block.instructions.push(J {
-                    address: 0,
-                    label: None,
-                    addr: 0,
-                    comment: None,
-                });
-            }
-        }
-
+        let (basic_blocks, indirect_targets) = self.build_basic_blocks(index);
         let func = RiscvFunction {
             name: name.to_string(),
             basic_blocks,
-            potential_targets,
+            indirect_targets,
         };
         self.cfg.push(func);
     }
@@ -76,123 +49,109 @@ impl CfgBuilder {
         &mut self,
         index: usize,
     ) -> (Vec<BasicBlock>, HashMap<RiscvAddress, usize>) {
-        use RiscvInstruction::*;
+        // Start indexes for basic blocks.
+        let mut starts = vec![index];
 
-        // Store heads for basic blocks.
-        let mut heads = vec![index];
-
-        // Find continue and jump targets.
-        let mut targets = Vec::new();
+        // Find basic blocks that are delimited by various jump instructions
+        // and store their continue and jump targets.
+        let mut targets = HashMap::new();
         let mut idx = index;
         while let Some(inst) = self.instructions.get(idx) {
-            // Stop when we find the next function.
+            // Stop when we enter the next function.
             if idx != index && inst.label().is_some() {
                 break;
             }
 
+            use RiscvInstruction::*;
+
             match inst {
-                Beq { addr, .. }
-                | Bge { addr, .. }
-                | Bgeu { addr, .. }
-                | Blt { addr, .. }
-                | Bltu { addr, .. }
-                | Bne { addr, .. }
-                | Beqz { addr, .. }
-                | Bnez { addr, .. }
-                | Blez { addr, .. } => {
-                    let index = self.address_to_index(addr);
-                    targets.push((idx + 1, Some(idx + 1), Some(index)));
-                    heads.extend(vec![idx + 1, index]);
-                }
-                J { addr, .. } => {
-                    let index = self.address_to_index(addr);
-                    targets.push((idx + 1, None, Some(index)));
-                    heads.extend(vec![idx + 1, index]);
-                }
-                Jr { .. } | Ret { .. } => {
-                    targets.push((idx + 1, None, None));
-                    heads.push(idx + 1);
-                }
                 Jal { comment, .. } | Jalr { comment, .. } => {
-                    // lazy_static! {
-                    //     pub static ref FUNCTION: Regex = Regex::new(r"<(.+)>").unwrap();
-                    // }
+                    lazy_static! {
+                        static ref FUNCTION: Regex = Regex::new(r"<(.+)>").unwrap();
+                    }
                     let caps = FUNCTION.captures(comment.as_ref().unwrap()).unwrap();
                     let name = caps[1].to_string();
                     if !self.functions.contains(&name) {
                         self.build_function(&name);
                     }
                 }
+                Beq { addr, .. }
+                | Bne { addr, .. }
+                | Blt { addr, .. }
+                | Bge { addr, .. }
+                | Bltu { addr, .. }
+                | Bgeu { addr, .. }
+                | Beqz { addr, .. }
+                | Bnez { addr, .. }
+                | Blez { addr, .. }
+                | Bgez { addr, .. }
+                | Bltz { addr, .. }
+                | Bgtz { addr, .. } => {
+                    let index = self.address_to_index(addr);
+                    targets.insert(idx + 1, (Some(idx + 1), Some(index)));
+                    starts.extend(vec![idx + 1, index]);
+                }
+                J { addr, .. } => {
+                    let index = self.address_to_index(addr);
+                    targets.insert(idx + 1, (None, Some(index)));
+                    starts.extend(vec![idx + 1, index]);
+                }
+                Jr { .. } | Ret { .. } => {
+                    targets.insert(idx + 1, (None, None));
+                    starts.push(idx + 1);
+                }
                 _ => {}
             }
             idx += 1;
         }
 
-        // Find potential targets that lay within this function.
-        let potential_targets: HashMap<_, _> = self
-            .potential_targets
+        // Find basic blocks that are delimited by indirect jump targets.
+        let indirect_targets: HashMap<_, _> = self
+            .indirect_targets
             .iter()
-            .map(|(addr, target)| (*addr, self.address_to_index(target)))
+            .map(|(addr, target)| (addr.clone(), self.address_to_index(target)))
             .filter(|(_, i)| &index <= i && i < &idx)
             .collect();
-
-        // Find heads for basic blocks.
-        heads.extend(potential_targets.values().cloned());
-        heads.sort_unstable();
-        heads.dedup();
-        heads.pop(); // Remove the `idx + 1` target for the final `ret`.
-
-        // Transform instruction indexes in `potential_targets` to basic block indexes.
-        let potential_targets: HashMap<_, _> = potential_targets
-            .into_iter()
-            .map(|(addr, index)| (addr, heads.iter().position(|i| i == &index).unwrap()))
-            .collect();
+        starts.extend(indirect_targets.values());
+        starts.sort_unstable();
+        starts.dedup();
 
         // Build basic blocks.
         let mut blocks = Vec::new();
-        let mut head_index = 0;
-        let mut target_index = 0;
-        while head_index < heads.len() {
-            let head = heads[head_index];
-            let next_head = heads.get(head_index + 1).cloned();
-            let next_jump = targets[target_index].0;
-            if matches!(next_head, Some(next_head) if next_head < next_jump) {
-                let block = BasicBlock {
-                    instructions: self.instructions[head..next_head.unwrap()].to_vec(),
-                    continue_target: Some(self.find_basic_block_index(&heads, &next_head.unwrap())),
+        let mut start_iter = starts.iter();
+        let mut start = *start_iter.next().unwrap();
+        let mut end = start;
+        for s in start_iter {
+            start = end;
+            end = *s;
+            let block = match targets.get(&end) {
+                Some((continue_target, jump_target)) => BasicBlock {
+                    instructions: self.instructions[start..end].to_vec(),
+                    continue_target: continue_target
+                        .map(|i| self.find_basic_block_index(&starts, &i)),
+                    jump_target: jump_target.map(|i| self.find_basic_block_index(&starts, &i)),
+                },
+                None => BasicBlock {
+                    instructions: self.instructions[start..end].to_vec(),
+                    continue_target: Some(self.find_basic_block_index(&starts, &end)),
                     jump_target: None,
-                };
-                blocks.push(block);
-            } else {
-                let continue_target = targets[target_index]
-                    .1
-                    .map(|i| self.find_basic_block_index(&heads, &i));
-                let jump_target = targets[target_index]
-                    .2
-                    .map(|i| self.find_basic_block_index(&heads, &i));
-                let block = BasicBlock {
-                    instructions: self.instructions[head..next_jump].to_vec(),
-                    continue_target,
-                    jump_target,
-                };
-                blocks.push(block);
-                target_index += 1;
-            }
-            head_index += 1;
+                },
+            };
+            blocks.push(block);
         }
 
-        (blocks, potential_targets)
+        (blocks, indirect_targets)
     }
 
     fn address_to_index(&self, address: &RiscvAddress) -> usize {
         self.instructions
             .iter()
             .position(|inst| inst.address() == address)
-            .unwrap_or_else(|| panic!("Unknown address `{}`", address))
+            .unwrap()
     }
 
-    fn find_basic_block_index(&self, heads: &[usize], index: &usize) -> usize {
-        heads.iter().position(|head| head == index).unwrap()
+    fn find_basic_block_index(&self, starts: &[usize], start: &usize) -> usize {
+        starts.iter().position(|s| s == start).unwrap()
     }
 }
 

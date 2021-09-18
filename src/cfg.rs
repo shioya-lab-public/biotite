@@ -7,7 +7,7 @@ pub type Cfg = Vec<RiscvFunction>;
 pub struct RiscvFunction {
     pub name: String,
     pub basic_blocks: Vec<BasicBlock>,
-    pub potential_targets: HashMap<RiscvAddress, usize>,
+    pub indirect_targets: HashMap<RiscvAddress, usize>,
 }
 
 #[derive(Debug, PartialEq)]
