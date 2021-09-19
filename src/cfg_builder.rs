@@ -115,6 +115,10 @@ impl CfgBuilder {
         starts.extend(indirect_targets.values());
         starts.sort_unstable();
         starts.dedup();
+        let indirect_targets: HashMap<_, _> = indirect_targets
+            .into_iter()
+            .map(|(addr, index)| (addr, self.find_basic_block_index(&starts, &index)))
+            .collect();
 
         // Build basic blocks.
         let mut blocks = Vec::new();
@@ -165,50 +169,317 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn build_cfg() {
+    fn minimal() {
         let source = "
-Disassembly of section .text:
+            Disassembly of section .text:
 
-0000000000010450 <s>:
-   10484:	8782                	jr	a5
-   10486:	0001                	nop
-   1048e:	8082                	ret
-
-0000000000010490 <f>:
-   10490:	1141                	addi	sp,sp,-16
-   10496:	feb50de3          	beq	a0,a1,10490 <f>
-   1049a:	feb55be3          	bge	a0,a1,10490 <f>
-   1049e:	feb579e3          	bgeu	a0,a1,10490 <f>
-   104a2:	feb547e3          	blt	a0,a1,10490 <f>
-   104a6:	feb565e3          	bltu	a0,a1,10490 <f>
-   104aa:	feb513e3          	bne	a0,a1,10490 <f>
-   104ae:	d16d                	beqz	a0,10490 <f>
-   104b0:	f165                	bnez	a0,10490 <f>
-   104b2:	bff9                	j	10490 <f>
-
-00000000000104bc <main>:
-   104c8:	f89ff0ef          	jal	ra,10450 <s>
-   104cc:	00000097          	auipc	ra,0x0
-   104d0:	fbe080e7          	jalr	-66(ra) # 104b8 <f>
-   104da:	8082                	ret
-
-Disassembly of section .rodata:
-
-0000000000010538 <.rodata>:
-   10538:	0486                	slli	s1,s1,0x1
-   1053a:	0001                	nop
+            00000000000105c4 <main>:
+                105c4:	8082                	ret
         ";
-        let potential_targets = riscv_parser::parse_rodata(source);
+        let indirect_targets = riscv_parser::parse_rodata(source);
         let riscv_insts = riscv_parser::parse_text(source);
-        let cfg = CfgBuilder::new(riscv_insts, potential_targets).run();
+        let cfg = CfgBuilder::new(riscv_insts, indirect_targets).run();
+        let expected = vec![RiscvFunction {
+            name: String::from("main"),
+            basic_blocks: vec![BasicBlock {
+                instructions: vec![Ret {
+                    label: Some(String::from("main")),
+                    address: 0x105c4.into(),
+                    comment: None,
+                }],
+                continue_target: None,
+                jump_target: None,
+            }],
+            indirect_targets: HashMap::new(),
+        }];
+        assert_eq!(cfg, expected);
+    }
+
+    #[test]
+    fn functions() {
+        let source = "
+            Disassembly of section .text:
+
+            0000000000010506 <f>:
+                1051c:	8082                	ret
+            
+            000000000001051e <main>:
+                1052a:	ff8080e7          	jalr	-8(ra) # 1051e <main>
+                10530:	fdbff0ef          	jal	ra,104e0 <f>
+                10534:	8082                	ret
+        ";
+        let indirect_targets = riscv_parser::parse_rodata(source);
+        let riscv_insts = riscv_parser::parse_text(source);
+        let cfg = CfgBuilder::new(riscv_insts, indirect_targets).run();
         let expected = vec![
             RiscvFunction {
-                name: String::from("s"),
+                name: String::from("f"),
+                basic_blocks: vec![BasicBlock {
+                    instructions: vec![Ret {
+                        label: Some(String::from("f")),
+                        address: 0x1051c.into(),
+                        comment: None,
+                    }],
+                    continue_target: None,
+                    jump_target: None,
+                }],
+                indirect_targets: HashMap::new(),
+            },
+            RiscvFunction {
+                name: String::from("main"),
+                basic_blocks: vec![BasicBlock {
+                    instructions: vec![
+                        Jalr {
+                            label: Some(String::from("main")),
+                            address: 0x1052a.into(),
+                            rd: Ra,
+                            imm: (-8).into(),
+                            rs1: Ra,
+                            comment: Some(String::from("# 1051e <main>")),
+                        },
+                        Jal {
+                            label: None,
+                            address: 0x10530.into(),
+                            rd: Ra,
+                            addr: 0x104e0.into(),
+                            comment: Some(String::from("<f>")),
+                        },
+                        Ret {
+                            label: None,
+                            address: 0x10534.into(),
+                            comment: None,
+                        },
+                    ],
+                    continue_target: None,
+                    jump_target: None,
+                }],
+                indirect_targets: HashMap::new(),
+            },
+        ];
+        assert_eq!(cfg, expected);
+    }
+
+    #[test]
+    fn branches() {
+        let source = "
+            Disassembly of section .text:
+
+            00000000000104f8 <main>:
+                104f8:	fe528de3          	beq	t0,t0,104f8 <main>
+                10502:	fe529be3          	bne	t0,t0,104f8 <main>
+                10506:	fe52c9e3          	blt	t0,t0,104f8 <main>
+                1050a:	fe52d7e3          	bge	t0,t0,104f8 <main>
+                1050e:	fe52e5e3          	bltu	t0,t0,104f8 <main>
+                10512:	fe52f3e3          	bgeu	t0,t0,104f8 <main>
+                10516:	fe0281e3          	beqz	t0,104f8 <main>
+                1051a:	fc029fe3          	bnez	t0,104f8 <main>
+                1051e:	fc505de3          	blez	t0,104f8 <main>
+                10522:	fc02dbe3          	bgez	t0,104f8 <main>
+                10526:	fc02c9e3          	bltz	t0,104f8 <main>
+                1052a:	fc5047e3          	bgtz	t0,104f8 <main>
+                10536:	8082                	ret
+        ";
+        let indirect_targets = riscv_parser::parse_rodata(source);
+        let riscv_insts = riscv_parser::parse_text(source);
+        let cfg = CfgBuilder::new(riscv_insts, indirect_targets).run();
+        let expected = vec![RiscvFunction {
+            name: String::from("main"),
+            basic_blocks: vec![
+                BasicBlock {
+                    instructions: vec![Beq {
+                        label: Some(String::from("main")),
+                        address: 0x104f8.into(),
+                        rs1: T0,
+                        rs2: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(1),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Bne {
+                        label: None,
+                        address: 0x10502.into(),
+                        rs1: T0,
+                        rs2: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(2),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Blt {
+                        label: None,
+                        address: 0x10506.into(),
+                        rs1: T0,
+                        rs2: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(3),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Bge {
+                        label: None,
+                        address: 0x1050a.into(),
+                        rs1: T0,
+                        rs2: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(4),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Bltu {
+                        label: None,
+                        address: 0x1050e.into(),
+                        rs1: T0,
+                        rs2: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(5),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Bgeu {
+                        label: None,
+                        address: 0x10512.into(),
+                        rs1: T0,
+                        rs2: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(6),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Beqz {
+                        label: None,
+                        address: 0x10516.into(),
+                        rs1: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(7),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Bnez {
+                        label: None,
+                        address: 0x1051a.into(),
+                        rs1: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(8),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Blez {
+                        label: None,
+                        address: 0x1051e.into(),
+                        rs1: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(9),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Bgez {
+                        label: None,
+                        address: 0x10522.into(),
+                        rs1: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(10),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Bltz {
+                        label: None,
+                        address: 0x10526.into(),
+                        rs1: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(11),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Bgtz {
+                        label: None,
+                        address: 0x1052a.into(),
+                        rs1: T0,
+                        addr: 0x104f8.into(),
+                        comment: Some(String::from("<main>")),
+                    }],
+                    continue_target: Some(12),
+                    jump_target: Some(0),
+                },
+                BasicBlock {
+                    instructions: vec![Ret {
+                        label: None,
+                        address: 0x10536.into(),
+                        comment: None,
+                    }],
+                    continue_target: None,
+                    jump_target: None,
+                },
+            ],
+            indirect_targets: HashMap::new(),
+        }];
+        assert_eq!(cfg, expected);
+    }
+
+    #[test]
+    fn indirect_jumps() {
+        let source = "
+            Disassembly of section .text:
+
+            00000000000104e0 <f>:
+                104e0:	8782                	jr	a5
+                1050e:	fec42783          	lw	a5,-20(s0)
+                10512:	2785                	addiw	a5,a5,1
+                10514:	fef42623          	sw	a5,-20(s0)
+                10518:	a80d                	j	1054a <f+0x6a>
+                1053e:	fec42783          	lw	a5,-20(s0)
+                10542:	2795                	addiw	a5,a5,5
+                10544:	fef42623          	sw	a5,-20(s0)
+                10548:	0001                	nop
+                1054a:	8082                	ret
+            
+            0000000000010556 <main>:
+                10556:	f81ff0ef          	jal	ra,104e0 <f>
+                1056e:	8082                	ret
+            
+            Disassembly of section .rodata:
+            
+            00000000000105cc <.rodata>:
+                105cc:	054a                	slli	a0,a0,0x12
+                105ce:	0001                	nop
+                105d0:	050e                	slli	a0,a0,0x3
+                105d2:	0001                	nop
+                105e0:	053e                	slli	a0,a0,0xf
+                105e2:	0001                	nop
+        ";
+        let indirect_targets = riscv_parser::parse_rodata(source);
+        let riscv_insts = riscv_parser::parse_text(source);
+        let cfg = CfgBuilder::new(riscv_insts, indirect_targets).run();
+        let expected = vec![
+            RiscvFunction {
+                name: String::from("f"),
                 basic_blocks: vec![
                     BasicBlock {
                         instructions: vec![Jr {
-                            label: Some(String::from("s")),
-                            address: 66692,
+                            label: Some(String::from("f")),
+                            address: 0x104e0.into(),
                             rs1: A5,
                             comment: None,
                         }],
@@ -217,142 +488,92 @@ Disassembly of section .rodata:
                     },
                     BasicBlock {
                         instructions: vec![
-                            Nop {
+                            Lw {
                                 label: None,
-                                address: 66694,
+                                address: 0x1050e.into(),
+                                rd: A5,
+                                imm: (-20).into(),
+                                rs1: S0,
                                 comment: None,
                             },
-                            Ret {
+                            Addiw {
                                 label: None,
-                                address: 66702,
+                                address: 0x10512.into(),
+                                rd: A5,
+                                rs1: A5,
+                                imm: 1.into(),
+                                comment: None,
+                            },
+                            Sw {
+                                label: None,
+                                address: 0x10514.into(),
+                                rs2: A5,
+                                imm: (-20).into(),
+                                rs1: S0,
+                                comment: None,
+                            },
+                            J {
+                                label: None,
+                                address: 0x10518.into(),
+                                addr: 0x1054a.into(),
+                                comment: Some(String::from("<f+0x6a>")),
+                            },
+                        ],
+                        continue_target: None,
+                        jump_target: Some(3),
+                    },
+                    BasicBlock {
+                        instructions: vec![
+                            Lw {
+                                label: None,
+                                address: 0x1053e.into(),
+                                rd: A5,
+                                imm: (-20).into(),
+                                rs1: S0,
+                                comment: None,
+                            },
+                            Addiw {
+                                label: None,
+                                address: 0x10542.into(),
+                                rd: A5,
+                                rs1: A5,
+                                imm: 5.into(),
+                                comment: None,
+                            },
+                            Sw {
+                                label: None,
+                                address: 0x10544.into(),
+                                rs2: A5,
+                                imm: (-20).into(),
+                                rs1: S0,
+                                comment: None,
+                            },
+                            Nop {
+                                label: None,
+                                address: 0x10548.into(),
                                 comment: None,
                             },
                         ],
+                        continue_target: Some(3),
+                        jump_target: None,
+                    },
+                    BasicBlock {
+                        instructions: vec![Ret {
+                            label: None,
+                            address: 0x1054a.into(),
+                            comment: None,
+                        }],
                         continue_target: None,
                         jump_target: None,
                     },
                 ],
-                potential_targets: vec![(66872, 1)].into_iter().collect(),
-            },
-            RiscvFunction {
-                name: String::from("f"),
-                basic_blocks: vec![
-                    BasicBlock {
-                        instructions: vec![
-                            Addi {
-                                label: Some(String::from("f")),
-                                address: 66704,
-                                rd: Sp,
-                                rs1: Sp,
-                                imm: -16,
-                                comment: None,
-                            },
-                            Beq {
-                                label: None,
-                                address: 66710,
-                                rs1: A0,
-                                rs2: A1,
-                                addr: 66704,
-                                comment: Some(String::from(" <f>")),
-                            },
-                        ],
-                        continue_target: Some(1),
-                        jump_target: Some(0),
-                    },
-                    BasicBlock {
-                        instructions: vec![Bge {
-                            label: None,
-                            address: 66714,
-                            rs1: A0,
-                            rs2: A1,
-                            addr: 66704,
-                            comment: Some(String::from(" <f>")),
-                        }],
-                        continue_target: Some(2),
-                        jump_target: Some(0),
-                    },
-                    BasicBlock {
-                        instructions: vec![Bgeu {
-                            label: None,
-                            address: 66718,
-                            rs1: A0,
-                            rs2: A1,
-                            addr: 66704,
-                            comment: Some(String::from(" <f>")),
-                        }],
-                        continue_target: Some(3),
-                        jump_target: Some(0),
-                    },
-                    BasicBlock {
-                        instructions: vec![Blt {
-                            label: None,
-                            address: 66722,
-                            rs1: A0,
-                            rs2: A1,
-                            addr: 66704,
-                            comment: Some(String::from(" <f>")),
-                        }],
-                        continue_target: Some(4),
-                        jump_target: Some(0),
-                    },
-                    BasicBlock {
-                        instructions: vec![Bltu {
-                            label: None,
-                            address: 66726,
-                            rs1: A0,
-                            rs2: A1,
-                            addr: 66704,
-                            comment: Some(String::from(" <f>")),
-                        }],
-                        continue_target: Some(5),
-                        jump_target: Some(0),
-                    },
-                    BasicBlock {
-                        instructions: vec![Bne {
-                            label: None,
-                            address: 66730,
-                            rs1: A0,
-                            rs2: A1,
-                            addr: 66704,
-                            comment: Some(String::from(" <f>")),
-                        }],
-                        continue_target: Some(6),
-                        jump_target: Some(0),
-                    },
-                    BasicBlock {
-                        instructions: vec![Beqz {
-                            label: None,
-                            address: 66734,
-                            rs1: A0,
-                            addr: 66704,
-                            comment: Some(String::from(" <f>")),
-                        }],
-                        continue_target: Some(7),
-                        jump_target: Some(0),
-                    },
-                    BasicBlock {
-                        instructions: vec![Bnez {
-                            label: None,
-                            address: 66736,
-                            rs1: A0,
-                            addr: 66704,
-                            comment: Some(String::from(" <f>")),
-                        }],
-                        continue_target: Some(8),
-                        jump_target: Some(0),
-                    },
-                    BasicBlock {
-                        instructions: vec![J {
-                            label: None,
-                            address: 66738,
-                            addr: 66704,
-                            comment: Some(String::from(" <f>")),
-                        }],
-                        continue_target: None,
-                        jump_target: Some(0),
-                    },
-                ],
-                potential_targets: HashMap::new(),
+                indirect_targets: vec![
+                    (0x105cc.into(), 3),
+                    (0x105d0.into(), 1),
+                    (0x105e0.into(), 2),
+                ]
+                .into_iter()
+                .collect(),
             },
             RiscvFunction {
                 name: String::from("main"),
@@ -360,36 +581,21 @@ Disassembly of section .rodata:
                     instructions: vec![
                         Jal {
                             label: Some(String::from("main")),
-                            address: 66760,
+                            address: 0x10556.into(),
                             rd: Ra,
-                            addr: 66640,
-                            comment: Some(String::from(" <s>")),
-                        },
-                        Auipc {
-                            label: None,
-                            address: 66764,
-                            rd: Ra,
-                            imm: 0,
-                            comment: None,
-                        },
-                        Jalr {
-                            label: None,
-                            address: 66768,
-                            rd: Ra,
-                            rs1: Ra,
-                            imm: -66,
-                            comment: Some(String::from(" # 104b8 <f>")),
+                            addr: 0x104e0.into(),
+                            comment: Some(String::from("<f>")),
                         },
                         Ret {
                             label: None,
-                            address: 66778,
+                            address: 0x1056e.into(),
                             comment: None,
                         },
                     ],
                     continue_target: None,
                     jump_target: None,
                 }],
-                potential_targets: HashMap::new(),
+                indirect_targets: HashMap::new(),
             },
         ];
         assert_eq!(cfg, expected);

@@ -17,17 +17,57 @@ pub fn parse_rodata(source: &str) -> HashMap<RiscvAddress, RiscvAddress> {
             (caps[1].to_string(), caps[2].to_string())
         })
         .collect();
-    if addrs.is_empty() {
-        return HashMap::new();
-    }
     let mut addrs_iter = addrs.iter();
-    let mut indirect_targets = Vec::new();
+    let mut indirect_targets = HashMap::new();
     while let (Some(lh), Some(hh)) = (addrs_iter.next(), addrs_iter.next()) {
         let addr = RiscvAddress::new(&lh.0);
         let target = RiscvAddress::new(&(hh.1.clone() + &lh.1));
-        indirect_targets.push((addr, target));
+        indirect_targets.insert(addr, target);
     }
-    indirect_targets.into_iter().collect()
+    indirect_targets
+}
+
+pub fn parse_sdata(source: &str) -> HashMap<String, String> {
+    let lines: Vec<_> = source
+        .lines()
+        .skip_while(|line| !line.contains(".sdata"))
+        .skip(2)
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .take_while(|line| !line.starts_with("Disassembly of section"))
+        .collect();
+    let mut lines_iter = lines.iter();
+    let mut statics = HashMap::new();
+    while let (Some(name_line), Some(value_line)) = (lines_iter.next(), lines_iter.next()) {
+        lazy_static! {
+            static ref NAME: Regex = Regex::new(r"<(.+)>").unwrap();
+            static ref VALUE: Regex = Regex::new(r":\s+(([[:xdigit:]]+\s)+)").unwrap();
+        }
+        let caps = NAME.captures(name_line).unwrap();
+        let name = caps[1].to_string();
+        let value = match VALUE.captures(value_line) {
+            Some(value) => value[1].split(' ').rev().collect::<Vec<_>>().join(""),
+            None => String::new(),
+        };
+        statics.insert(name, value);
+    }
+    statics
+}
+
+pub fn parse_sbss(source: &str) -> HashMap<String, String> {
+    lazy_static! {
+        static ref NAME: Regex = Regex::new(r"<(.+)>").unwrap();
+    }
+    source
+        .lines()
+        .skip_while(|line| !line.contains(".sbss"))
+        .skip(2)
+        .take_while(|line| !line.starts_with("Disassembly of section"))
+        .filter_map(|line| {
+            NAME.captures(line)
+                .map(|caps| (caps[1].to_string(), String::new()))
+        })
+        .collect()
 }
 
 pub fn parse_text(source: &str) -> Vec<RiscvInstruction> {
@@ -104,16 +144,44 @@ mod tests {
                 10598:	047e                	slli	s0,s0,0x1f
                 1059a:	0001                	nop
             
+            Disassembly of section .sdata:
+
+            0000000000012020 <_IO_stdin_used>:
+                12020:	0001 0002 0000 0000                         ........
+            
+            0000000000012028 <__dso_handle>:
+                ...
+            
+            0000000000012030 <g1>:
+                12030:	0001 0000                                   ....
+            
+            Disassembly of section .sbss:
+            
+            0000000000012034 <g2>:
+                12034:	0000 0000                                   ....
+
         ";
 
-        let jump_targets = super::parse_rodata("");
-        assert!(jump_targets.is_empty());
+        let indirect_targets = super::parse_rodata("");
+        assert!(indirect_targets.is_empty());
 
-        let jump_targets = super::parse_rodata(source);
+        let indirect_targets = super::parse_rodata(source);
         let mut expected: HashMap<RiscvAddress, RiscvAddress> = HashMap::new();
         expected.insert(0x10594.into(), 0x000104ba.into());
         expected.insert(0x10598.into(), 0x0001047e.into());
-        assert_eq!(jump_targets, expected);
+        assert_eq!(indirect_targets, expected);
+
+        let statics = super::parse_sdata(source);
+        let mut expected = HashMap::new();
+        expected.insert("_IO_stdin_used".to_string(), "0000000000020001".to_string());
+        expected.insert("__dso_handle".to_string(), "".to_string());
+        expected.insert("g1".to_string(), "00000001".to_string());
+        assert_eq!(statics, expected);
+
+        let statics = super::parse_sbss(source);
+        let mut expected = HashMap::new();
+        expected.insert("g2".to_string(), "".to_string());
+        assert_eq!(statics, expected);
 
         let insts = super::parse_text(source);
         let expected = vec![

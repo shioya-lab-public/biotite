@@ -222,19 +222,19 @@ In RV64I, only the low 6 bits of rs2 are considered for the shift amount
 Unlike RISC-V, taking the remainder of a division by zero in LLVM is undefined behavior.
 
 section .sdata (initialized static data)
-section .bss (uninitialized static data)
+section .sbss (uninitialized static data)
 
 ``` Bash
 clang -emit-llvm examples/test.c -S -o examples/reference.ll
 
 riscv64-unknown-linux-gnu-gcc examples/test.c -o examples/test
-riscv64-unknown-linux-gnu-objdump -d -j.text -j.rodata -j.sdata -j.bss examples/test > examples/test.dump
+riscv64-unknown-linux-gnu-objdump -d -j.text -j.rodata -j.sdata -j.sbss examples/test > examples/test.dump
 
 cargo run -- examples/test.dump -o examples/test.ll
 lli examples/test.ll
 echo $?
 
-riscv64-unknown-linux-gnu-g++ -pthread examples/test.cpp -o examples/test && riscv64-unknown-linux-gnu-objdump -d -j.text -j.rodata -j.sdata -j.bss examples/test > examples/test.dump
+riscv64-unknown-linux-gnu-gcc -pthread examples/test.c -o examples/test && riscv64-unknown-linux-gnu-objdump -d -j.text -j.rodata -j.sdata -j.sbss examples/test > examples/test.dump
 ```
 
 [LLVM Language Reference Manual](https://releases.llvm.org/12.0.0/docs/LangRef.html)

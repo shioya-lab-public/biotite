@@ -21,11 +21,11 @@
 // #include <math.h>
 // extern int aT;
 
-const int g1 = 9;
-const int g2 = 3;
+int g1 = 1;
+int g2;
 
-double s(double n) {
-    switch ((int)n) {
+int f(int n) {
+    switch (n) {
         case 1:
             n += 1;
             break;
@@ -42,13 +42,10 @@ double s(double n) {
             n += 5;
             break;
     }
-    if (n > 0) {
-        return 3;
-    }
     return n;
 }
-
-int main(int argc, char** argv) {
+// #include <stdio.h>
+int main() {
     // double n = 0;
     // for (int i = 0; i < 1; ++i) {
     //     ++n;
@@ -66,9 +63,19 @@ int main(int argc, char** argv) {
     //     return 9;
     // }
     // asm volatile(
-    //     "nop\n"
+    //     "beq t0,t0,main\n"
+    //     "bne t0,t0,main\n"
+    //     "blt t0,t0,main\n"
+    //     "bge t0,t0,main\n"
+    //     "bltu t0,t0,main\n"
+    //     "bgeu t0,t0,main\n"
+    //     "beqz t0,main\n"
+    //     "bnez t0,main\n"
+    //     "blez t0,main\n"
+    //     "bgez t0,main\n"
+    //     "bltz t0,main\n"
+    //     "bgtz t0,main\n"
     // );
-    
     return g1+g2;  // `echo $?` => 6
 }
 

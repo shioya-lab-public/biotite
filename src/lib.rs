@@ -14,6 +14,8 @@ use cfg_builder::CfgBuilder;
 
 pub fn run(source: &str) -> String {
     let indirect_targets = riscv_parser::parse_rodata(source);
+    let mut statics = riscv_parser::parse_sdata(source);
+    statics.extend(riscv_parser::parse_sbss(source));
     let rv_insts = riscv_parser::parse_text(source);
     let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
     // let ll_program = llvm_translator::translate(cfg);
