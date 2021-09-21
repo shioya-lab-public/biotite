@@ -3,14 +3,15 @@ extern crate lazy_static;
 
 mod cfg;
 mod cfg_builder;
+mod llvm_isa;
+mod llvm_serializer;
+mod llvm_translator;
 mod riscv_isa;
 mod riscv_macro;
 mod riscv_parser;
-// mod llvm_isa;
-// mod llvm_translator;
-// mod llvm_serializer;
 
 use cfg_builder::CfgBuilder;
+use llvm_translator::LlvmTranslator;
 
 pub fn run(source: &str) -> String {
     let indirect_targets = riscv_parser::parse_rodata(source);
@@ -18,7 +19,6 @@ pub fn run(source: &str) -> String {
     statics.extend(riscv_parser::parse_sbss(source));
     let rv_insts = riscv_parser::parse_text(source);
     let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
-    // let ll_program = llvm_translator::translate(cfg);
-    // llvm_serializer::serialize(ll_program)
-    String::new()
+    let ll_program = LlvmTranslator::new(cfg, statics).run();
+    llvm_serializer::serialize(ll_program)
 }

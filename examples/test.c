@@ -21,8 +21,9 @@
 // #include <math.h>
 // extern int aT;
 
-int g1 = 1;
-int g2;
+double g1 = 1;
+long g2;
+long g3;
 
 int f(int n) {
     switch (n) {
@@ -76,7 +77,9 @@ int main() {
     //     "bltz t0,main\n"
     //     "bgtz t0,main\n"
     // );
-    return g1+g2;  // `echo $?` => 6
+    g2 = 999999999999;
+    g3 = 999999999999;
+    return g1+g2+g3;  // `echo $?` => 6
 }
 
 // int main(void) {
