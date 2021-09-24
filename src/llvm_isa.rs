@@ -1,17 +1,52 @@
-use crate::riscv_isa::{RiscvAddress, RiscvImmediate, RiscvRegister};
+use crate::riscv_isa::{RiscvImmediate, RiscvRegister};
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter, Result};
 
+#[derive(Debug, PartialEq)]
 pub struct Program {
     pub statics: HashMap<String, String>,
     pub functions: Vec<LlvmFunction>,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct LlvmFunction {
     pub name: String,
     pub body: Vec<LlvmInstruction>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum LlvmValue {
+    GlobalVar(String),
+    LocalVar(usize),
+    Int(i64),
+}
+
+impl From<RiscvRegister> for LlvmValue {
+    fn from(reg: RiscvRegister) -> Self {
+        let mut reg_str = format!("{:?}", reg);
+        reg_str.make_ascii_lowercase();
+        LlvmValue::GlobalVar(reg_str)
+    }
+}
+
+impl From<usize> for LlvmValue {
+    fn from(temp: usize) -> Self {
+        LlvmValue::LocalVar(temp)
+    }
+}
+
+impl From<RiscvImmediate> for LlvmValue {
+    fn from(RiscvImmediate(imm): RiscvImmediate) -> Self {
+        LlvmValue::Int(imm)
+    }
+}
+
+impl From<i64> for LlvmValue {
+    fn from(val: i64) -> Self {
+        LlvmValue::Int(val)
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum LlvmType {
     I8,
     I16,
@@ -21,13 +56,7 @@ pub enum LlvmType {
     F64,
 }
 
-pub enum LlvmValue {
-    GlobalVar(RiscvRegister),
-    LocalVar(usize),
-    Int(i64),
-    Fp(f64),
-}
-
+#[derive(Debug, PartialEq)]
 pub enum LlvmOrdering {
     Monotonic,
     Acquire,
@@ -35,25 +64,7 @@ pub enum LlvmOrdering {
     AcqRel,
 }
 
-pub enum LlvmIntCondition {
-    Eq,  //
-    Ne,  //
-    Ugt, //
-    Uge, //
-    Ult, //
-    Ule, //
-    Sgt, //
-    Sge, //
-    Slt, //
-    Sle, //
-}
-
-pub enum LlvmFpCondition {
-    Eq,  //
-    Slt, //
-    Sle, //
-}
-
+#[derive(Debug, PartialEq)]
 pub enum LlvmOperation {
     Xchg,
     Add,
@@ -66,7 +77,31 @@ pub enum LlvmOperation {
     Umin,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum LlvmIntCondition {
+    Eq,
+    Ne,
+    Ugt,
+    Uge,
+    Ult,
+    Ule,
+    Sgt,
+    Sge,
+    Slt,
+    Sle,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum LlvmFpCondition {
+    Oeq,
+    Olt,
+    Ole,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum LlvmInstruction {
+    Label(String),
+
     // Terminator Instructions
     Ret,
     ConBr {
@@ -75,11 +110,11 @@ pub enum LlvmInstruction {
         iffalse: String,
     },
     UnconBr(String),
-    Label(String),
     Switch {
+        ty: LlvmType,
         value: LlvmValue,
         defaultdest: String,
-        targets: Vec<(LlvmValue, String)>,
+        targets: Vec<(LlvmType, LlvmValue, String)>,
     },
 
     // Unary Operations
@@ -92,6 +127,7 @@ pub enum LlvmInstruction {
     // Binary Operations
     Add {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
@@ -103,6 +139,7 @@ pub enum LlvmInstruction {
     },
     Sub {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
@@ -114,6 +151,7 @@ pub enum LlvmInstruction {
     },
     Mul {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
@@ -125,11 +163,13 @@ pub enum LlvmInstruction {
     },
     Udiv {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
     Sdiv {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
@@ -141,11 +181,13 @@ pub enum LlvmInstruction {
     },
     Urem {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
     Srem {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
@@ -153,31 +195,37 @@ pub enum LlvmInstruction {
     // Bitwise Binary Operations
     Shl {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
     Lshr {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
     Ashr {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
     And {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
     Or {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
     Xor {
         result: LlvmValue,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
@@ -193,8 +241,9 @@ pub enum LlvmInstruction {
         value: LlvmValue,
         pointer: LlvmValue,
     },
-    Fence,
+    Fence(LlvmOrdering),
     Cmpxchg {
+        ty: LlvmType,
         pointer: LlvmValue,
         cmp: LlvmValue,
         new: LlvmValue,
@@ -203,11 +252,16 @@ pub enum LlvmInstruction {
     },
     Atomicrmw {
         operation: LlvmOperation,
+        ty: LlvmType,
         pointer: LlvmValue,
         value: LlvmValue,
         ordering: LlvmOrdering,
     },
-    Getelementptr(LlvmValue),
+    Getelementptr {
+        ty: LlvmType,
+        pointer: LlvmValue,
+        indexes: Vec<(LlvmType, LlvmValue)>,
+    },
 
     // Conversion Operations
     Zext {
@@ -257,6 +311,7 @@ pub enum LlvmInstruction {
     Icmp {
         result: LlvmValue,
         cond: LlvmIntCondition,
+        ty: LlvmType,
         op1: LlvmValue,
         op2: LlvmValue,
     },
@@ -269,70 +324,40 @@ pub enum LlvmInstruction {
     },
     Call(String),
 
-    // Intrinsics
+    // Standard C/C++ Library Intrinsics
     Sqrt {
-        ty: LlvmType,
         result: LlvmValue,
-        val: LlvmValue,
+        ty: LlvmType,
+        value: LlvmValue,
     },
     Fma {
-        ty: LlvmType,
         result: LlvmValue,
+        ty: LlvmType,
         a: LlvmValue,
         b: LlvmValue,
         c: LlvmValue,
     },
     Fabs {
-        ty: LlvmType,
         result: LlvmValue,
-        val: LlvmValue,
-    },
-    Copysign {
         ty: LlvmType,
-        result: LlvmValue,
-        mag: LlvmValue,
-        sgn: LlvmValue,
+        value: LlvmValue,
     },
     Minimum {
+        result: LlvmValue,
         ty: LlvmType,
-        val0: LlvmValue,
-        val1: LlvmValue,
+        op1: LlvmValue,
+        op2: LlvmValue,
     },
     Maximum {
+        result: LlvmValue,
         ty: LlvmType,
-        val0: LlvmValue,
-        val1: LlvmValue,
+        op1: LlvmValue,
+        op2: LlvmValue,
+    },
+    Copysign {
+        result: LlvmValue,
+        ty: LlvmType,
+        mag: LlvmValue,
+        sign: LlvmValue,
     },
 }
-
-// impl Display for LlvmCondition {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-//         use LlvmCondition::*;
-
-//         match self {
-//             Eq => write!(f, "eq",),
-//             Ne => write!(f, "ne",),
-//             Sge => write!(f, "sge",),
-//             Uge => write!(f, "uge",),
-//             Slt => write!(f, "slt",),
-//             Ult => write!(f, "ult",),
-//             Sle => write!(f, "sle",),
-//         }
-//     }
-// }
-
-// impl Display for LlvmType {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-//         use LlvmType::*;
-
-//         match self {
-//             I8 => write!(f, "i8",),
-//             U8 => write!(f, "i8",), // LLVM does not distinguish signed and unsigned integers.
-//             I16 => write!(f, "i16",),
-//             U16 => write!(f, "i16",),
-//             I32 => write!(f, "i32",),
-//             U32 => write!(f, "i32",),
-//             I64 => write!(f, "i64",),
-//         }
-//     }
-// }

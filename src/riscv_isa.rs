@@ -143,16 +143,13 @@ impl RiscvRegister {
             "ft10" => Ft10,
             "ft11" => Ft11,
 
-            // _ => unreachable!(),
-            s => {
-                panic!("### {}", s);
-            }
+            _ => unreachable!(),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct RiscvImmediate(i64);
+pub struct RiscvImmediate(pub i64);
 
 impl RiscvImmediate {
     pub fn new(s: &str) -> Self {

@@ -47,7 +47,7 @@ int f(int n) {
 }
 // #include <stdio.h>
 int main() {
-    // double n = 0;
+    int n = 0;
     // for (int i = 0; i < 1; ++i) {
     //     ++n;
     // }
@@ -57,9 +57,9 @@ int main() {
     // do {
     //     ++n;
     // } while (0);
-    // if (1) {
-    //     s(n);
-    // }
+    if (1) {
+        f(n);
+    }
     // if (argc > (long)argv) {
     //     return 9;
     // }

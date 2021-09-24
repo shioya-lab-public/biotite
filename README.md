@@ -214,7 +214,7 @@ assume little endian
 
 The base integer instruction sets use a two’s-complement representation for signed integer values.
 RV32I: 40 insts including `ecall`, `ebreak`, and `fence`
-The program counter pc holds the address of thecurrent instruction
+The program counter pc holds the address of the current instruction
 Except for the 5-bit immediates used in CSR instructions (Chapter 9), immediates are always sign-extended
 the shift amount held in the lower 5 bits
 The target of `JALR` address is obtained by adding the sign-extended 12-bit I-immediate to the register rs1, then setting the least-significant bit of the result to zero.
