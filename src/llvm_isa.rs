@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
-    pub statics: HashMap<String, String>,
+    pub statics: HashMap<String, (String, LlvmType)>,
     pub functions: Vec<LlvmFunction>,
 }
 
@@ -22,7 +22,7 @@ pub enum LlvmValue {
 
 impl From<RiscvRegister> for LlvmValue {
     fn from(reg: RiscvRegister) -> Self {
-        let mut reg_str = format!("{:?}", reg);
+        let mut reg_str = format!("reg.{:?}", reg);
         reg_str.make_ascii_lowercase();
         LlvmValue::GlobalVar(reg_str)
     }
@@ -46,7 +46,7 @@ impl From<i64> for LlvmValue {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum LlvmType {
     I8,
     I16,
@@ -258,12 +258,17 @@ pub enum LlvmInstruction {
         ordering: LlvmOrdering,
     },
     Getelementptr {
-        ty: LlvmType,
-        pointer: LlvmValue,
-        indexes: Vec<(LlvmType, LlvmValue)>,
+        result: LlvmValue,
+        index: LlvmValue,
     },
 
     // Conversion Operations
+    Trunc {
+        result: LlvmValue,
+        ty: LlvmType,
+        value: LlvmValue,
+        ty2: LlvmType,
+    },
     Zext {
         result: LlvmValue,
         ty: LlvmType,

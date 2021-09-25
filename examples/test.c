@@ -21,30 +21,30 @@
 // #include <math.h>
 // extern int aT;
 
-double g1 = 1;
-long g2;
-long g3;
+int g1 = 1;
+int g2;
 
-int f(int n) {
-    switch (n) {
-        case 1:
-            n += 1;
-            break;
-        case 2:
-            n += 2;
-            break;
-        case 3:
-            n += 3;
-            break;
-        case 4:
-            n += 4;
-            break;
-        case 5:
-            n += 5;
-            break;
-    }
-    return n;
-}
+// int f(int n) {
+//     switch (n) {
+//         case 1:
+//             n += 1;
+//             break;
+//         case 2:
+//             n += 2;
+//             break;
+//         case 3:
+//             n += 3;
+//             break;
+//         case 4:
+//             n += 4;
+//             break;
+//         case 5:
+//             n += 5;
+//             break;
+//     }
+//     return n;
+// }
+// void f(void) {}
 // #include <stdio.h>
 int main() {
     int n = 0;
@@ -57,9 +57,9 @@ int main() {
     // do {
     //     ++n;
     // } while (0);
-    if (1) {
-        f(n);
-    }
+    // if (1) {
+    //     f(n);
+    // }
     // if (argc > (long)argv) {
     //     return 9;
     // }
@@ -77,9 +77,14 @@ int main() {
     //     "bltz t0,main\n"
     //     "bgtz t0,main\n"
     // );
-    g2 = 999999999999;
-    g3 = 999999999999;
-    return g1+g2+g3;  // `echo $?` => 6
+    // g2 = 999999999999;
+    // g3 = 999999999999;
+    // return g1+g2+g3;  // `echo $?` => 6
+    // if (n) {
+    //     f();
+    // }
+    g2 = 1;
+    return g1+g2;
 }
 
 // int main(void) {

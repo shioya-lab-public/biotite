@@ -1,3 +1,4 @@
+use crate::llvm_isa::LlvmType;
 use crate::riscv_isa::{RiscvAddress, RiscvInstruction};
 use regex::Regex;
 use std::collections::HashMap;
@@ -27,7 +28,7 @@ pub fn parse_rodata(source: &str) -> HashMap<RiscvAddress, RiscvAddress> {
     indirect_targets
 }
 
-pub fn parse_sdata(source: &str) -> HashMap<String, String> {
+pub fn parse_sdata(source: &str) -> HashMap<String, (String, LlvmType)> {
     let lines: Vec<_> = source
         .lines()
         .skip_while(|line| !line.contains(".sdata"))
@@ -49,12 +50,12 @@ pub fn parse_sdata(source: &str) -> HashMap<String, String> {
             Some(value) => value[1].split(' ').rev().collect::<Vec<_>>().join(""),
             None => String::new(),
         };
-        statics.insert(name, value);
+        statics.insert(name, (value, LlvmType::I8));
     }
     statics
 }
 
-pub fn parse_sbss(source: &str) -> HashMap<String, String> {
+pub fn parse_sbss(source: &str) -> HashMap<String, (String, LlvmType)> {
     lazy_static! {
         static ref NAME: Regex = Regex::new(r"<(.+)>").unwrap();
     }
@@ -65,7 +66,7 @@ pub fn parse_sbss(source: &str) -> HashMap<String, String> {
         .take_while(|line| !line.starts_with("Disassembly of section"))
         .filter_map(|line| {
             NAME.captures(line)
-                .map(|caps| (caps[1].to_string(), String::new()))
+                .map(|caps| (caps[1].to_string(), (String::new(), LlvmType::I8)))
         })
         .collect()
 }
@@ -114,6 +115,7 @@ fn parse_line(line: &str, label: &mut Option<String>) -> Option<RiscvInstruction
 #[cfg(test)]
 mod tests {
     use crate::build_test;
+    use crate::llvm_isa::LlvmType;
     use crate::riscv_isa::{
         RiscvAddress, RiscvImmediate,
         RiscvInstruction::{self, *},
@@ -173,14 +175,17 @@ mod tests {
 
         let statics = super::parse_sdata(source);
         let mut expected = HashMap::new();
-        expected.insert("_IO_stdin_used".to_string(), "0000000000020001".to_string());
-        expected.insert("__dso_handle".to_string(), "".to_string());
-        expected.insert("g1".to_string(), "00000001".to_string());
+        expected.insert(
+            "_IO_stdin_used".to_string(),
+            ("0000000000020001".to_string(), LlvmType::I8),
+        );
+        expected.insert("__dso_handle".to_string(), ("".to_string(), LlvmType::I8));
+        expected.insert("g1".to_string(), ("00000001".to_string(), LlvmType::I8));
         assert_eq!(statics, expected);
 
         let statics = super::parse_sbss(source);
         let mut expected = HashMap::new();
-        expected.insert("g2".to_string(), "".to_string());
+        expected.insert("g2".to_string(), ("".to_string(), LlvmType::I8));
         assert_eq!(statics, expected);
 
         let insts = super::parse_text(source);
