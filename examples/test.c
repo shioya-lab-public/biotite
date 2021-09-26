@@ -24,26 +24,26 @@
 int g1 = 1;
 int g2;
 
-// int f(int n) {
-//     switch (n) {
-//         case 1:
-//             n += 1;
-//             break;
-//         case 2:
-//             n += 2;
-//             break;
-//         case 3:
-//             n += 3;
-//             break;
-//         case 4:
-//             n += 4;
-//             break;
-//         case 5:
-//             n += 5;
-//             break;
-//     }
-//     return n;
-// }
+int f(int n) {
+    switch (n) {
+        case 1:
+            n += 1;
+            break;
+        case 2:
+            n += 2;
+            break;
+        case 3:
+            n += 3;
+            break;
+        case 4:
+            n += 4;
+            break;
+        case 5:
+            n += 5;
+            break;
+    }
+    return n;
+}
 // void f(void) {}
 // #include <stdio.h>
 int main() {
@@ -81,7 +81,7 @@ int main() {
     // g3 = 999999999999;
     // return g1+g2+g3;  // `echo $?` => 6
     // if (n) {
-    //     f();
+        f(n);
     // }
     g2 = 1;
     return g1+g2;

@@ -365,4 +365,16 @@ pub enum LlvmInstruction {
         mag: LlvmValue,
         sign: LlvmValue,
     },
+
+    // System Calls
+    Syscall {
+        result: LlvmValue,
+        no: LlvmValue,
+        arg1: LlvmValue,
+        arg2: LlvmValue,
+        arg3: LlvmValue,
+        arg4: LlvmValue,
+        arg5: LlvmValue,
+        arg6: LlvmValue,
+    },
 }

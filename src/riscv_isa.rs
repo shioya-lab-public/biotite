@@ -243,7 +243,7 @@ define_instruction! {
     Sra("sra", "{},{},{}", rd, rs1, rs2),
     Or("or", "{},{},{}", rd, rs1, rs2),
     And("and", "{},{},{}", rd, rs1, rs2),
-    Fence("fence(\\.tso)?", "\\S*"), // LLVM only supports `fence` in its most general form like this.
+    Fence("fence(\\.tso)?", "\\S*"), // LLVM only supports `fence` in its most basic form.
     Ecall("ecall", ""),
     Ebreak("ebreak", ""),
 
