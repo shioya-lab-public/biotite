@@ -202,27 +202,43 @@ impl LlvmTranslator {
                     comment,
                     ..
                 } => self.build_store(rs2, imm, rs1, comment, LlvmType::I32),
-                RI::Addi { rd, rs1, imm, .. } => self.build_binary_immediate(rd, rs1, imm, "Addi"),
-                RI::Slti { rd, rs1, imm, .. } => self.build_binary_immediate(rd, rs1, imm, "Slti"),
-                RI::Sltiu { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Sltiu")
+                RI::Addi { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Addi", false)
                 }
-                RI::Xori { rd, rs1, imm, .. } => self.build_binary_immediate(rd, rs1, imm, "Xori"),
-                RI::Ori { rd, rs1, imm, .. } => self.build_binary_immediate(rd, rs1, imm, "Ori"),
-                RI::Andi { rd, rs1, imm, .. } => self.build_binary_immediate(rd, rs1, imm, "Andi"),
-                RI::Slli { rd, rs1, imm, .. } => self.build_binary_immediate(rd, rs1, imm, "Slli"),
-                RI::Srli { rd, rs1, imm, .. } => self.build_binary_immediate(rd, rs1, imm, "Srli"),
-                RI::Srai { rd, rs1, imm, .. } => self.build_binary_immediate(rd, rs1, imm, "Srai"),
-                RI::Add { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Add"),
-                RI::Sub { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sub"),
-                RI::Sll { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sll"),
-                RI::Slt { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Slt"),
-                RI::Sltu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sltu"),
-                RI::Xor { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Xor"),
-                RI::Srl { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Srl"),
-                RI::Sra { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sra"),
-                RI::Or { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Or"),
-                RI::And { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "And"),
+                RI::Slti { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Slti", false)
+                }
+                RI::Sltiu { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Sltiu", false)
+                }
+                RI::Xori { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Xori", false)
+                }
+                RI::Ori { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Ori", false)
+                }
+                RI::Andi { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Andi", false)
+                }
+                RI::Slli { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Slli", false)
+                }
+                RI::Srli { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Srli", false)
+                }
+                RI::Srai { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Srai", false)
+                }
+                RI::Add { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Add", false),
+                RI::Sub { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sub", false),
+                RI::Sll { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sll", false),
+                RI::Slt { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Slt", false),
+                RI::Sltu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sltu", false),
+                RI::Xor { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Xor", false),
+                RI::Srl { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Srl", false),
+                RI::Sra { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sra", false),
+                RI::Or { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Or", false),
+                RI::And { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "And", false),
                 RI::Fence { .. } => vec![LI::Fence(LlvmOrdering::AcqRel)],
                 RI::Ecall { .. } => {
                     let temps = self.get_temps(8);
@@ -280,6 +296,46 @@ impl LlvmTranslator {
                     ]
                 }
                 RI::Ebreak { .. } => panic!("RISC-V `ebreak` instruction is not supported"),
+
+                // RV64I
+                RI::Lwu {
+                    rd,
+                    imm,
+                    rs1,
+                    comment,
+                    ..
+                } => self.build_load(rd, imm, rs1, comment, LlvmType::I32, false),
+                RI::Ld {
+                    rd,
+                    imm,
+                    rs1,
+                    comment,
+                    ..
+                } => self.build_load(rd, imm, rs1, comment, LlvmType::I64, true),
+                RI::Sd {
+                    rs2,
+                    imm,
+                    rs1,
+                    comment,
+                    ..
+                } => self.build_store(rs2, imm, rs1, comment, LlvmType::I64),
+                RI::Addiw { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Addi", true)
+                }
+                RI::Slliw { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Slli", true)
+                }
+                RI::Srliw { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Srli", true)
+                }
+                RI::Sraiw { rd, rs1, imm, .. } => {
+                    self.build_binary_immediate(rd, rs1, imm, "Srai", true)
+                }
+                RI::Addw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Add", true),
+                RI::Subw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sub", true),
+                RI::Sllw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sll", true),
+                RI::Srlw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Srl", true),
+                RI::Sraw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sra", true),
 
                 RI::Ret { .. } => vec![LI::Ret],
                 _ => vec![],
@@ -341,38 +397,41 @@ impl LlvmTranslator {
         if let Some(comment) = comment {
             let caps = STATIC.captures(&comment).unwrap();
             if let Some(name) = caps.get(1) {
-                let temps = self.get_temps(2);
-                if signed {
+                if let LlvmType::I64 = ty {
+                    let temps = self.get_temps(1);
                     return vec![
                         Load {
                             result: temps[0].clone(),
                             ty: ty.clone(),
                             pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
                         },
-                        Sext {
-                            result: temps[1].clone(),
-                            ty: ty.clone(),
-                            value: temps[0].clone(),
-                            ty2: LlvmType::I64,
-                        },
                         Store {
                             ty: LlvmType::I64,
-                            value: temps[1].clone(),
+                            value: temps[0].clone(),
                             pointer: rd.into(),
                         },
                     ];
                 } else {
+                    let temps = self.get_temps(2);
                     return vec![
                         Load {
                             result: temps[0].clone(),
                             ty: ty.clone(),
                             pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
                         },
-                        Zext {
-                            result: temps[1].clone(),
-                            ty: ty.clone(),
-                            value: temps[0].clone(),
-                            ty2: LlvmType::I64,
+                        match signed {
+                            true => Sext {
+                                result: temps[1].clone(),
+                                ty: ty.clone(),
+                                value: temps[0].clone(),
+                                ty2: LlvmType::I64,
+                            },
+                            false => Zext {
+                                result: temps[1].clone(),
+                                ty: ty.clone(),
+                                value: temps[0].clone(),
+                                ty2: LlvmType::I64,
+                            },
                         },
                         Store {
                             ty: LlvmType::I64,
@@ -384,98 +443,137 @@ impl LlvmTranslator {
             }
         }
 
-        if let LlvmType::I8 = ty {
-            let temps = self.get_temps(5);
-            vec![
-                Load {
-                    result: temps[0].clone(),
-                    ty: LlvmType::I64,
-                    pointer: rs1.into(),
-                },
-                Add {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                Getelementptr {
-                    result: temps[2].clone(),
-                    index: temps[1].clone(),
-                },
-                Load {
-                    result: temps[3].clone(),
-                    ty: ty.clone(),
-                    pointer: temps[2].clone(),
-                },
-                match signed {
-                    true => Sext {
+        match ty {
+            LlvmType::I8 => {
+                let temps = self.get_temps(5);
+                vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Add {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        op1: temps[0].clone(),
+                        op2: imm.into(),
+                    },
+                    Getelementptr {
+                        result: temps[2].clone(),
+                        index: temps[1].clone(),
+                    },
+                    Load {
+                        result: temps[3].clone(),
+                        ty: ty.clone(),
+                        pointer: temps[2].clone(),
+                    },
+                    match signed {
+                        true => Sext {
+                            result: temps[4].clone(),
+                            ty: ty.clone(),
+                            value: temps[3].clone(),
+                            ty2: LlvmType::I64,
+                        },
+                        false => Zext {
+                            result: temps[4].clone(),
+                            ty: ty.clone(),
+                            value: temps[3].clone(),
+                            ty2: LlvmType::I64,
+                        },
+                    },
+                    Store {
+                        ty: LlvmType::I64,
+                        value: temps[4].clone(),
+                        pointer: rd.into(),
+                    },
+                ]
+            }
+            LlvmType::I64 => {
+                let temps = self.get_temps(5);
+                vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Add {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        op1: temps[0].clone(),
+                        op2: imm.into(),
+                    },
+                    Getelementptr {
+                        result: temps[2].clone(),
+                        index: temps[1].clone(),
+                    },
+                    Bitcast {
+                        result: temps[3].clone(),
+                        ty: LlvmType::I8,
+                        value: temps[2].clone(),
+                        ty2: ty.clone(),
+                    },
+                    Load {
                         result: temps[4].clone(),
                         ty: ty.clone(),
-                        value: temps[3].clone(),
-                        ty2: LlvmType::I64,
+                        pointer: temps[3].clone(),
                     },
-                    false => Zext {
+                    Store {
+                        ty: LlvmType::I64,
+                        value: temps[4].clone(),
+                        pointer: rd.into(),
+                    },
+                ]
+            }
+            _ => {
+                let temps = self.get_temps(6);
+                vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Add {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        op1: temps[0].clone(),
+                        op2: imm.into(),
+                    },
+                    Getelementptr {
+                        result: temps[2].clone(),
+                        index: temps[1].clone(),
+                    },
+                    Bitcast {
+                        result: temps[3].clone(),
+                        ty: LlvmType::I8,
+                        value: temps[2].clone(),
+                        ty2: ty.clone(),
+                    },
+                    Load {
                         result: temps[4].clone(),
                         ty: ty.clone(),
-                        value: temps[3].clone(),
-                        ty2: LlvmType::I64,
+                        pointer: temps[3].clone(),
                     },
-                },
-                Store {
-                    ty: LlvmType::I64,
-                    value: temps[4].clone(),
-                    pointer: rd.into(),
-                },
-            ]
-        } else {
-            let temps = self.get_temps(6);
-            vec![
-                Load {
-                    result: temps[0].clone(),
-                    ty: LlvmType::I64,
-                    pointer: rs1.into(),
-                },
-                Add {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                Getelementptr {
-                    result: temps[2].clone(),
-                    index: temps[1].clone(),
-                },
-                Bitcast {
-                    result: temps[3].clone(),
-                    ty: LlvmType::I8,
-                    value: temps[2].clone(),
-                    ty2: ty.clone(),
-                },
-                Load {
-                    result: temps[4].clone(),
-                    ty: ty.clone(),
-                    pointer: temps[3].clone(),
-                },
-                match signed {
-                    true => Sext {
-                        result: temps[5].clone(),
-                        ty: ty.clone(),
-                        value: temps[4].clone(),
-                        ty2: LlvmType::I64,
+                    match signed {
+                        true => Sext {
+                            result: temps[5].clone(),
+                            ty: ty.clone(),
+                            value: temps[4].clone(),
+                            ty2: LlvmType::I64,
+                        },
+                        false => Zext {
+                            result: temps[5].clone(),
+                            ty: ty.clone(),
+                            value: temps[4].clone(),
+                            ty2: LlvmType::I64,
+                        },
                     },
-                    false => Zext {
-                        result: temps[5].clone(),
-                        ty: ty.clone(),
-                        value: temps[4].clone(),
-                        ty2: LlvmType::I64,
+                    Store {
+                        ty: LlvmType::I64,
+                        value: temps[5].clone(),
+                        pointer: rd.into(),
                     },
-                },
-                Store {
-                    ty: LlvmType::I64,
-                    value: temps[5].clone(),
-                    pointer: rd.into(),
-                },
-            ]
+                ]
+            }
         }
     }
 
@@ -495,104 +593,159 @@ impl LlvmTranslator {
         if let Some(comment) = comment {
             let caps = STATIC.captures(&comment).unwrap();
             if let Some(name) = caps.get(1) {
-                let temps = self.get_temps(2);
-                return vec![
+                if let LlvmType::I64 = ty {
+                    let temps = self.get_temps(1);
+                    return vec![
+                        Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::I64,
+                            pointer: rs2.into(),
+                        },
+                        Store {
+                            ty: ty.clone(),
+                            value: temps[0].clone(),
+                            pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+                        },
+                    ];
+                } else {
+                    let temps = self.get_temps(2);
+                    return vec![
+                        Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::I64,
+                            pointer: rs2.into(),
+                        },
+                        Trunc {
+                            result: temps[1].clone(),
+                            ty: LlvmType::I64,
+                            value: temps[0].clone(),
+                            ty2: ty.clone(),
+                        },
+                        Store {
+                            ty: ty.clone(),
+                            value: temps[1].clone(),
+                            pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+                        },
+                    ];
+                }
+            }
+        }
+
+        match ty {
+            LlvmType::I8 => {
+                let temps = self.get_temps(5);
+                vec![
                     Load {
                         result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Add {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        op1: temps[0].clone(),
+                        op2: imm.into(),
+                    },
+                    Getelementptr {
+                        result: temps[2].clone(),
+                        index: temps[1].clone(),
+                    },
+                    Load {
+                        result: temps[3].clone(),
                         ty: LlvmType::I64,
                         pointer: rs2.into(),
                     },
                     Trunc {
-                        result: temps[1].clone(),
+                        result: temps[4].clone(),
                         ty: LlvmType::I64,
-                        value: temps[0].clone(),
+                        value: temps[3].clone(),
                         ty2: ty.clone(),
                     },
                     Store {
                         ty: ty.clone(),
-                        value: temps[1].clone(),
-                        pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+                        value: temps[4].clone(),
+                        pointer: temps[2].clone(),
                     },
-                ];
+                ]
             }
-        }
-
-        if let LlvmType::I8 = ty {
-            let temps = self.get_temps(5);
-            vec![
-                Load {
-                    result: temps[0].clone(),
-                    ty: LlvmType::I64,
-                    pointer: rs1.into(),
-                },
-                Add {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                Getelementptr {
-                    result: temps[2].clone(),
-                    index: temps[1].clone(),
-                },
-                Load {
-                    result: temps[3].clone(),
-                    ty: LlvmType::I64,
-                    pointer: rs2.into(),
-                },
-                Trunc {
-                    result: temps[4].clone(),
-                    ty: LlvmType::I64,
-                    value: temps[3].clone(),
-                    ty2: ty.clone(),
-                },
-                Store {
-                    ty: ty.clone(),
-                    value: temps[4].clone(),
-                    pointer: temps[2].clone(),
-                },
-            ]
-        } else {
-            let temps = self.get_temps(6);
-            vec![
-                Load {
-                    result: temps[0].clone(),
-                    ty: LlvmType::I64,
-                    pointer: rs1.into(),
-                },
-                Add {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                Getelementptr {
-                    result: temps[2].clone(),
-                    index: temps[1].clone(),
-                },
-                Bitcast {
-                    result: temps[3].clone(),
-                    ty: LlvmType::I8,
-                    value: temps[2].clone(),
-                    ty2: ty.clone(),
-                },
-                Load {
-                    result: temps[4].clone(),
-                    ty: LlvmType::I64,
-                    pointer: rs2.into(),
-                },
-                Trunc {
-                    result: temps[5].clone(),
-                    ty: LlvmType::I64,
-                    value: temps[4].clone(),
-                    ty2: ty.clone(),
-                },
-                Store {
-                    ty: ty.clone(),
-                    value: temps[5].clone(),
-                    pointer: temps[3].clone(),
-                },
-            ]
+            LlvmType::I64 => {
+                let temps = self.get_temps(5);
+                vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Add {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        op1: temps[0].clone(),
+                        op2: imm.into(),
+                    },
+                    Getelementptr {
+                        result: temps[2].clone(),
+                        index: temps[1].clone(),
+                    },
+                    Bitcast {
+                        result: temps[3].clone(),
+                        ty: LlvmType::I8,
+                        value: temps[2].clone(),
+                        ty2: ty.clone(),
+                    },
+                    Load {
+                        result: temps[4].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs2.into(),
+                    },
+                    Store {
+                        ty: ty.clone(),
+                        value: temps[4].clone(),
+                        pointer: temps[3].clone(),
+                    },
+                ]
+            }
+            _ => {
+                let temps = self.get_temps(6);
+                vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Add {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        op1: temps[0].clone(),
+                        op2: imm.into(),
+                    },
+                    Getelementptr {
+                        result: temps[2].clone(),
+                        index: temps[1].clone(),
+                    },
+                    Bitcast {
+                        result: temps[3].clone(),
+                        ty: LlvmType::I8,
+                        value: temps[2].clone(),
+                        ty2: ty.clone(),
+                    },
+                    Load {
+                        result: temps[4].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs2.into(),
+                    },
+                    Trunc {
+                        result: temps[5].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[4].clone(),
+                        ty2: ty.clone(),
+                    },
+                    Store {
+                        ty: ty.clone(),
+                        value: temps[5].clone(),
+                        pointer: temps[3].clone(),
+                    },
+                ]
+            }
         }
     }
 
@@ -602,11 +755,12 @@ impl LlvmTranslator {
         rs1: RiscvRegister,
         imm: RiscvImmediate,
         op: &str,
+        word: bool,
     ) -> Vec<LlvmInstruction> {
         use LlvmInstruction::*;
 
         let temps = self.get_temps(2);
-        vec![
+        let mut insts = vec![
             Load {
                 result: temps[0].clone(),
                 ty: LlvmType::I64,
@@ -671,12 +825,37 @@ impl LlvmTranslator {
                 },
                 _ => unreachable!(),
             },
-            Store {
+        ];
+        if word {
+            let value = temps[1].clone();
+            let temps = self.get_temps(2);
+            insts.extend(vec![
+                Trunc {
+                    result: temps[0].clone(),
+                    ty: LlvmType::I64,
+                    value,
+                    ty2: LlvmType::I32,
+                },
+                Sext {
+                    result: temps[1].clone(),
+                    ty: LlvmType::I32,
+                    value: temps[0].clone(),
+                    ty2: LlvmType::I64,
+                },
+                Store {
+                    ty: LlvmType::I64,
+                    value: temps[1].clone(),
+                    pointer: rd.into(),
+                },
+            ]);
+        } else {
+            insts.push(Store {
                 ty: LlvmType::I64,
                 value: temps[1].clone(),
                 pointer: rd.into(),
-            },
-        ]
+            })
+        }
+        insts
     }
 
     fn build_binary(
@@ -685,11 +864,12 @@ impl LlvmTranslator {
         rs1: RiscvRegister,
         rs2: RiscvRegister,
         op: &str,
+        word: bool,
     ) -> Vec<LlvmInstruction> {
         use LlvmInstruction::*;
 
         let temps = self.get_temps(3);
-        vec![
+        let mut insts = vec![
             Load {
                 result: temps[0].clone(),
                 ty: LlvmType::I64,
@@ -765,12 +945,37 @@ impl LlvmTranslator {
                 },
                 _ => unreachable!(),
             },
-            Store {
+        ];
+        if word {
+            let value = temps[2].clone();
+            let temps = self.get_temps(2);
+            insts.extend(vec![
+                Trunc {
+                    result: temps[0].clone(),
+                    ty: LlvmType::I64,
+                    value,
+                    ty2: LlvmType::I32,
+                },
+                Sext {
+                    result: temps[1].clone(),
+                    ty: LlvmType::I32,
+                    value: temps[0].clone(),
+                    ty2: LlvmType::I64,
+                },
+                Store {
+                    ty: LlvmType::I64,
+                    value: temps[1].clone(),
+                    pointer: rd.into(),
+                },
+            ]);
+        } else {
+            insts.push(Store {
                 ty: LlvmType::I64,
                 value: temps[2].clone(),
                 pointer: rd.into(),
-            },
-        ]
+            });
+        }
+        insts
     }
 }
 
@@ -1482,7 +1687,7 @@ mod tests {
             Store {
                 ty: LlvmType::I16,
                 value: 5_usize.into(),
-                pointer:3_usize.into(),
+                pointer: 3_usize.into(),
             },
         ]),
 
@@ -1541,7 +1746,7 @@ mod tests {
             Store {
                 ty: LlvmType::I32,
                 value: 5_usize.into(),
-                pointer:3_usize.into(),
+                pointer: 3_usize.into(),
             },
         ]),
 
@@ -2014,6 +2219,464 @@ mod tests {
                 ty: LlvmType::I64,
                 value: 7_usize.into(),
                 pointer: A0.into(),
+            },
+        ]),
+
+        // RV64I (15 tests)
+        lwu_global("lwu	a4,48(a5) # 12030 <g1>", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I32,
+                pointer: LlvmValue::GlobalVar(String::from("g1")),
+            },
+            Zext {
+                result: 1_usize.into(),
+                ty: LlvmType::I32,
+                value: 0_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 1_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        lwu("lwu	a5,-20(s0)", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: S0.into(),
+            },
+            Add {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: (-20_i64).into(),
+            },
+            Getelementptr {
+                result: 2_usize.into(),
+                index: 1_usize.into(),
+            },
+            Bitcast {
+                result: 3_usize.into(),
+                ty: LlvmType::I8,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Load {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                pointer: 3_usize.into(),
+            },
+            Zext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 5_usize.into(),
+                pointer: A5.into(),
+            },
+        ]),
+
+        ld_global("ld	a4,48(a5) # 12030 <g1>", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: LlvmValue::GlobalVar(String::from("g1")),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        ld("ld	a1,0(sp)", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: Sp.into(),
+            },
+            Add {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            Getelementptr {
+                result: 2_usize.into(),
+                index: 1_usize.into(),
+            },
+            Bitcast {
+                result: 3_usize.into(),
+                ty: LlvmType::I8,
+                value: 2_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Load {
+                result: 4_usize.into(),
+                ty: LlvmType::I64,
+                pointer: 3_usize.into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 4_usize.into(),
+                pointer: A1.into(),
+            },
+        ]),
+
+        sd_global("sd	a4,52(a5) # 12034 <g2>", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A4.into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                pointer: LlvmValue::GlobalVar(String::from("g2")),
+            },
+        ]),
+
+        sd("sd	s0,0(sp)", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: Sp.into(),
+            },
+            Add {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            Getelementptr {
+                result: 2_usize.into(),
+                index: 1_usize.into(),
+            },
+            Bitcast {
+                result: 3_usize.into(),
+                ty: LlvmType::I8,
+                value: 2_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Load {
+                result: 4_usize.into(),
+                ty: LlvmType::I64,
+                pointer: S0.into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 4_usize.into(),
+                pointer: 3_usize.into(),
+            },
+        ]),
+
+        addiw("addiw	t0,t1,1", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Add {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_i64.into(),
+            },
+            Trunc {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                value: 1_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 3_usize.into(),
+                ty: LlvmType::I32,
+                value: 2_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 3_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        slliw("slliw	a4,a5,0x2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Shl {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0x2_i64.into(),
+            },
+            Trunc {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                value: 1_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 3_usize.into(),
+                ty: LlvmType::I32,
+                value: 2_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 3_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        srliw("srliw	a4,a5,0x2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Lshr {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0x2_i64.into(),
+            },
+            Trunc {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                value: 1_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 3_usize.into(),
+                ty: LlvmType::I32,
+                value: 2_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 3_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        sraiw("sraiw	a4,a5,0x2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Ashr {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0x2_i64.into(),
+            },
+            Trunc {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                value: 1_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 3_usize.into(),
+                ty: LlvmType::I32,
+                value: 2_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 3_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        addw("addw	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Add {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Trunc {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                value: 3_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 4_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        subw("subw	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Sub {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Trunc {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                value: 3_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 4_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        sllw("sllw	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Shl {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Trunc {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                value: 3_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 4_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        srlw("srlw	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Lshr {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Trunc {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                value: 3_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 4_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        sraw("sraw	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Ashr {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Trunc {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                value: 3_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 4_usize.into(),
+                pointer: T0.into(),
             },
         ]),
     }
