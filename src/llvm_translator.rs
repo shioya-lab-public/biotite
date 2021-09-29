@@ -347,6 +347,13 @@ impl LlvmTranslator {
                 RI::Rem { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Rem", false),
                 RI::Remu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remu", false),
 
+                // RV64M
+                RI::Mulw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulw", true),
+                RI::Divw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Divw", true),
+                RI::Divuw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Divuw", true),
+                RI::Remw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remw", true),
+                RI::Remuw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remuw", true),
+
                 RI::Ret { .. } => vec![LI::Ret],
                 _ => vec![],
             })
@@ -1115,12 +1122,6 @@ impl LlvmTranslator {
                 op1,
                 op2,
             },
-            "Mul" => Mul {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
             "Addw" => Add {
                 result: temps[0].clone(),
                 ty: LlvmType::I32,
@@ -1151,6 +1152,12 @@ impl LlvmTranslator {
                 op1,
                 op2,
             },
+            "Mul" => Mul {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
             "Mulh" | "Mulhsu" | "Mulhu" => Mul {
                 result: temps[0].clone(),
                 ty: LlvmType::I128,
@@ -1178,6 +1185,36 @@ impl LlvmTranslator {
             "Remu" => Urem {
                 result: temps[0].clone(),
                 ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Mulw" => Mul {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2,
+            },
+            "Divw" => Sdiv {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2,
+            },
+            "Divuw" => Udiv {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2,
+            },
+            "Remw" => Srem {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2,
+            },
+            "Remuw" => Urem {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
                 op1,
                 op2,
             },
@@ -3225,6 +3262,217 @@ mod tests {
             Store {
                 ty: LlvmType::I64,
                 value: 2_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        // RV64M (5 tests)
+        mulw("mulw	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Trunc {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Trunc {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Mul {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Sext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 5_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        divw("divw	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Trunc {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Trunc {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sdiv {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Sext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 5_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        divuw("divuw	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Trunc {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Trunc {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Udiv {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Sext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 5_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        remw("remw	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Trunc {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Trunc {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Srem {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Sext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 5_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        remuw("remuw	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Trunc {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Trunc {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Urem {
+                result: 4_usize.into(),
+                ty: LlvmType::I32,
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Sext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 5_usize.into(),
                 pointer: T0.into(),
             },
         ]),
