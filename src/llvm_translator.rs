@@ -11,6 +11,7 @@ pub struct LlvmTranslator {
     cfg: Cfg,
     statics: HashMap<String, (String, LlvmType)>,
     temp: usize,
+    lr_value: LlvmValue,
 }
 
 impl LlvmTranslator {
@@ -19,6 +20,7 @@ impl LlvmTranslator {
             cfg,
             statics,
             temp: 0,
+            lr_value: 0_usize.into(),
         }
     }
 
@@ -353,6 +355,35 @@ impl LlvmTranslator {
                 RI::Divuw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Divuw", true),
                 RI::Remw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remw", true),
                 RI::Remuw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remuw", true),
+
+                // RV32A
+                RI::LrW { ..} => todo!(),
+                RI::ScW { ..} => todo!(),
+                RI::AmoswapW { ..} => todo!(),
+                RI::AmoaddW { ..} => todo!(),
+                RI::AmoxorW { ..} => todo!(),
+                RI::AmoandW { ..} => todo!(),
+                RI::AmoorW { ..} => todo!(),
+                RI::AmominW { ..} => todo!(),
+                RI::AmomaxW { ..} => todo!(),
+                RI::AmominuW { ..} => todo!(),
+                RI::AmomaxuW { ..} => todo!(),
+
+                // RV64A
+                RI::LrD { ..} => todo!(),
+                RI::ScD { ..} => todo!(),
+                RI::AmoswapD { ..} => todo!(),
+                RI::AmoaddD { ..} => todo!(),
+                RI::AmoxorD { ..} => todo!(),
+                RI::AmoandD { ..} => todo!(),
+                RI::AmoorD { ..} => todo!(),
+                RI::AmominD { ..} => todo!(),
+                RI::AmomaxD { ..} => todo!(),
+                RI::AmominuD { ..} => todo!(),
+                RI::AmomaxuD { ..} => todo!(),
+
+                // RV32F
+                
 
                 RI::Ret { .. } => vec![LI::Ret],
                 _ => vec![],
