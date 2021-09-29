@@ -320,22 +320,32 @@ impl LlvmTranslator {
                     ..
                 } => self.build_store(rs2, imm, rs1, comment, LlvmType::I64),
                 RI::Addiw { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Addi", true)
+                    self.build_binary_immediate(rd, rs1, imm, "Addiw", true)
                 }
                 RI::Slliw { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Slli", true)
+                    self.build_binary_immediate(rd, rs1, imm, "Slliw", true)
                 }
                 RI::Srliw { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Srli", true)
+                    self.build_binary_immediate(rd, rs1, imm, "Srliw", true)
                 }
                 RI::Sraiw { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Srai", true)
+                    self.build_binary_immediate(rd, rs1, imm, "Sraiw", true)
                 }
-                RI::Addw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Add", true),
-                RI::Subw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sub", true),
-                RI::Sllw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sll", true),
-                RI::Srlw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Srl", true),
-                RI::Sraw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sra", true),
+                RI::Addw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Addw", true),
+                RI::Subw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Subw", true),
+                RI::Sllw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sllw", true),
+                RI::Srlw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Srlw", true),
+                RI::Sraw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sraw", true),
+
+                // RV32M
+                RI::Mul { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mul", false),
+                RI::Mulh { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulh", false),
+                RI::Mulhsu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulhsu", false),
+                RI::Mulhu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulhu", false),
+                RI::Div { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Div", false),
+                RI::Divu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Divu", false),
+                RI::Rem { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Rem", false),
+                RI::Remu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remu", false),
 
                 RI::Ret { .. } => vec![LI::Ret],
                 _ => vec![],
@@ -759,102 +769,144 @@ impl LlvmTranslator {
     ) -> Vec<LlvmInstruction> {
         use LlvmInstruction::*;
 
-        let temps = self.get_temps(2);
-        let mut insts = vec![
-            Load {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                pointer: rs1.into(),
-            },
-            match op {
-                "Addi" => Add {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                "Slti" => Icmp {
-                    result: temps[1].clone(),
-                    cond: LlvmIntCondition::Slt,
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                "Sltiu" => Icmp {
-                    result: temps[1].clone(),
-                    cond: LlvmIntCondition::Ult,
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                "Xori" => Xor {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                "Ori" => Or {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                "Andi" => And {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                "Slli" => Shl {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                "Srli" => Lshr {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                "Srai" => Ashr {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: imm.into(),
-                },
-                _ => unreachable!(),
-            },
-        ];
-        if word {
-            let value = temps[1].clone();
-            let temps = self.get_temps(2);
-            insts.extend(vec![
-                Trunc {
+        let (op1, mut insts) = match word {
+            true => {
+                let temps = self.get_temps(2);
+                let insts = vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Trunc {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[0].clone(),
+                        ty2: LlvmType::I32,
+                    },
+                ];
+                (temps[1].clone(), insts)
+            }
+            false => {
+                let temps = self.get_temps(1);
+                let insts = vec![Load {
                     result: temps[0].clone(),
                     ty: LlvmType::I64,
-                    value,
-                    ty2: LlvmType::I32,
-                },
+                    pointer: rs1.into(),
+                }];
+                (temps[0].clone(), insts)
+            }
+        };
+
+        let temps = self.get_temps(1);
+        insts.push(match op {
+            "Addi" => Add {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Slti" => Icmp {
+                result: temps[0].clone(),
+                cond: LlvmIntCondition::Slt,
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Sltiu" => Icmp {
+                result: temps[0].clone(),
+                cond: LlvmIntCondition::Ult,
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Xori" => Xor {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Ori" => Or {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Andi" => And {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Slli" => Shl {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Srli" => Lshr {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Srai" => Ashr {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Addiw" => Add {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2: imm.into(),
+            },
+            "Slliw" => Shl {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2: imm.into(),
+            },
+            "Srliw" => Lshr {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2: imm.into(),
+            },
+            "Sraiw" => Ashr {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2: imm.into(),
+            },
+            _ => unreachable!(),
+        });
+
+        let value = temps[0].clone();
+        if word {
+            let temps = self.get_temps(1);
+            insts.extend(vec![
                 Sext {
-                    result: temps[1].clone(),
+                    result: temps[0].clone(),
                     ty: LlvmType::I32,
-                    value: temps[0].clone(),
+                    value,
                     ty2: LlvmType::I64,
                 },
                 Store {
                     ty: LlvmType::I64,
-                    value: temps[1].clone(),
+                    value: temps[0].clone(),
                     pointer: rd.into(),
                 },
             ]);
         } else {
             insts.push(Store {
                 ty: LlvmType::I64,
-                value: temps[1].clone(),
+                value,
                 pointer: rd.into(),
             })
         }
+
         insts
     }
 
@@ -868,97 +920,283 @@ impl LlvmTranslator {
     ) -> Vec<LlvmInstruction> {
         use LlvmInstruction::*;
 
-        let temps = self.get_temps(3);
-        let mut insts = vec![
-            Load {
+        let (op1, op2, mut insts) = match (op, word) {
+            ("Mulh", _) => {
+                let temps = self.get_temps(4);
+                let insts = vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Sext {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[0].clone(),
+                        ty2: LlvmType::I128,
+                    },
+                    Load {
+                        result: temps[2].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs2.into(),
+                    },
+                    Sext {
+                        result: temps[3].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[2].clone(),
+                        ty2: LlvmType::I128,
+                    },
+                ];
+                (temps[1].clone(), temps[3].clone(), insts)
+            }
+            ("Mulhsu", _) => {
+                let temps = self.get_temps(4);
+                let insts = vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Sext {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[0].clone(),
+                        ty2: LlvmType::I128,
+                    },
+                    Load {
+                        result: temps[2].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs2.into(),
+                    },
+                    Zext {
+                        result: temps[3].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[2].clone(),
+                        ty2: LlvmType::I128,
+                    },
+                ];
+                (temps[1].clone(), temps[3].clone(), insts)
+            }
+            ("Mulhu", _) => {
+                let temps = self.get_temps(4);
+                let insts = vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Zext {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[0].clone(),
+                        ty2: LlvmType::I128,
+                    },
+                    Load {
+                        result: temps[2].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs2.into(),
+                    },
+                    Zext {
+                        result: temps[3].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[2].clone(),
+                        ty2: LlvmType::I128,
+                    },
+                ];
+                (temps[1].clone(), temps[3].clone(), insts)
+            }
+            (_, true) => {
+                let temps = self.get_temps(4);
+                let insts = vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Trunc {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[0].clone(),
+                        ty2: LlvmType::I32,
+                    },
+                    Load {
+                        result: temps[2].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs2.into(),
+                    },
+                    Trunc {
+                        result: temps[3].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[2].clone(),
+                        ty2: LlvmType::I32,
+                    },
+                ];
+                (temps[1].clone(), temps[3].clone(), insts)
+            }
+            (_, false) => {
+                let temps = self.get_temps(2);
+                let insts = vec![
+                    Load {
+                        result: temps[0].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs1.into(),
+                    },
+                    Load {
+                        result: temps[1].clone(),
+                        ty: LlvmType::I64,
+                        pointer: rs2.into(),
+                    },
+                ];
+                (temps[0].clone(), temps[1].clone(), insts)
+            }
+        };
+
+        let temps = self.get_temps(1);
+        insts.push(match op {
+            "Add" => Add {
                 result: temps[0].clone(),
                 ty: LlvmType::I64,
-                pointer: rs1.into(),
+                op1,
+                op2,
             },
-            Load {
-                result: temps[1].clone(),
+            "Sub" => Sub {
+                result: temps[0].clone(),
                 ty: LlvmType::I64,
-                pointer: rs2.into(),
+                op1,
+                op2,
             },
-            match op {
-                "Add" => Add {
-                    result: temps[2].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: temps[1].clone(),
-                },
-                "Sub" => Sub {
-                    result: temps[2].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: temps[1].clone(),
-                },
-                "Sll" => Shl {
-                    result: temps[2].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: temps[1].clone(),
-                },
-                "Slt" => Icmp {
-                    result: temps[2].clone(),
-                    cond: LlvmIntCondition::Slt,
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: temps[1].clone(),
-                },
-                "Sltu" => Icmp {
-                    result: temps[2].clone(),
-                    cond: LlvmIntCondition::Ult,
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: temps[1].clone(),
-                },
-                "Xor" => Xor {
-                    result: temps[2].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: temps[1].clone(),
-                },
-                "Srl" => Lshr {
-                    result: temps[2].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: temps[1].clone(),
-                },
-                "Sra" => Ashr {
-                    result: temps[2].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: temps[1].clone(),
-                },
-                "Or" => Or {
-                    result: temps[2].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: temps[1].clone(),
-                },
-                "And" => And {
-                    result: temps[2].clone(),
-                    ty: LlvmType::I64,
-                    op1: temps[0].clone(),
-                    op2: temps[1].clone(),
-                },
-                _ => unreachable!(),
+            "Sll" => Shl {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
             },
-        ];
-        if word {
-            let value = temps[2].clone();
+            "Slt" => Icmp {
+                result: temps[0].clone(),
+                cond: LlvmIntCondition::Slt,
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Sltu" => Icmp {
+                result: temps[0].clone(),
+                cond: LlvmIntCondition::Ult,
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Xor" => Xor {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Srl" => Lshr {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Sra" => Ashr {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Or" => Or {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "And" => And {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Mul" => Mul {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Addw" => Add {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2,
+            },
+            "Subw" => Sub {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2,
+            },
+            "Sllw" => Shl {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2,
+            },
+            "Srlw" => Lshr {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2,
+            },
+            "Sraw" => Ashr {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                op1,
+                op2,
+            },
+            "Mulh" | "Mulhsu" | "Mulhu" => Mul {
+                result: temps[0].clone(),
+                ty: LlvmType::I128,
+                op1,
+                op2,
+            },
+            "Div" => Sdiv {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Divu" => Udiv {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Rem" => Srem {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            "Remu" => Urem {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                op1,
+                op2,
+            },
+            _ => unreachable!(),
+        });
+
+        let value = temps[0].clone();
+        if let "Mulh" | "Mulhsu" | "Mulhu" = op {
             let temps = self.get_temps(2);
             insts.extend(vec![
-                Trunc {
+                Lshr {
                     result: temps[0].clone(),
-                    ty: LlvmType::I64,
-                    value,
-                    ty2: LlvmType::I32,
+                    ty: LlvmType::I128,
+                    op1: value,
+                    op2: 64_i64.into(),
                 },
-                Sext {
+                Trunc {
                     result: temps[1].clone(),
-                    ty: LlvmType::I32,
+                    ty: LlvmType::I128,
                     value: temps[0].clone(),
                     ty2: LlvmType::I64,
                 },
@@ -968,13 +1206,29 @@ impl LlvmTranslator {
                     pointer: rd.into(),
                 },
             ]);
+        } else if word {
+            let temps = self.get_temps(1);
+            insts.extend(vec![
+                Sext {
+                    result: temps[0].clone(),
+                    ty: LlvmType::I32,
+                    value,
+                    ty2: LlvmType::I64,
+                },
+                Store {
+                    ty: LlvmType::I64,
+                    value: temps[0].clone(),
+                    pointer: rd.into(),
+                },
+            ]);
         } else {
             insts.push(Store {
                 ty: LlvmType::I64,
-                value: temps[2].clone(),
+                value,
                 pointer: rd.into(),
             });
         }
+
         insts
     }
 }
@@ -2382,17 +2636,17 @@ mod tests {
                 ty: LlvmType::I64,
                 pointer: T1.into(),
             },
-            Add {
+            Trunc {
                 result: 1_usize.into(),
                 ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_i64.into(),
-            },
-            Trunc {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
+                value: 0_usize.into(),
                 ty2: LlvmType::I32,
+            },
+            Add {
+                result: 2_usize.into(),
+                ty: LlvmType::I32,
+                op1: 1_usize.into(),
+                op2: 1_i64.into(),
             },
             Sext {
                 result: 3_usize.into(),
@@ -2413,17 +2667,17 @@ mod tests {
                 ty: LlvmType::I64,
                 pointer: A5.into(),
             },
-            Shl {
+            Trunc {
                 result: 1_usize.into(),
                 ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0x2_i64.into(),
-            },
-            Trunc {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
+                value: 0_usize.into(),
                 ty2: LlvmType::I32,
+            },
+            Shl {
+                result: 2_usize.into(),
+                ty: LlvmType::I32,
+                op1: 1_usize.into(),
+                op2: 0x2_i64.into(),
             },
             Sext {
                 result: 3_usize.into(),
@@ -2444,17 +2698,17 @@ mod tests {
                 ty: LlvmType::I64,
                 pointer: A5.into(),
             },
-            Lshr {
+            Trunc {
                 result: 1_usize.into(),
                 ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0x2_i64.into(),
-            },
-            Trunc {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
+                value: 0_usize.into(),
                 ty2: LlvmType::I32,
+            },
+            Lshr {
+                result: 2_usize.into(),
+                ty: LlvmType::I32,
+                op1: 1_usize.into(),
+                op2: 0x2_i64.into(),
             },
             Sext {
                 result: 3_usize.into(),
@@ -2475,17 +2729,17 @@ mod tests {
                 ty: LlvmType::I64,
                 pointer: A5.into(),
             },
-            Ashr {
+            Trunc {
                 result: 1_usize.into(),
                 ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0x2_i64.into(),
-            },
-            Trunc {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
+                value: 0_usize.into(),
                 ty2: LlvmType::I32,
+            },
+            Ashr {
+                result: 2_usize.into(),
+                ty: LlvmType::I32,
+                op1: 1_usize.into(),
+                op2: 0x2_i64.into(),
             },
             Sext {
                 result: 3_usize.into(),
@@ -2506,16 +2760,16 @@ mod tests {
                 ty: LlvmType::I64,
                 pointer: T1.into(),
             },
-            Load {
+            Trunc {
                 result: 1_usize.into(),
                 ty: LlvmType::I64,
-                pointer: T2.into(),
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
             },
-            Add {
+            Load {
                 result: 2_usize.into(),
                 ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
+                pointer: T2.into(),
             },
             Trunc {
                 result: 3_usize.into(),
@@ -2523,15 +2777,21 @@ mod tests {
                 value: 2_usize.into(),
                 ty2: LlvmType::I32,
             },
-            Sext {
+            Add {
                 result: 4_usize.into(),
                 ty: LlvmType::I32,
-                value: 3_usize.into(),
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Sext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
                 ty2: LlvmType::I64,
             },
             Store {
                 ty: LlvmType::I64,
-                value: 4_usize.into(),
+                value: 5_usize.into(),
                 pointer: T0.into(),
             },
         ]),
@@ -2542,16 +2802,16 @@ mod tests {
                 ty: LlvmType::I64,
                 pointer: T1.into(),
             },
-            Load {
+            Trunc {
                 result: 1_usize.into(),
                 ty: LlvmType::I64,
-                pointer: T2.into(),
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
             },
-            Sub {
+            Load {
                 result: 2_usize.into(),
                 ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
+                pointer: T2.into(),
             },
             Trunc {
                 result: 3_usize.into(),
@@ -2559,15 +2819,21 @@ mod tests {
                 value: 2_usize.into(),
                 ty2: LlvmType::I32,
             },
-            Sext {
+            Sub {
                 result: 4_usize.into(),
                 ty: LlvmType::I32,
-                value: 3_usize.into(),
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Sext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
                 ty2: LlvmType::I64,
             },
             Store {
                 ty: LlvmType::I64,
-                value: 4_usize.into(),
+                value: 5_usize.into(),
                 pointer: T0.into(),
             },
         ]),
@@ -2578,16 +2844,16 @@ mod tests {
                 ty: LlvmType::I64,
                 pointer: T1.into(),
             },
-            Load {
+            Trunc {
                 result: 1_usize.into(),
                 ty: LlvmType::I64,
-                pointer: T2.into(),
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
             },
-            Shl {
+            Load {
                 result: 2_usize.into(),
                 ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
+                pointer: T2.into(),
             },
             Trunc {
                 result: 3_usize.into(),
@@ -2595,15 +2861,21 @@ mod tests {
                 value: 2_usize.into(),
                 ty2: LlvmType::I32,
             },
-            Sext {
+            Shl {
                 result: 4_usize.into(),
                 ty: LlvmType::I32,
-                value: 3_usize.into(),
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Sext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
                 ty2: LlvmType::I64,
             },
             Store {
                 ty: LlvmType::I64,
-                value: 4_usize.into(),
+                value: 5_usize.into(),
                 pointer: T0.into(),
             },
         ]),
@@ -2614,16 +2886,16 @@ mod tests {
                 ty: LlvmType::I64,
                 pointer: T1.into(),
             },
-            Load {
+            Trunc {
                 result: 1_usize.into(),
                 ty: LlvmType::I64,
-                pointer: T2.into(),
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
             },
-            Lshr {
+            Load {
                 result: 2_usize.into(),
                 ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
+                pointer: T2.into(),
             },
             Trunc {
                 result: 3_usize.into(),
@@ -2631,15 +2903,21 @@ mod tests {
                 value: 2_usize.into(),
                 ty2: LlvmType::I32,
             },
-            Sext {
+            Lshr {
                 result: 4_usize.into(),
                 ty: LlvmType::I32,
-                value: 3_usize.into(),
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Sext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
                 ty2: LlvmType::I64,
             },
             Store {
                 ty: LlvmType::I64,
-                value: 4_usize.into(),
+                value: 5_usize.into(),
                 pointer: T0.into(),
             },
         ]),
@@ -2650,16 +2928,16 @@ mod tests {
                 ty: LlvmType::I64,
                 pointer: T1.into(),
             },
-            Load {
+            Trunc {
                 result: 1_usize.into(),
                 ty: LlvmType::I64,
-                pointer: T2.into(),
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
             },
-            Ashr {
+            Load {
                 result: 2_usize.into(),
                 ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
+                pointer: T2.into(),
             },
             Trunc {
                 result: 3_usize.into(),
@@ -2667,15 +2945,286 @@ mod tests {
                 value: 2_usize.into(),
                 ty2: LlvmType::I32,
             },
-            Sext {
+            Ashr {
                 result: 4_usize.into(),
                 ty: LlvmType::I32,
-                value: 3_usize.into(),
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Sext {
+                result: 5_usize.into(),
+                ty: LlvmType::I32,
+                value: 4_usize.into(),
                 ty2: LlvmType::I64,
             },
             Store {
                 ty: LlvmType::I64,
-                value: 4_usize.into(),
+                value: 5_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        // RV32M (8 tests)
+        mul("mul	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Mul {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        mulh("mulh	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Sext {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I128,
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Sext {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I128,
+            },
+            Mul {
+                result: 4_usize.into(),
+                ty: LlvmType::I128,
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Lshr {
+                result: 5_usize.into(),
+                ty: LlvmType::I128,
+                op1: 4_usize.into(),
+                op2: 64_i64.into(),
+            },
+            Trunc {
+                result: 6_usize.into(),
+                ty: LlvmType::I128,
+                value: 5_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 6_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        mulhsu("mulhsu	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Sext {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I128,
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Zext {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I128,
+            },
+            Mul {
+                result: 4_usize.into(),
+                ty: LlvmType::I128,
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Lshr {
+                result: 5_usize.into(),
+                ty: LlvmType::I128,
+                op1: 4_usize.into(),
+                op2: 64_i64.into(),
+            },
+            Trunc {
+                result: 6_usize.into(),
+                ty: LlvmType::I128,
+                value: 5_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 6_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        mulhu("mulhu	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Zext {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I128,
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Zext {
+                result: 3_usize.into(),
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                ty2: LlvmType::I128,
+            },
+            Mul {
+                result: 4_usize.into(),
+                ty: LlvmType::I128,
+                op1: 1_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Lshr {
+                result: 5_usize.into(),
+                ty: LlvmType::I128,
+                op1: 4_usize.into(),
+                op2: 64_i64.into(),
+            },
+            Trunc {
+                result: 6_usize.into(),
+                ty: LlvmType::I128,
+                value: 5_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 6_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        div("div	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Sdiv {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        divu("divu	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Udiv {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        rem("rem	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Srem {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        remu("remu	t0,t1,t2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T2.into(),
+            },
+            Urem {
+                result: 2_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
                 pointer: T0.into(),
             },
         ]),
