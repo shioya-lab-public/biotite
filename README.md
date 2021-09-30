@@ -221,8 +221,8 @@ The target of `JALR` address is obtained by adding the sign-extended 12-bit I-im
 In RV64I, only the low 6 bits of rs2 are considered for the shift amount
 Unlike RISC-V, taking the remainder of a division by zero in LLVM is undefined behavior.
 
-section .sdata (initialized static data)
-section .sbss (uninitialized static data)
+add arbitrary memory access support for ld/sd
+add support for RV32/64A
 
 ``` Bash
 clang -emit-llvm examples/test.c -S -o examples/reference.ll

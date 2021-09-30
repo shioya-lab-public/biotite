@@ -48,6 +48,7 @@ impl From<i64> for LlvmValue {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum LlvmType {
+    I1,
     I8,
     I16,
     I32,
@@ -59,24 +60,24 @@ pub enum LlvmType {
 
 #[derive(Debug, PartialEq)]
 pub enum LlvmOrdering {
-    Monotonic,
-    Acquire,
-    Release,
+    // Monotonic,
+    // Acquire,
+    // Release,
     AcqRel,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum LlvmOperation {
-    Xchg,
-    Add,
-    And,
-    Or,
-    Xor,
-    Max,
-    Min,
-    Umax,
-    Umin,
-}
+// #[derive(Debug, PartialEq)]
+// pub enum LlvmOperation {
+//     Xchg,
+//     Add,
+//     And,
+//     Or,
+//     Xor,
+//     Max,
+//     Min,
+//     Umax,
+//     Umin,
+// }
 
 #[derive(Debug, PartialEq)]
 pub enum LlvmIntCondition {
@@ -243,21 +244,21 @@ pub enum LlvmInstruction {
         pointer: LlvmValue,
     },
     Fence(LlvmOrdering),
-    Cmpxchg {
-        ty: LlvmType,
-        pointer: LlvmValue,
-        cmp: LlvmValue,
-        new: LlvmValue,
-        success_ordering: LlvmOrdering,
-        failure_ordering: LlvmOrdering,
-    },
-    Atomicrmw {
-        operation: LlvmOperation,
-        ty: LlvmType,
-        pointer: LlvmValue,
-        value: LlvmValue,
-        ordering: LlvmOrdering,
-    },
+    // Cmpxchg {
+    //     ty: LlvmType,
+    //     pointer: LlvmValue,
+    //     cmp: LlvmValue,
+    //     new: LlvmValue,
+    //     success_ordering: LlvmOrdering,
+    //     failure_ordering: LlvmOrdering,
+    // },
+    // Atomicrmw {
+    //     operation: LlvmOperation,
+    //     ty: LlvmType,
+    //     pointer: LlvmValue,
+    //     value: LlvmValue,
+    //     ordering: LlvmOrdering,
+    // },
     Getelementptr {
         result: LlvmValue,
         index: LlvmValue,
@@ -277,6 +278,18 @@ pub enum LlvmInstruction {
         ty2: LlvmType,
     },
     Sext {
+        result: LlvmValue,
+        ty: LlvmType,
+        value: LlvmValue,
+        ty2: LlvmType,
+    },
+    Fptrunc {
+        result: LlvmValue,
+        ty: LlvmType,
+        value: LlvmValue,
+        ty2: LlvmType,
+    },
+    Fpext {
         result: LlvmValue,
         ty: LlvmType,
         value: LlvmValue,
