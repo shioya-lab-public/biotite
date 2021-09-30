@@ -545,8 +545,106 @@ impl LlvmTranslator {
                     comment,
                     ..
                 } => self.build_store(rs2, imm, rs1, comment, LlvmType::F64),
+                RI::FmaddD {
+                    rd, rs1, rs2, rs3, ..
+                } => self.build_ternary(rd, rs1, rs2, rs3, "FmaddD"),
+                RI::FmsubD {
+                    rd, rs1, rs2, rs3, ..
+                } => self.build_ternary(rd, rs1, rs2, rs3, "FmsubD"),
+                RI::FnmsubD {
+                    rd, rs1, rs2, rs3, ..
+                } => self.build_ternary(rd, rs1, rs2, rs3, "FnmsubD"),
+                RI::FnmaddD {
+                    rd, rs1, rs2, rs3, ..
+                } => self.build_ternary(rd, rs1, rs2, rs3, "FnmaddD"),
+                RI::FaddD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FaddD"),
+                RI::FsubD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsubD"),
+                RI::FmulD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FmulD"),
+                RI::FdivD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FdivD"),
+                RI::FsqrtD { rd, rs1, .. } => {
+                    let temps = self.get_temps(2);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::F64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Sqrt {
+                            result: temps[1].clone(),
+                            ty: LlvmType::F64,
+                            value: temps[0].clone(),
+                        },
+                        LI::Store {
+                            ty: LlvmType::F64,
+                            value: temps[1].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::FsgnjD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjD"),
+                RI::FsgnjnD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjnD"),
+                RI::FsgnjxD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjxD"),
+                RI::FminD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FminD"),
+                RI::FmaxD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FmaxD"),
+                RI::FcvtSD { .. } => Vec::new(),
+                RI::FcvtDS { .. } => Vec::new(),
+                RI::FeqD { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FeqD"),
+                RI::FltD { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FltD"),
+                RI::FleD { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FleD"),
+                RI::FclassD { .. } => unimplemented!(),
+                RI::FcvtWD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "W"),
+                RI::FcvtWuD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "Wu"),
+                RI::FcvtDW { rd, rs1, .. } => self.build_itofp(rd, rs1, "W", "D"),
+                RI::FcvtDWu { rd, rs1, .. } => self.build_itofp(rd, rs1, "Wu", "D"),
 
                 // RV64D
+                RI::FcvtLD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "L"),
+                RI::FcvtLuD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "Lu"),
+                RI::FmvXD { rd, rs1, .. } => {
+                    let temps = self.get_temps(2);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::F64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Bitcast {
+                            result: temps[1].clone(),
+                            ty: LlvmType::F64,
+                            value: temps[0].clone(),
+                            ty2: LlvmType::I64,
+                        },
+                        LI::Store {
+                            ty: LlvmType::I64,
+                            value: temps[1].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::FcvtDL { rd, rs1, .. } => self.build_itofp(rd, rs1, "L", "D"),
+                RI::FcvtDLu { rd, rs1, .. } => self.build_itofp(rd, rs1, "Lu", "D"),
+                RI::FmvDX { rd, rs1, .. } => {
+                    let temps = self.get_temps(2);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::I64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Bitcast {
+                            result: temps[1].clone(),
+                            ty: LlvmType::I64,
+                            value: temps[0].clone(),
+                            ty2: LlvmType::F64,
+                        },
+                        LI::Store {
+                            ty: LlvmType::F64,
+                            value: temps[1].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+
                 RI::Ret { .. } => vec![LI::Ret],
                 _ => vec![],
             })
@@ -1831,6 +1929,81 @@ impl LlvmTranslator {
                 ];
                 (temps[2].clone(), ists)
             }
+            "FmaddD" => {
+                let temps = self.get_temps(1);
+                let ists = vec![Fma {
+                    result: temps[0].clone(),
+                    ty: LlvmType::F64,
+                    a: op1,
+                    b: op2,
+                    c: op3,
+                }];
+                (temps[0].clone(), ists)
+            }
+            "FmsubD" => {
+                let temps = self.get_temps(2);
+                let ists = vec![
+                    Fmul {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        op1,
+                        op2,
+                    },
+                    Fsub {
+                        result: temps[1].clone(),
+                        ty: LlvmType::F64,
+                        op1: temps[0].clone(),
+                        op2: op3,
+                    },
+                ];
+                (temps[1].clone(), ists)
+            }
+            "FnmsubD" => {
+                let temps = self.get_temps(3);
+                let ists = vec![
+                    Fmul {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        op1,
+                        op2,
+                    },
+                    Fneg {
+                        result: temps[1].clone(),
+                        ty: LlvmType::F64,
+                        op1: temps[0].clone(),
+                    },
+                    Fadd {
+                        result: temps[2].clone(),
+                        ty: LlvmType::F64,
+                        op1: temps[1].clone(),
+                        op2: op3,
+                    },
+                ];
+                (temps[2].clone(), ists)
+            }
+            "FnmaddD" => {
+                let temps = self.get_temps(3);
+                let ists = vec![
+                    Fmul {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        op1,
+                        op2,
+                    },
+                    Fneg {
+                        result: temps[1].clone(),
+                        ty: LlvmType::F64,
+                        op1: temps[0].clone(),
+                    },
+                    Fsub {
+                        result: temps[2].clone(),
+                        ty: LlvmType::F64,
+                        op1: temps[1].clone(),
+                        op2: op3,
+                    },
+                ];
+                (temps[2].clone(), ists)
+            }
             _ => unreachable!(),
         };
         insts.extend(ists);
@@ -1954,6 +2127,59 @@ impl LlvmTranslator {
                 ]);
                 temps[4].clone()
             }
+            "FsgnjnD" => {
+                let temps = self.get_temps(2);
+                insts.extend(vec![
+                    Fneg {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        op1: op2,
+                    },
+                    Copysign {
+                        result: temps[1].clone(),
+                        ty: LlvmType::F64,
+                        mag: op1,
+                        sign: temps[0].clone(),
+                    },
+                ]);
+                temps[1].clone()
+            }
+            "FsgnjxD" => {
+                let temps = self.get_temps(5);
+                insts.extend(vec![
+                    Bitcast {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        value: op1.clone(),
+                        ty2: LlvmType::I64,
+                    },
+                    Bitcast {
+                        result: temps[1].clone(),
+                        ty: LlvmType::F64,
+                        value: op2,
+                        ty2: LlvmType::I64,
+                    },
+                    Xor {
+                        result: temps[2].clone(),
+                        ty: LlvmType::I64,
+                        op1: temps[0].clone(),
+                        op2: temps[1].clone(),
+                    },
+                    Bitcast {
+                        result: temps[3].clone(),
+                        ty: LlvmType::I64,
+                        value: temps[2].clone(),
+                        ty2: LlvmType::F64,
+                    },
+                    Copysign {
+                        result: temps[4].clone(),
+                        ty: LlvmType::F64,
+                        mag: op1,
+                        sign: temps[3].clone(),
+                    },
+                ]);
+                temps[4].clone()
+            }
             _ => {
                 let temps = self.get_temps(1);
                 insts.push(match op {
@@ -1996,6 +2222,48 @@ impl LlvmTranslator {
                     "FmaxS" => Maximum {
                         result: temps[0].clone(),
                         ty: LlvmType::F32,
+                        op1,
+                        op2,
+                    },
+                    "FaddD" => Fadd {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        op1,
+                        op2,
+                    },
+                    "FsubD" => Fsub {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        op1,
+                        op2,
+                    },
+                    "FmulD" => Fmul {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        op1,
+                        op2,
+                    },
+                    "FdivD" => Fdiv {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        op1,
+                        op2,
+                    },
+                    "FsgnjD" => Copysign {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        mag: op1,
+                        sign: op2,
+                    },
+                    "FminD" => Minimum {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
+                        op1,
+                        op2,
+                    },
+                    "FmaxD" => Maximum {
+                        result: temps[0].clone(),
+                        ty: LlvmType::F64,
                         op1,
                         op2,
                     },
@@ -2076,6 +2344,30 @@ impl LlvmTranslator {
             ("S", "Lu") => Fptoui {
                 result: temps[0].clone(),
                 ty: LlvmType::F32,
+                value: op1,
+                ty2: LlvmType::I64,
+            },
+            ("D", "W") => Fptosi {
+                result: temps[0].clone(),
+                ty: LlvmType::F64,
+                value: op1,
+                ty2: LlvmType::I32,
+            },
+            ("D", "Wu") => Fptoui {
+                result: temps[0].clone(),
+                ty: LlvmType::F64,
+                value: op1,
+                ty2: LlvmType::I32,
+            },
+            ("D", "L") => Fptosi {
+                result: temps[0].clone(),
+                ty: LlvmType::F64,
+                value: op1,
+                ty2: LlvmType::I64,
+            },
+            ("D", "Lu") => Fptoui {
+                result: temps[0].clone(),
+                ty: LlvmType::F64,
                 value: op1,
                 ty2: LlvmType::I64,
             },
@@ -2161,13 +2453,17 @@ impl LlvmTranslator {
         insts.extend(vec![
             Fcmp {
                 result: temps[0].clone(),
-                cond: match op {
-                    "FeqS" => LlvmFpCondition::Oeq,
-                    "FltS" => LlvmFpCondition::Olt,
-                    "FleS" => LlvmFpCondition::Ole,
+                cond: match &op[0..3] {
+                    "Feq" => LlvmFpCondition::Oeq,
+                    "Flt" => LlvmFpCondition::Olt,
+                    "Fle" => LlvmFpCondition::Ole,
                     _ => unreachable!(),
                 },
-                ty: LlvmType::F32,
+                ty: if op.ends_with('S') {
+                    LlvmType::F32
+                } else {
+                    LlvmType::F64
+                },
                 op1,
                 op2,
             },
@@ -2240,6 +2536,30 @@ impl LlvmTranslator {
                 ty: LlvmType::I64,
                 value: op1,
                 ty2: LlvmType::F32,
+            },
+            ("W", "D") => Sitofp {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                value: op1,
+                ty2: LlvmType::F64,
+            },
+            ("Wu", "D") => Uitofp {
+                result: temps[0].clone(),
+                ty: LlvmType::I32,
+                value: op1,
+                ty2: LlvmType::F64,
+            },
+            ("L", "D") => Sitofp {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                value: op1,
+                ty2: LlvmType::F64,
+            },
+            ("Lu", "D") => Uitofp {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                value: op1,
+                ty2: LlvmType::F64,
             },
             _ => unreachable!(),
         });
@@ -5031,7 +5351,7 @@ mod tests {
             },
         ]),
 
-        fsignj_s("fsgnj.s	ft0,ft1,ft2", [
+        fsgnj_s("fsgnj.s	ft0,ft1,ft2", [
             Load {
                 result: 0_usize.into(),
                 ty: LlvmType::F64,
@@ -5073,7 +5393,7 @@ mod tests {
             },
         ]),
 
-        fsignjn_s("fsgnjn.s	ft0,ft1,ft2", [
+        fsgnjn_s("fsgnjn.s	ft0,ft1,ft2", [
             Load {
                 result: 0_usize.into(),
                 ty: LlvmType::F64,
@@ -5120,7 +5440,7 @@ mod tests {
             },
         ]),
 
-        fsignjx_s("fsgnjx.s	ft0,ft1,ft2", [
+        fsgnjx_s("fsgnjx.s	ft0,ft1,ft2", [
             Load {
                 result: 0_usize.into(),
                 ty: LlvmType::F64,
@@ -5686,7 +6006,7 @@ mod tests {
             },
         ]),
 
-        // RV32D
+        // RV32D (25 tests)
         fld_global("fld	fa4,-24(s0) # 12030 <g1>", [
             Load {
                 result: 0_usize.into(),
@@ -5781,6 +6101,720 @@ mod tests {
             },
         ]),
 
-        // RV64D
+        fmadd_d("fmadd.d	fa0,fa0,fa1,fa2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa0.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa1.into(),
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa2.into(),
+            },
+            Fma {
+                result: 3_usize.into(),
+                ty: LlvmType::F64,
+                a: 0_usize.into(),
+                b: 1_usize.into(),
+                c: 2_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 3_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        fmsub_d("fmsub.d	fa0,fa0,fa1,fa2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa0.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa1.into(),
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa2.into(),
+            },
+            Fmul {
+                result: 3_usize.into(),
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Fsub {
+                result: 4_usize.into(),
+                ty: LlvmType::F64,
+                op1: 3_usize.into(),
+                op2: 2_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 4_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        fnmsub_d("fnmsub.d	fa0,fa0,fa1,fa2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa0.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa1.into(),
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa2.into(),
+            },
+            Fmul {
+                result: 3_usize.into(),
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Fneg {
+                result: 4_usize.into(),
+                ty: LlvmType::F64,
+                op1: 3_usize.into(),
+            },
+            Fadd {
+                result: 5_usize.into(),
+                ty: LlvmType::F64,
+                op1: 4_usize.into(),
+                op2: 2_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 5_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        fnmadd_d("fnmadd.d	fa0,fa0,fa1,fa2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa0.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa1.into(),
+            },
+            Load {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa2.into(),
+            },
+            Fmul {
+                result: 3_usize.into(),
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Fneg {
+                result: 4_usize.into(),
+                ty: LlvmType::F64,
+                op1: 3_usize.into(),
+            },
+            Fsub {
+                result: 5_usize.into(),
+                ty: LlvmType::F64,
+                op1: 4_usize.into(),
+                op2: 2_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 5_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        fadd_d("fadd.d	fa3,fa4,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa4.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fadd {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 2_usize.into(),
+                pointer: Fa3.into(),
+            },
+        ]),
+
+        fsub_d("fsub.d	fa3,fa4,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa4.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fsub {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 2_usize.into(),
+                pointer: Fa3.into(),
+            },
+        ]),
+
+        fmul_d("fmul.d	fa3,fa4,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa4.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fmul {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 2_usize.into(),
+                pointer: Fa3.into(),
+            },
+        ]),
+
+        fdiv_d("fdiv.d	fa3,fa4,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa4.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fdiv {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 2_usize.into(),
+                pointer: Fa3.into(),
+            },
+        ]),
+
+        fsqrt_d("fsqrt.d	fa0,fa1", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa1.into(),
+            },
+            Sqrt {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 1_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        fsgnj_d("fsgnj.d	ft0,ft1,ft2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft2.into(),
+            },
+            Copysign {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                mag: 0_usize.into(),
+                sign: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 2_usize.into(),
+                pointer: Ft0.into(),
+            },
+        ]),
+
+        fsgnjn_d("fsgnjn.d	ft0,ft1,ft2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft2.into(),
+            },
+            Fneg {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                op1: 1_usize.into(),
+            },
+            Copysign {
+                result: 3_usize.into(),
+                ty: LlvmType::F64,
+                mag: 0_usize.into(),
+                sign: 2_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 3_usize.into(),
+                pointer: Ft0.into(),
+            },
+        ]),
+
+        fsgnjx_d("fsgnjx.d	ft0,ft1,ft2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft2.into(),
+            },
+            Bitcast {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Bitcast {
+                result: 3_usize.into(),
+                ty: LlvmType::F64,
+                value: 1_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Xor {
+                result: 4_usize.into(),
+                ty: LlvmType::I64,
+                op1: 2_usize.into(),
+                op2: 3_usize.into(),
+            },
+            Bitcast {
+                result: 5_usize.into(),
+                ty: LlvmType::I64,
+                value: 4_usize.into(),
+                ty2: LlvmType::F64,
+            },
+            Copysign {
+                result: 6_usize.into(),
+                ty: LlvmType::F64,
+                mag: 0_usize.into(),
+                sign: 5_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 6_usize.into(),
+                pointer: Ft0.into(),
+            },
+        ]),
+
+        fmin_d("fmin.d	ft0,ft1,ft2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft2.into(),
+            },
+            Minimum {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 2_usize.into(),
+                pointer: Ft0.into(),
+            },
+        ]),
+
+        fmax_d("fmax.d	ft0,ft1,ft2", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft1.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft2.into(),
+            },
+            Maximum {
+                result: 2_usize.into(),
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 2_usize.into(),
+                pointer: Ft0.into(),
+            },
+        ]),
+
+        feq_d("feq.d	a5,fa4,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa4.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fcmp {
+                result: 2_usize.into(),
+                cond: LlvmFpCondition::Oeq,
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Sext {
+                result: 3_usize.into(),
+                ty: LlvmType::I1,
+                value: 2_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 3_usize.into(),
+                pointer: A5.into(),
+            },
+        ]),
+
+        flt_d("flt.d	a5,fa4,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa4.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fcmp {
+                result: 2_usize.into(),
+                cond: LlvmFpCondition::Olt,
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Sext {
+                result: 3_usize.into(),
+                ty: LlvmType::I1,
+                value: 2_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 3_usize.into(),
+                pointer: A5.into(),
+            },
+        ]),
+
+        fle_d("fle.d	a5,fa4,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa4.into(),
+            },
+            Load {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fcmp {
+                result: 2_usize.into(),
+                cond: LlvmFpCondition::Ole,
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+                op2: 1_usize.into(),
+            },
+            Sext {
+                result: 3_usize.into(),
+                ty: LlvmType::I1,
+                value: 2_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 3_usize.into(),
+                pointer: A5.into(),
+            },
+        ]),
+
+        fcvt_w_d("fcvt.w.d	a5,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fptosi {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 2_usize.into(),
+                ty: LlvmType::I32,
+                value: 1_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: A5.into(),
+            },
+        ]),
+
+        fcvt_wu_d("fcvt.wu.d	a5,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fptoui {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Zext {
+                result: 2_usize.into(),
+                ty: LlvmType::I32,
+                value: 1_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: A5.into(),
+            },
+        ]),
+
+        fcvt_d_w("fcvt.d.w	fa5,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Trunc {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sitofp {
+                result: 2_usize.into(),
+                ty: LlvmType::I32,
+                value: 1_usize.into(),
+                ty2: LlvmType::F64,
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 2_usize.into(),
+                pointer: Fa5.into(),
+            },
+        ]),
+
+        fcvt_d_wu("fcvt.d.wu	fa5,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Trunc {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Uitofp {
+                result: 2_usize.into(),
+                ty: LlvmType::I32,
+                value: 1_usize.into(),
+                ty2: LlvmType::F64,
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 2_usize.into(),
+                pointer: Fa5.into(),
+            },
+        ]),
+
+        // RV64D (6 tests)
+        fcvt_l_d("fcvt.l.d	a5,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fptosi {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 1_usize.into(),
+                pointer: A5.into(),
+            },
+        ]),
+
+        fcvt_lu_d("fcvt.lu.d	a5,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fptoui {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 1_usize.into(),
+                pointer: A5.into(),
+            },
+        ]),
+
+        fmv_x_d("fmv.x.d	t0,ft0", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Ft0.into(),
+            },
+            Bitcast {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 1_usize.into(),
+                pointer: T0.into(),
+            },
+        ]),
+
+        fcvt_d_l("fcvt.d.l	fa5,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Sitofp {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::F64,
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 1_usize.into(),
+                pointer: Fa5.into(),
+            },
+        ]),
+
+        fcvt_d_lu("fcvt.d.lu	fa5,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Uitofp {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::F64,
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 1_usize.into(),
+                pointer: Fa5.into(),
+            },
+        ]),
+
+        fmv_d_x("fmv.d.x	ft0,t0", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: T0.into(),
+            },
+            Bitcast {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::F64,
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 1_usize.into(),
+                pointer: Ft0.into(),
+            },
+        ]),
     }
 }
