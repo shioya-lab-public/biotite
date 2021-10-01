@@ -223,6 +223,7 @@ Unlike RISC-V, taking the remainder of a division by zero in LLVM is undefined b
 
 add arbitrary memory access support for ld/sd
 add support for RV32/64A
+Force x0 always to be 0
 
 ``` Bash
 clang -emit-llvm examples/test.c -S -o examples/reference.ll

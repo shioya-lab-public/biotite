@@ -83,10 +83,8 @@ pub enum LlvmOrdering {
 pub enum LlvmIntCondition {
     Eq,
     Ne,
-    Ugt,
     Uge,
     Ult,
-    Ule,
     Sgt,
     Sge,
     Slt,
@@ -118,6 +116,7 @@ pub enum LlvmInstruction {
         defaultdest: String,
         targets: Vec<(LlvmType, LlvmValue, String)>,
     },
+    Unreachable,
 
     // Unary Operations
     Fneg {

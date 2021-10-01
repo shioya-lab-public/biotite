@@ -168,7 +168,7 @@ impl From<i64> for RiscvImmediate {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct RiscvAddress(usize);
+pub struct RiscvAddress(pub usize);
 
 impl RiscvAddress {
     pub fn new(s: &str) -> Self {

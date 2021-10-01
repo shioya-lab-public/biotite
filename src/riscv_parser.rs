@@ -532,12 +532,12 @@ mod tests {
         sltz("sltz	a4,a5", Sltz { rd: A4, rs1: A5 }),
         sgtz("sgtz	a4,a5", Sgtz { rd: A4, rs1: A5 }),
 
-        fmvs("fmv.s	fa0,fa5", FmvS { rd: Fa0, rs1: Fa5 }),
-        fabss("fabs.s	fa0,fa5", FabsS { rd: Fa0, rs1: Fa5 }),
-        fnegs("fneg.s	fa0,fa5", FnegS { rd: Fa0, rs1: Fa5 }),
-        fmvd("fmv.d	fa0,fa5", FmvD { rd: Fa0, rs1: Fa5 }),
-        fabsd("fabs.d	fa0,fa5", FabsD { rd: Fa0, rs1: Fa5 }),
-        fnegd("fneg.d	fa0,fa5", FnegD { rd: Fa0, rs1: Fa5 }),
+        fmv_s("fmv.s	fa0,fa5", FmvS { rd: Fa0, rs1: Fa5 }),
+        fabs_s("fabs.s	fa0,fa5", FabsS { rd: Fa0, rs1: Fa5 }),
+        fneg_s("fneg.s	fa0,fa5", FnegS { rd: Fa0, rs1: Fa5 }),
+        fmv_d("fmv.d	fa0,fa5", FmvD { rd: Fa0, rs1: Fa5 }),
+        fabs_d("fabs.d	fa0,fa5", FabsD { rd: Fa0, rs1: Fa5 }),
+        fneg_d("fneg.d	fa0,fa5", FnegD { rd: Fa0, rs1: Fa5 }),
 
         beqz("beqz	a5,104c6", Beqz { rs1: A5, addr: 0x104c6.into() }),
         bnez("bnez	a5,104c6", Bnez { rs1: A5, addr: 0x104c6.into() }),

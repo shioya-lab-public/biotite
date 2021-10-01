@@ -6,6 +6,7 @@ use crate::llvm_isa::{
 use crate::riscv_isa::{RiscvAddress, RiscvImmediate, RiscvInstruction, RiscvRegister};
 use regex::Regex;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::mem;
 
 pub struct LlvmTranslator {
@@ -645,8 +646,329 @@ impl LlvmTranslator {
                     ]
                 }
 
+                // Pseudoinstructions
+                RI::Nop { .. } => Vec::new(),
+                RI::Li { rd, imm, .. } => vec![LI::Store {
+                    ty: LlvmType::I64,
+                    value: imm.into(),
+                    pointer: rd.into(),
+                }],
+                RI::Mv { rd, rs1, .. } => {
+                    let temps = self.get_temps(1);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::I64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Store {
+                            ty: LlvmType::I64,
+                            value: temps[0].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::Not { rd, rs1, .. } => {
+                    self.build_binary_immediate(rd, rs1, (-1).into(), "Xori", false)
+                }
+                RI::Neg { rd, rs1, .. } => {
+                    let temps = self.get_temps(2);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::I64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Sub {
+                            result: temps[1].clone(),
+                            ty: LlvmType::I64,
+                            op1: 0_i64.into(),
+                            op2: temps[0].clone(),
+                        },
+                        LI::Store {
+                            ty: LlvmType::I64,
+                            value: temps[1].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::Negw { rd, rs1, .. } => {
+                    let temps = self.get_temps(4);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::I64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Trunc {
+                            result: temps[1].clone(),
+                            ty: LlvmType::I64,
+                            value: temps[0].clone(),
+                            ty2: LlvmType::I32,
+                        },
+                        LI::Sub {
+                            result: temps[2].clone(),
+                            ty: LlvmType::I32,
+                            op1: 0_i64.into(),
+                            op2: temps[1].clone(),
+                        },
+                        LI::Sext {
+                            result: temps[3].clone(),
+                            ty: LlvmType::I32,
+                            value: temps[2].clone(),
+                            ty2: LlvmType::I64,
+                        },
+                        LI::Store {
+                            ty: LlvmType::I64,
+                            value: temps[3].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::SextW { rd, rs1, .. } => {
+                    let temps = self.get_temps(3);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::I64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Trunc {
+                            result: temps[1].clone(),
+                            ty: LlvmType::I64,
+                            value: temps[0].clone(),
+                            ty2: LlvmType::I32,
+                        },
+                        LI::Sext {
+                            result: temps[2].clone(),
+                            ty: LlvmType::I32,
+                            value: temps[1].clone(),
+                            ty2: LlvmType::I64,
+                        },
+                        LI::Store {
+                            ty: LlvmType::I64,
+                            value: temps[2].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::Seqz { rd, rs1, .. } => {
+                    self.build_binary_immediate(rd, rs1, 0.into(), "Seqz", false)
+                }
+                RI::Snez { rd, rs1, .. } => {
+                    self.build_binary_immediate(rd, rs1, 0.into(), "Snez", false)
+                }
+                RI::Sltz { rd, rs1, .. } => {
+                    self.build_binary_immediate(rd, rs1, 0.into(), "Sltz", false)
+                }
+                RI::Sgtz { rd, rs1, .. } => {
+                    self.build_binary_immediate(rd, rs1, 0.into(), "Sgtz", false)
+                }
+
+                RI::FmvS { rd, rs1, .. } => {
+                    let temps = self.get_temps(1);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::F64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Store {
+                            ty: LlvmType::F64,
+                            value: temps[0].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::FabsS { rd, rs1, .. } => {
+                    let temps = self.get_temps(4);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::F64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Fptrunc {
+                            result: temps[1].clone(),
+                            ty: LlvmType::F64,
+                            value: temps[0].clone(),
+                            ty2: LlvmType::F32,
+                        },
+                        LI::Fabs {
+                            result: temps[2].clone(),
+                            ty: LlvmType::F32,
+                            value: temps[1].clone(),
+                        },
+                        LI::Fpext {
+                            result: temps[3].clone(),
+                            ty: LlvmType::F32,
+                            value: temps[2].clone(),
+                            ty2: LlvmType::F64,
+                        },
+                        LI::Store {
+                            ty: LlvmType::F64,
+                            value: temps[3].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::FnegS { rd, rs1, .. } => {
+                    let temps = self.get_temps(4);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::F64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Fptrunc {
+                            result: temps[1].clone(),
+                            ty: LlvmType::F64,
+                            value: temps[0].clone(),
+                            ty2: LlvmType::F32,
+                        },
+                        LI::Fneg {
+                            result: temps[2].clone(),
+                            ty: LlvmType::F32,
+                            op1: temps[1].clone(),
+                        },
+                        LI::Fpext {
+                            result: temps[3].clone(),
+                            ty: LlvmType::F32,
+                            value: temps[2].clone(),
+                            ty2: LlvmType::F64,
+                        },
+                        LI::Store {
+                            ty: LlvmType::F64,
+                            value: temps[3].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::FmvD { rd, rs1, .. } => {
+                    let temps = self.get_temps(1);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::F64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Store {
+                            ty: LlvmType::F64,
+                            value: temps[0].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::FabsD { rd, rs1, .. } => {
+                    let temps = self.get_temps(2);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::F64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Fabs {
+                            result: temps[1].clone(),
+                            ty: LlvmType::F64,
+                            value: temps[0].clone(),
+                        },
+                        LI::Store {
+                            ty: LlvmType::F64,
+                            value: temps[1].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+                RI::FnegD { rd, rs1, .. } => {
+                    let temps = self.get_temps(2);
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::F64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Fneg {
+                            result: temps[1].clone(),
+                            ty: LlvmType::F64,
+                            op1: temps[0].clone(),
+                        },
+                        LI::Store {
+                            ty: LlvmType::F64,
+                            value: temps[1].clone(),
+                            pointer: rd.into(),
+                        },
+                    ]
+                }
+
+                RI::Beqz { rs1, .. } => self.build_branchz(
+                    rs1,
+                    LlvmIntCondition::Eq,
+                    jump_target.unwrap(),
+                    continue_target.unwrap(),
+                ),
+                RI::Bnez { rs1, .. } => self.build_branchz(
+                    rs1,
+                    LlvmIntCondition::Ne,
+                    jump_target.unwrap(),
+                    continue_target.unwrap(),
+                ),
+                RI::Blez { rs1, .. } => self.build_branchz(
+                    rs1,
+                    LlvmIntCondition::Sle,
+                    jump_target.unwrap(),
+                    continue_target.unwrap(),
+                ),
+                RI::Bgez { rs1, .. } => self.build_branchz(
+                    rs1,
+                    LlvmIntCondition::Sge,
+                    jump_target.unwrap(),
+                    continue_target.unwrap(),
+                ),
+                RI::Bltz { rs1, .. } => self.build_branchz(
+                    rs1,
+                    LlvmIntCondition::Slt,
+                    jump_target.unwrap(),
+                    continue_target.unwrap(),
+                ),
+                RI::Bgtz { rs1, .. } => self.build_branchz(
+                    rs1,
+                    LlvmIntCondition::Sgt,
+                    jump_target.unwrap(),
+                    continue_target.unwrap(),
+                ),
+
+                RI::J { .. } => vec![LI::UnconBr(format!("L{}", jump_target.unwrap()))],
+                RI::Jr { rs1, .. } => {
+                    let temps = self.get_temps(1);
+                    let lb = format!("Unreachable{}", self.temp);
+                    self.temp += 1;
+                    let targets = indirect_targets
+                        .iter()
+                        .map(|(RiscvAddress(addr), bb)| {
+                            (
+                                LlvmType::I64,
+                                LlvmValue::Int((*addr).try_into().unwrap()),
+                                format!("L{}", bb),
+                            )
+                        })
+                        .collect();
+                    vec![
+                        LI::Load {
+                            result: temps[0].clone(),
+                            ty: LlvmType::I64,
+                            pointer: rs1.into(),
+                        },
+                        LI::Switch {
+                            ty: LlvmType::I64,
+                            value: temps[0].clone(),
+                            defaultdest: lb.clone(),
+                            targets,
+                        },
+                        LI::Label(lb),
+                        LI::Unreachable,
+                    ]
+                }
                 RI::Ret { .. } => vec![LI::Ret],
-                _ => vec![],
             })
             .flatten()
             .collect()
@@ -688,6 +1010,36 @@ impl LlvmTranslator {
         ]
     }
 
+    fn build_branchz(
+        &mut self,
+        rs1: RiscvRegister,
+        cond: LlvmIntCondition,
+        jump_target: usize,
+        continue_target: usize,
+    ) -> Vec<LlvmInstruction> {
+        use LlvmInstruction::*;
+        let temps = self.get_temps(2);
+        vec![
+            Load {
+                result: temps[0].clone(),
+                ty: LlvmType::I64,
+                pointer: rs1.into(),
+            },
+            Icmp {
+                result: temps[1].clone(),
+                cond,
+                ty: LlvmType::I64,
+                op1: temps[0].clone(),
+                op2: 0_i64.into(),
+            },
+            ConBr {
+                cond: temps[1].clone(),
+                iftrue: format!("L{}", jump_target),
+                iffalse: format!("L{}", continue_target),
+            },
+        ]
+    }
+
     fn build_load(
         &mut self,
         rd: RiscvRegister,
@@ -711,7 +1063,7 @@ impl LlvmTranslator {
                         return vec![
                             Load {
                                 result: temps[0].clone(),
-                                ty: ty.clone(),
+                                ty,
                                 pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
                             },
                             Store {
@@ -731,7 +1083,7 @@ impl LlvmTranslator {
                             },
                             Fpext {
                                 result: temps[1].clone(),
-                                ty: ty.clone(),
+                                ty,
                                 value: temps[0].clone(),
                                 ty2: LlvmType::F64,
                             },
@@ -747,7 +1099,7 @@ impl LlvmTranslator {
                         return vec![
                             Load {
                                 result: temps[0].clone(),
-                                ty: ty.clone(),
+                                ty,
                                 pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
                             },
                             Store {
@@ -768,13 +1120,13 @@ impl LlvmTranslator {
                             match signed {
                                 true => Sext {
                                     result: temps[1].clone(),
-                                    ty: ty.clone(),
+                                    ty,
                                     value: temps[0].clone(),
                                     ty2: LlvmType::I64,
                                 },
                                 false => Zext {
                                     result: temps[1].clone(),
-                                    ty: ty.clone(),
+                                    ty,
                                     value: temps[0].clone(),
                                     ty2: LlvmType::I64,
                                 },
@@ -817,13 +1169,13 @@ impl LlvmTranslator {
                     match signed {
                         true => Sext {
                             result: temps[4].clone(),
-                            ty: ty.clone(),
+                            ty,
                             value: temps[3].clone(),
                             ty2: LlvmType::I64,
                         },
                         false => Zext {
                             result: temps[4].clone(),
-                            ty: ty.clone(),
+                            ty,
                             value: temps[3].clone(),
                             ty2: LlvmType::I64,
                         },
@@ -861,7 +1213,7 @@ impl LlvmTranslator {
                     },
                     Load {
                         result: temps[4].clone(),
-                        ty: ty.clone(),
+                        ty,
                         pointer: temps[3].clone(),
                     },
                     Store {
@@ -902,7 +1254,7 @@ impl LlvmTranslator {
                     },
                     Fpext {
                         result: temps[5].clone(),
-                        ty: ty.clone(),
+                        ty,
                         value: temps[4].clone(),
                         ty2: LlvmType::F64,
                     },
@@ -939,7 +1291,7 @@ impl LlvmTranslator {
                     },
                     Load {
                         result: temps[4].clone(),
-                        ty: ty.clone(),
+                        ty,
                         pointer: temps[3].clone(),
                     },
                     Store {
@@ -981,13 +1333,13 @@ impl LlvmTranslator {
                     match signed {
                         true => Sext {
                             result: temps[5].clone(),
-                            ty: ty.clone(),
+                            ty,
                             value: temps[4].clone(),
                             ty2: LlvmType::I64,
                         },
                         false => Zext {
                             result: temps[5].clone(),
-                            ty: ty.clone(),
+                            ty,
                             value: temps[4].clone(),
                             ty2: LlvmType::I64,
                         },
@@ -1028,7 +1380,7 @@ impl LlvmTranslator {
                                 pointer: rs2.into(),
                             },
                             Store {
-                                ty: ty.clone(),
+                                ty,
                                 value: temps[0].clone(),
                                 pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
                             },
@@ -1049,7 +1401,7 @@ impl LlvmTranslator {
                                 ty2: LlvmType::F32,
                             },
                             Store {
-                                ty: ty.clone(),
+                                ty,
                                 value: temps[1].clone(),
                                 pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
                             },
@@ -1064,7 +1416,7 @@ impl LlvmTranslator {
                                 pointer: rs2.into(),
                             },
                             Store {
-                                ty: ty.clone(),
+                                ty,
                                 value: temps[0].clone(),
                                 pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
                             },
@@ -1085,7 +1437,7 @@ impl LlvmTranslator {
                                 ty2: ty.clone(),
                             },
                             Store {
-                                ty: ty.clone(),
+                                ty,
                                 value: temps[1].clone(),
                                 pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
                             },
@@ -1126,7 +1478,7 @@ impl LlvmTranslator {
                         ty2: ty.clone(),
                     },
                     Store {
-                        ty: ty.clone(),
+                        ty,
                         value: temps[4].clone(),
                         pointer: temps[2].clone(),
                     },
@@ -1162,7 +1514,7 @@ impl LlvmTranslator {
                         pointer: rs2.into(),
                     },
                     Store {
-                        ty: ty.clone(),
+                        ty,
                         value: temps[4].clone(),
                         pointer: temps[3].clone(),
                     },
@@ -1204,7 +1556,7 @@ impl LlvmTranslator {
                         ty2: ty.clone(),
                     },
                     Store {
-                        ty: ty.clone(),
+                        ty,
                         value: temps[5].clone(),
                         pointer: temps[3].clone(),
                     },
@@ -1240,7 +1592,7 @@ impl LlvmTranslator {
                         pointer: rs2.into(),
                     },
                     Store {
-                        ty: ty.clone(),
+                        ty,
                         value: temps[4].clone(),
                         pointer: temps[3].clone(),
                     },
@@ -1282,7 +1634,7 @@ impl LlvmTranslator {
                         ty2: ty.clone(),
                     },
                     Store {
-                        ty: ty.clone(),
+                        ty,
                         value: temps[5].clone(),
                         pointer: temps[3].clone(),
                     },
@@ -1412,10 +1764,49 @@ impl LlvmTranslator {
                 op1,
                 op2: imm.into(),
             },
+            "Seqz" => Icmp {
+                result: temps[0].clone(),
+                cond: LlvmIntCondition::Eq,
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Snez" => Icmp {
+                result: temps[0].clone(),
+                cond: LlvmIntCondition::Ne,
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Sltz" => Icmp {
+                result: temps[0].clone(),
+                cond: LlvmIntCondition::Slt,
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
+            "Sgtz" => Icmp {
+                result: temps[0].clone(),
+                cond: LlvmIntCondition::Sgt,
+                ty: LlvmType::I64,
+                op1,
+                op2: imm.into(),
+            },
             _ => unreachable!(),
         });
+        let mut value = temps[0].clone();
 
-        let value = temps[0].clone();
+        if let "Slti" | "Sltiu" | "Seqz" | "Snez" | "Sltz" | "Sgtz" = op {
+            let temps = self.get_temps(1);
+            insts.push(Sext {
+                result: temps[0].clone(),
+                ty: LlvmType::I1,
+                value,
+                ty2: LlvmType::I64,
+            });
+            value = temps[0].clone();
+        }
+
         if word {
             let temps = self.get_temps(1);
             insts.extend(vec![
@@ -2586,6 +2977,7 @@ impl LlvmTranslator {
     }
 }
 
+// 162 tests
 #[cfg(test)]
 mod tests {
     use super::LlvmTranslator;
@@ -3389,9 +3781,15 @@ mod tests {
                 op1: 0_usize.into(),
                 op2: 0_i64.into(),
             },
+            Sext {
+                result: 2_usize.into(),
+                ty: LlvmType::I1,
+                value: 1_usize.into(),
+                ty2: LlvmType::I64,
+            },
             Store {
                 ty: LlvmType::I64,
-                value: 1_usize.into(),
+                value: 2_usize.into(),
                 pointer: T0.into(),
             },
         ]),
@@ -3409,9 +3807,15 @@ mod tests {
                 op1: 0_usize.into(),
                 op2: 0_i64.into(),
             },
+            Sext {
+                result: 2_usize.into(),
+                ty: LlvmType::I1,
+                value: 1_usize.into(),
+                ty2: LlvmType::I64,
+            },
             Store {
                 ty: LlvmType::I64,
-                value: 1_usize.into(),
+                value: 2_usize.into(),
                 pointer: T0.into(),
             },
         ]),
@@ -6815,6 +7219,536 @@ mod tests {
                 value: 1_usize.into(),
                 pointer: Ft0.into(),
             },
+        ]),
+
+        // Pseudoinstructions (25 tests)
+        li("li	a5,0", [
+            Store {
+                ty: LlvmType::I64,
+                value: 0_i64.into(),
+                pointer: A5.into(),
+            },
+        ]),
+
+        mv("mv	a5,a0", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A0.into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                pointer: A5.into(),
+            },
+        ]),
+
+        not("not	a4,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Xor {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: (-1_i64).into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 1_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        neg("neg	a4,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Sub {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                op1: 0_i64.into(),
+                op2: 0_usize.into(),
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 1_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        negw("negw	a4,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Trunc {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sub {
+                result: 2_usize.into(),
+                ty: LlvmType::I32,
+                op1: 0_i64.into(),
+                op2: 1_usize.into(),
+            },
+            Sext {
+                result: 3_usize.into(),
+                ty: LlvmType::I32,
+                value: 2_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 3_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        sext_w("sext.w	a4,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Trunc {
+                result: 1_usize.into(),
+                ty: LlvmType::I64,
+                value: 0_usize.into(),
+                ty2: LlvmType::I32,
+            },
+            Sext {
+                result: 2_usize.into(),
+                ty: LlvmType::I32,
+                value: 1_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        seqz("seqz	a4,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Icmp {
+                result: 1_usize.into(),
+                cond: LlvmIntCondition::Eq,
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            Sext {
+                result: 2_usize.into(),
+                ty: LlvmType::I1,
+                value: 1_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        snez("snez	a4,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Icmp {
+                result: 1_usize.into(),
+                cond: LlvmIntCondition::Ne,
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            Sext {
+                result: 2_usize.into(),
+                ty: LlvmType::I1,
+                value: 1_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        sltz("sltz	a4,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Icmp {
+                result: 1_usize.into(),
+                cond: LlvmIntCondition::Slt,
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            Sext {
+                result: 2_usize.into(),
+                ty: LlvmType::I1,
+                value: 1_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        sgtz("sgtz	a4,a5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Icmp {
+                result: 1_usize.into(),
+                cond: LlvmIntCondition::Sgt,
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            Sext {
+                result: 2_usize.into(),
+                ty: LlvmType::I1,
+                value: 1_usize.into(),
+                ty2: LlvmType::I64,
+            },
+            Store {
+                ty: LlvmType::I64,
+                value: 2_usize.into(),
+                pointer: A4.into(),
+            },
+        ]),
+
+        fmv_s("fmv.s	fa0,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        fabs_s("fabs.s	fa0,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fptrunc {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+                ty2: LlvmType::F32,
+            },
+            Fabs {
+                result: 2_usize.into(),
+                ty: LlvmType::F32,
+                value: 1_usize.into(),
+            },
+            Fpext {
+                result: 3_usize.into(),
+                ty: LlvmType::F32,
+                value: 2_usize.into(),
+                ty2: LlvmType::F64,
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 3_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        fneg_s("fneg.s	fa0,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fptrunc {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+                ty2: LlvmType::F32,
+            },
+            Fneg {
+                result: 2_usize.into(),
+                ty: LlvmType::F32,
+                op1: 1_usize.into(),
+            },
+            Fpext {
+                result: 3_usize.into(),
+                ty: LlvmType::F32,
+                value: 2_usize.into(),
+                ty2: LlvmType::F64,
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 3_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        fmv_d("fmv.d	fa0,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        fabs_d("fabs.d	fa0,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fabs {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                value: 0_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 1_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        fneg_d("fneg.d	fa0,fa5", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::F64,
+                pointer: Fa5.into(),
+            },
+            Fneg {
+                result: 1_usize.into(),
+                ty: LlvmType::F64,
+                op1: 0_usize.into(),
+            },
+            Store {
+                ty: LlvmType::F64,
+                value: 1_usize.into(),
+                pointer: Fa0.into(),
+            },
+        ]),
+
+        beqz("beqz	a5,10556", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Icmp {
+                result: 1_usize.into(),
+                cond: LlvmIntCondition::Eq,
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            ConBr {
+                cond: 1_usize.into(),
+                iftrue: String::from("L0"),
+                iffalse: String::from("L1"),
+            },
+            Label(String::from("L1")),
+        ]),
+
+        bnez("bnez	a5,10556", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Icmp {
+                result: 1_usize.into(),
+                cond: LlvmIntCondition::Ne,
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            ConBr {
+                cond: 1_usize.into(),
+                iftrue: String::from("L0"),
+                iffalse: String::from("L1"),
+            },
+            Label(String::from("L1")),
+        ]),
+
+        blez("blez	a5,10556", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Icmp {
+                result: 1_usize.into(),
+                cond: LlvmIntCondition::Sle,
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            ConBr {
+                cond: 1_usize.into(),
+                iftrue: String::from("L0"),
+                iffalse: String::from("L1"),
+            },
+            Label(String::from("L1")),
+        ]),
+
+        bgez("bgez	a5,10556", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Icmp {
+                result: 1_usize.into(),
+                cond: LlvmIntCondition::Sge,
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            ConBr {
+                cond: 1_usize.into(),
+                iftrue: String::from("L0"),
+                iffalse: String::from("L1"),
+            },
+            Label(String::from("L1")),
+        ]),
+
+        bltz("bltz	a5,10556", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Icmp {
+                result: 1_usize.into(),
+                cond: LlvmIntCondition::Slt,
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            ConBr {
+                cond: 1_usize.into(),
+                iftrue: String::from("L0"),
+                iffalse: String::from("L1"),
+            },
+            Label(String::from("L1")),
+        ]),
+
+        bgtz("bgtz	a5,10556", [
+            Load {
+                result: 0_usize.into(),
+                ty: LlvmType::I64,
+                pointer: A5.into(),
+            },
+            Icmp {
+                result: 1_usize.into(),
+                cond: LlvmIntCondition::Sgt,
+                ty: LlvmType::I64,
+                op1: 0_usize.into(),
+                op2: 0_i64.into(),
+            },
+            ConBr {
+                cond: 1_usize.into(),
+                iftrue: String::from("L0"),
+                iffalse: String::from("L1"),
+            },
+            Label(String::from("L1")),
+        ]),
+
+        j("j	10556", [
+            UnconBr(String::from("L0")),
+            Label(String::from("L1")),
+        ]),
+    }
+
+    #[test]
+    fn jr() {
+        let source = "
+            Disassembly of section .text:
+
+            00000000000104e0 <main>:
+                104e0:	8782                	jr	a5
+                10548:	8082                	ret
+
+            Disassembly of section .rodata:
+
+            00000000000105b0 <.rodata>:
+                105b0:	0548                	addi	a0,sp,644
+                105b2:	0001                	nop
+        ";
+        let indirect_targets = riscv_parser::parse_rodata(source);
+        let mut statics = riscv_parser::parse_sdata(source);
+        statics.extend(riscv_parser::parse_sbss(source));
+        let rv_insts = riscv_parser::parse_text(source);
+        let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
+        let ll_program = LlvmTranslator::new(cfg, statics).run();
+        let expected = Program {
+            statics: HashMap::new(),
+            functions: vec![LlvmFunction {
+                name: String::from("main"),
+                body: vec![
+                    Label(String::from("Entry")),
+                    UnconBr(String::from("L0")),
+                    Label(String::from("L0")),
+                    Load {
+                        result: 0_usize.into(),
+                        ty: LlvmType::I64,
+                        pointer: A5.into(),
+                    },
+                    Switch {
+                        ty: LlvmType::I64,
+                        value: 0_usize.into(),
+                        defaultdest: format!("Unreachable{}", 1),
+                        targets: vec![(LlvmType::I64, 0x105b0_i64.into(), String::from("L1"))],
+                    },
+                    Label(format!("Unreachable{}", 1)),
+                    Unreachable,
+                    Label(format!("L{}", 1)),
+                    Ret,
+                ],
+            }],
+        };
+        assert_eq!(ll_program, expected);
+    }
+
+    build_test! {
+        ret("ret", [
+            Ret,
+            Label(String::from("L1")),
         ]),
     }
 }
