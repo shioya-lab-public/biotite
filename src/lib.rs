@@ -4,7 +4,6 @@ extern crate lazy_static;
 mod cfg;
 mod cfg_builder;
 mod llvm_isa;
-mod llvm_serializer;
 mod llvm_translator;
 mod riscv_isa;
 mod riscv_macro;
@@ -20,5 +19,5 @@ pub fn run(source: &str) -> String {
     let rv_insts = riscv_parser::parse_text(source);
     let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
     let ll_program = LlvmTranslator::new(cfg, statics).run();
-    llvm_serializer::serialize(ll_program)
+    format!("{}", ll_program)
 }

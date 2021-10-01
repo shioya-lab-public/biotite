@@ -49,6 +49,8 @@ impl CfgBuilder {
         &mut self,
         index: usize,
     ) -> (Vec<BasicBlock>, HashMap<RiscvAddress, usize>) {
+        use RiscvInstruction::*;
+
         // Start indexes for basic blocks.
         let mut starts = vec![index];
 
@@ -61,8 +63,6 @@ impl CfgBuilder {
             if idx != index && inst.label().is_some() {
                 break;
             }
-
-            use RiscvInstruction::*;
 
             match inst {
                 Jal { comment, .. } | Jalr { comment, .. } => {
@@ -125,10 +125,10 @@ impl CfgBuilder {
         let mut start_iter = starts.iter();
         let mut start = *start_iter.next().unwrap();
         let mut end = start;
-        for s in start_iter {
+        for (i, s) in start_iter.enumerate() {
             start = end;
             end = *s;
-            let block = match targets.get(&end) {
+            let mut block = match targets.get(&end) {
                 Some((continue_target, jump_target)) => BasicBlock {
                     instructions: self.instructions[start..end].to_vec(),
                     continue_target: continue_target
@@ -141,6 +141,23 @@ impl CfgBuilder {
                     jump_target: None,
                 },
             };
+
+            if block.jump_target.is_none()
+                && !matches!(
+                    block.instructions.last(),
+                    Some(Jr { .. }) | Some(Ret { .. })
+                )
+            {
+                block.instructions.push(J {
+                    label: None,
+                    address: 0.into(),
+                    addr: 0.into(),
+                    comment: None,
+                });
+                block.continue_target = None;
+                block.jump_target = Some(i + 1);
+            }
+
             blocks.push(block);
         }
 
@@ -553,9 +570,15 @@ mod tests {
                                 address: 0x10548.into(),
                                 comment: None,
                             },
+                            J {
+                                label: None,
+                                address: 0.into(),
+                                addr: 0.into(),
+                                comment: None,
+                            },
                         ],
-                        continue_target: Some(3),
-                        jump_target: None,
+                        continue_target: None,
+                        jump_target: Some(3),
                     },
                     BasicBlock {
                         instructions: vec![Ret {

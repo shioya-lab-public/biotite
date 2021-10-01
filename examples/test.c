@@ -1,11 +1,8 @@
-// int g1 = 1;
-// double g2 = 3;
-
-int main(void) {
-    int n = 1;
+int s(int n) {
     switch (n) {
         case 1:
             n += 1;
+            break;
         case 2:
             n += 2;
             break;
@@ -22,9 +19,19 @@ int main(void) {
     return n;
 }
 
-// int main(void) {
-//     // if (1) {
-//     //     return f(1);
-//     // }
-//     return g2;
-// }
+int main(void) {
+    int n = 0;
+    for (int i = 0; i < 1; ++i) {
+        ++n;
+    }
+    while (n < 2) {
+        ++n;
+    }
+    do {
+        ++n;
+    } while (0);
+    if (1) {
+        n = s(n);
+    }
+    return n;  // `echo $?` => 6
+}

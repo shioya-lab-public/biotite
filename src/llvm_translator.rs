@@ -53,7 +53,19 @@ impl LlvmTranslator {
         let mut body: Vec<_> = basic_blocks
             .into_iter()
             .enumerate()
-            .map(|(i, block)| {
+            .map(|(i, mut block)| {
+                let jr_indexes: Vec<_> = block
+                    .instructions
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, inst)| matches!(inst, RiscvInstruction::Jr { .. }))
+                    .map(|(i, _)| i)
+                    .rev()
+                    .collect();
+                for i in jr_indexes {
+                    block.instructions.remove(i - 1);
+                }
+
                 let mut insts = vec![LlvmInstruction::Label(format!("L{}", i))];
                 insts.extend(self.translate_basic_block(block, &indirect_targets));
                 insts
@@ -7701,7 +7713,8 @@ mod tests {
             Disassembly of section .text:
 
             00000000000104e0 <main>:
-                104e0:	8782                	jr	a5
+                104e0:	439c                	lw	a5,0(a5)
+                1050c:	8782                	jr	a5
                 10548:	8082                	ret
 
             Disassembly of section .rodata:
