@@ -207,25 +207,32 @@ L7:
 
 ## Misc
 
-require statically linked
-assume little endian
+### Assumptions
 
--march=rv64imafdc -mabi=lp64d
+- statically linked
+- assume little endian
+- `-march=rv64imafdc -mabi=lp64d`
 
-The base integer instruction sets use a two’s-complement representation for signed integer values.
-RV32I: 40 insts including `ecall`, `ebreak`, and `fence`
-The program counter pc holds the address of the current instruction
-Except for the 5-bit immediates used in CSR instructions (Chapter 9), immediates are always sign-extended
-the shift amount held in the lower 5 bits
-The target of `JALR` address is obtained by adding the sign-extended 12-bit I-immediate to the register rs1, then setting the least-significant bit of the result to zero.
-In RV64I, only the low 6 bits of rs2 are considered for the shift amount
-Unlike RISC-V, taking the remainder of a division by zero in LLVM is undefined behavior.
+### RISC-V Notes
 
-add arbitrary memory access support for ld/sd
-add support for RV32/64A
-Force x0 always to be 0
-Fix static variable support
-Map RV inst to LLVM comment for easy debugging
+- The base integer instruction sets use a two’s-complement representation for signed integer values.
+- RV32I: 40 insts including `ecall`, `ebreak`, and `fence`
+- The program counter `pc` holds the address of the current instruction
+- Except for the 5-bit immediates used in CSR instructions (Chapter 9), immediates are always sign-extended
+- The shift amount held in the lower 5 bits
+- The target of `JALR` address is obtained by adding the sign-extended 12-bit I-immediate to the register rs1, then setting the least-significant bit of the result to zero.
+- In RV64I, only the low 6 bits of rs2 are considered for the shift amount
+- Unlike RISC-V, taking the remainder of a division by zero in LLVM is undefined behavior.
+
+### Todo
+
+- add arbitrary memory access support for ld/sd
+- add support for RV32/64A
+- Force x0 always to be 0
+- Fix static variable support
+- Map RV inst to LLVM comment for easy debugging
+
+### Testing Commands
 
 ``` Bash
 clang -emit-llvm examples/test.c -S -o examples/reference.ll
@@ -240,9 +247,7 @@ echo $?
 riscv64-unknown-linux-gnu-gcc -pthread examples/test.c -o examples/test && riscv64-unknown-linux-gnu-objdump -d -j.text -j.rodata -j.sdata -j.sbss examples/test > examples/test.dump
 ```
 
-[LLVM Language Reference Manual](https://releases.llvm.org/12.0.0/docs/LangRef.html)
-
-[A Complete Guide to LLVM for Programming Language Creators](https://mukulrathi.co.uk/create-your-own-programming-language/llvm-ir-cpp-api-tutorial/)
+### STRAIGHT Commands
 
 ``` Bash
 sudo dockerd &
@@ -252,3 +257,8 @@ cd /work/straight-util/STRAIGHT_Tester/HelloMusl && make test -j$(nproc)
 exit
 sudo docker cp straight-env:/work/straight-util/STRAIGHT_Tester/HelloMusl/hello.result ~/riscv2llvm/examples
 ```
+
+### Reference
+
+- [LLVM Language Reference Manual](https://releases.llvm.org/12.0.0/docs/LangRef.html)
+- [A Complete Guide to LLVM for Programming Language Creators](https://mukulrathi.co.uk/create-your-own-programming-language/llvm-ir-cpp-api-tutorial/)
