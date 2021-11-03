@@ -1,126 +1,247 @@
 	.text
 	.file	"test.ll"
-	.globl	s                               # -- Begin function s
+	.globl	f                               # -- Begin function f
 	.p2align	4, 0x90
-	.type	s,@function
-s:                                      # @s
+	.type	f,@function
+f:                                      # @f
 	.cfi_startproc
 # %bb.0:                                # %Entry
-	movq	sp@GOTPCREL(%rip), %r10
-	movq	(%r10), %rax
-	addq	$-32, %rax
-	movq	%rax, (%r10)
-	movq	stack@GOTPCREL(%rip), %rsi
-	movq	%rsi, %rdi
-	subq	%rax, %rdi
-	movq	s0@GOTPCREL(%rip), %r11
-	movq	(%r11), %rax
-	movq	%rax, 999(%rdi)
-	movq	(%r10), %rax
-	addq	$32, %rax
-	movq	%rax, (%r11)
-	movq	zero@GOTPCREL(%rip), %r9
-	movq	(%r9), %rcx
-	movq	a0@GOTPCREL(%rip), %r8
-	addq	(%r8), %rcx
-	movq	a5@GOTPCREL(%rip), %rdi
-	movq	%rcx, (%rdi)
-	movq	%rsi, %rdx
-	subq	%rax, %rdx
-	movl	%ecx, 1043(%rdx)
-	movq	%rsi, %rax
-	subq	(%r11), %rax
-	movslq	1043(%rax), %rcx
-	movq	a4@GOTPCREL(%rip), %rax
+	jmp	.LBB0_1
+.LBB0_1:                                # %L0
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	addq	$-32, %rcx
+	movq	reg.sp@GOTPCREL(%rip), %rax
 	movq	%rcx, (%rax)
-	movq	(%r9), %rdx
-	addq	$5, %rdx
-	movq	%rdx, (%rdi)
-	cmpq	%rcx, %rdx
-	jb	.LBB0_9
-# %bb.1:                                # %L1
-	movq	%rsi, %rcx
-	subq	(%r11), %rcx
-	movslq	1043(%rcx), %rcx
-	leaq	(,%rcx,4), %rdx
-	movq	%rdx, (%rax)
-	leaq	67004(,%rcx,4), %rax
-	movq	%rax, (%rdi)
-	jmpq	*.LJTI0_0(,%rdx,8)
-.LBB0_3:                                # %L2
-	movq	%rsi, %rax
-	subq	(%r11), %rax
-	movslq	1043(%rax), %rcx
-	incq	%rcx
-	jmp	.LBB0_8
-.LBB0_5:                                # %L4
-	movq	%rsi, %rax
-	subq	(%r11), %rax
-	movslq	1043(%rax), %rcx
-	addq	$3, %rcx
-	jmp	.LBB0_8
-.LBB0_4:                                # %L3
-	movq	%rsi, %rax
-	subq	(%r11), %rax
-	movslq	1043(%rax), %rcx
-	addq	$2, %rcx
-	jmp	.LBB0_8
-.LBB0_7:                                # %L6
-	movq	%rsi, %rax
-	subq	(%r11), %rax
-	movslq	1043(%rax), %rcx
-	addq	$5, %rcx
-	jmp	.LBB0_8
-.LBB0_6:                                # %L5
-	movq	%rsi, %rax
-	subq	(%r11), %rax
-	movslq	1043(%rax), %rcx
-	addq	$4, %rcx
-.LBB0_8:                                # %L7
-	movq	%rcx, (%rdi)
-	movl	%ecx, 1043(%rax)
-.LBB0_9:                                # %L7
-	movq	%rsi, %rax
-	subq	(%r11), %rax
-	movslq	1043(%rax), %rax
-	movq	%rax, (%rdi)
-	addq	(%r9), %rax
-	movq	%rax, (%r8)
-	movq	(%r10), %rcx
-	subq	%rcx, %rsi
-	movq	999(%rsi), %rdx
-	movq	%rdx, (%r11)
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rdx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movq	%rdx, 24(%rax,%rcx)
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
 	addq	$32, %rcx
-	movq	%rcx, (%r10)
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movl	%eax, %edx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movl	%edx, -20(%rax,%rcx)
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movslq	-20(%rax,%rcx), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+                                        # kill: def $eax killed $eax killed $rax
+	movslq	%eax, %rcx
+	movq	reg.a4@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	$5, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movq	reg.a4@GOTPCREL(%rip), %rcx
+	cmpq	(%rcx), %rax
+	jb	.LBB0_9
+# %bb.2:                                # %L1
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movq	reg.stack@GOTPCREL(%rip), %rcx
+	movl	-20(%rax,%rcx), %eax
+	movl	%eax, %ecx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rax, -16(%rsp)                 # 8-byte Spill
+	movq	%rcx, (%rax)
+	movq	(%rax), %rcx
+	shlq	$2, %rcx
+	movq	reg.a4@GOTPCREL(%rip), %rdx
+	movq	%rcx, (%rdx)
+	movq	$65536, (%rax)                  # imm = 0x10000
+	movq	(%rax), %rcx
+	addq	$1376, %rcx                     # imm = 0x560
+	movq	%rcx, (%rax)
+	movq	(%rax), %rcx
+	movq	(%rdx), %rdx
+	addq	%rdx, %rcx
+	movq	%rcx, (%rax)
+	movq	(%rax), %rax
+	addq	$-66912, %rax                   # imm = 0xFFFEFAA0
+	movq	%rax, -8(%rsp)                  # 8-byte Spill
+# %bb.10:                               # %L1
+	movq	-8(%rsp), %rax                  # 8-byte Reload
+	movq	.LJTI0_0(,%rax,8), %rax
+	jmpq	*%rax
+.LBB0_3:                                # %Unreachable43
+.LBB0_4:                                # %L2
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movslq	-20(%rax,%rcx), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+                                        # kill: def $eax killed $eax killed $rax
+	addl	$1, %eax
+	movslq	%eax, %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movl	%eax, %edx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movl	%edx, -20(%rax,%rcx)
+	jmp	.LBB0_9
+.LBB0_5:                                # %L3
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movslq	-20(%rax,%rcx), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+                                        # kill: def $eax killed $eax killed $rax
+	addl	$2, %eax
+	movslq	%eax, %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movl	%eax, %edx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movl	%edx, -20(%rax,%rcx)
+	jmp	.LBB0_9
+.LBB0_6:                                # %L4
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movslq	-20(%rax,%rcx), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+                                        # kill: def $eax killed $eax killed $rax
+	addl	$3, %eax
+	movslq	%eax, %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movl	%eax, %edx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movl	%edx, -20(%rax,%rcx)
+	jmp	.LBB0_9
+.LBB0_7:                                # %L5
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movslq	-20(%rax,%rcx), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+                                        # kill: def $eax killed $eax killed $rax
+	addl	$4, %eax
+	movslq	%eax, %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movl	%eax, %edx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movl	%edx, -20(%rax,%rcx)
+	jmp	.LBB0_9
+.LBB0_8:                                # %L6
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movslq	-20(%rax,%rcx), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+                                        # kill: def $eax killed $eax killed $rax
+	addl	$5, %eax
+	movslq	%eax, %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movl	%eax, %edx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movl	%edx, -20(%rax,%rcx)
+.LBB0_9:                                # %L7
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movslq	-20(%rax,%rcx), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.a0@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movq	24(%rax,%rcx), %rcx
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	addq	$32, %rcx
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
 	retq
-.LBB0_2:                                # %L57
 .Lfunc_end0:
-	.size	s, .Lfunc_end0-s
+	.size	f, .Lfunc_end0-f
 	.cfi_endproc
 	.section	.rodata,"a",@progbits
 	.p2align	3
 .LJTI0_0:
 	.quad	.LBB0_9
-	.quad	.LBB0_2
-	.quad	.LBB0_2
-	.quad	.LBB0_2
 	.quad	.LBB0_3
-	.quad	.LBB0_2
-	.quad	.LBB0_2
-	.quad	.LBB0_2
+	.quad	.LBB0_3
+	.quad	.LBB0_3
 	.quad	.LBB0_4
-	.quad	.LBB0_2
-	.quad	.LBB0_2
-	.quad	.LBB0_2
+	.quad	.LBB0_3
+	.quad	.LBB0_3
+	.quad	.LBB0_3
 	.quad	.LBB0_5
-	.quad	.LBB0_2
-	.quad	.LBB0_2
-	.quad	.LBB0_2
+	.quad	.LBB0_3
+	.quad	.LBB0_3
+	.quad	.LBB0_3
 	.quad	.LBB0_6
-	.quad	.LBB0_2
-	.quad	.LBB0_2
-	.quad	.LBB0_2
+	.quad	.LBB0_3
+	.quad	.LBB0_3
+	.quad	.LBB0_3
 	.quad	.LBB0_7
+	.quad	.LBB0_3
+	.quad	.LBB0_3
+	.quad	.LBB0_3
+	.quad	.LBB0_8
                                         # -- End function
 	.text
 	.globl	main                            # -- Begin function main
@@ -129,420 +250,592 @@ s:                                      # @s
 main:                                   # @main
 	.cfi_startproc
 # %bb.0:                                # %Entry
-	pushq	%rbp
-	.cfi_def_cfa_offset 16
-	pushq	%r15
-	.cfi_def_cfa_offset 24
-	pushq	%r14
-	.cfi_def_cfa_offset 32
-	pushq	%r13
-	.cfi_def_cfa_offset 40
-	pushq	%r12
-	.cfi_def_cfa_offset 48
-	pushq	%rbx
-	.cfi_def_cfa_offset 56
 	pushq	%rax
-	.cfi_def_cfa_offset 64
-	.cfi_offset %rbx, -56
-	.cfi_offset %r12, -48
-	.cfi_offset %r13, -40
-	.cfi_offset %r14, -32
-	.cfi_offset %r15, -24
-	.cfi_offset %rbp, -16
-	movq	sp@GOTPCREL(%rip), %rdx
-	movq	(%rdx), %rax
-	addq	$-32, %rax
-	movq	%rax, (%rdx)
-	movq	stack@GOTPCREL(%rip), %rbx
-	movq	%rbx, %rcx
-	subq	%rax, %rcx
-	movq	ra@GOTPCREL(%rip), %rax
-	movq	(%rax), %rax
-	movq	%rax, 999(%rcx)
-	movq	%rbx, %rax
-	subq	(%rdx), %rax
-	movq	s0@GOTPCREL(%rip), %r12
-	movq	(%r12), %rcx
-	movq	%rcx, 1007(%rax)
-	movq	(%rdx), %rax
-	addq	$32, %rax
-	movq	%rax, (%r12)
-	movq	%rbx, %rcx
-	subq	%rax, %rcx
-	movq	zero@GOTPCREL(%rip), %r13
-	movl	(%r13), %eax
-	movl	%eax, 1043(%rcx)
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movl	(%r13), %ecx
-	movl	%ecx, 1047(%rax)
-	movq	a5@GOTPCREL(%rip), %r15
-	movq	a4@GOTPCREL(%rip), %r14
-	movq	a0@GOTPCREL(%rip), %rbp
-	.p2align	4, 0x90
-.LBB1_7:                                # %L8
-                                        # =>This Loop Header: Depth=1
-                                        #     Child Loop BB1_3 Depth 2
-                                        #     Child Loop BB1_5 Depth 2
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movslq	1047(%rax), %rax
-	movq	%rax, (%r14)
-	movq	$99999999, (%r15)               # imm = 0x5F5E0FF
-	cmpq	$100000000, %rax                # imm = 0x5F5E100
-	jge	.LBB1_8
-# %bb.1:                                # %L1
-                                        #   in Loop: Header=BB1_7 Depth=1
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movl	(%r13), %ecx
-	movl	%ecx, 1043(%rax)
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movl	(%r13), %ecx
-	movl	%ecx, 1051(%rax)
-	.p2align	4, 0x90
-.LBB1_3:                                # %L3
-                                        #   Parent Loop BB1_7 Depth=1
-                                        # =>  This Inner Loop Header: Depth=2
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movslq	1051(%rax), %rax
-	movq	%rax, (%r15)
-	cmpq	(%r13), %rax
-	jg	.LBB1_5
-# %bb.2:                                # %L2
-                                        #   in Loop: Header=BB1_3 Depth=2
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movslq	1043(%rax), %rcx
-	incq	%rcx
-	movq	%rcx, (%r15)
-	movl	%ecx, 1043(%rax)
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movslq	1051(%rax), %rcx
-	incq	%rcx
-	movq	%rcx, (%r15)
-	movl	%ecx, 1051(%rax)
-	jmp	.LBB1_3
-	.p2align	4, 0x90
-.LBB1_4:                                # %L5
-                                        #   in Loop: Header=BB1_5 Depth=2
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movslq	1043(%rax), %rcx
-	incq	%rcx
-	movq	%rcx, (%r15)
-	movl	%ecx, 1043(%rax)
-.LBB1_5:                                # %L6
-                                        #   Parent Loop BB1_7 Depth=1
-                                        # =>  This Inner Loop Header: Depth=2
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movslq	1043(%rax), %rax
-	movq	%rax, (%r14)
-	movq	(%r13), %rcx
-	incq	%rcx
-	movq	%rcx, (%r15)
-	cmpq	%rax, %rcx
-	jge	.LBB1_4
-# %bb.6:                                # %L7
-                                        #   in Loop: Header=BB1_7 Depth=1
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movslq	1043(%rax), %rcx
-	incq	%rcx
-	movq	%rcx, (%r15)
-	movl	%ecx, 1043(%rax)
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movslq	1043(%rax), %rax
-	movq	%rax, (%r15)
-	addq	(%r13), %rax
-	movq	%rax, (%rbp)
-	callq	s@PLT
-	movq	(%r13), %rax
-	addq	(%rbp), %rax
-	movq	%rax, (%r15)
-	movq	%rbx, %rcx
-	subq	(%r12), %rcx
-	movl	%eax, 1043(%rcx)
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movslq	1047(%rax), %rcx
-	incq	%rcx
-	movq	%rcx, (%r15)
-	movl	%ecx, 1047(%rax)
-	jmp	.LBB1_7
-.LBB1_8:                                # %L9
-	movq	%rbx, %rax
-	subq	(%r12), %rax
-	movslq	1043(%rax), %rax
-	movq	%rax, (%r15)
-	addq	(%r13), %rax
-	movq	%rax, (%rbp)
-	movq	sp@GOTPCREL(%rip), %rsi
-	movq	(%rsi), %rcx
-	subq	%rcx, %rbx
-	movq	999(%rbx), %rdx
-	movq	ra@GOTPCREL(%rip), %rdi
-	movq	%rdx, (%rdi)
-	movq	1007(%rbx), %rdx
-	movq	%rdx, (%r12)
-	addq	$32, %rcx
-	movq	%rcx, (%rsi)
-	addq	$8, %rsp
-	.cfi_def_cfa_offset 56
-	popq	%rbx
-	.cfi_def_cfa_offset 48
-	popq	%r12
-	.cfi_def_cfa_offset 40
-	popq	%r13
-	.cfi_def_cfa_offset 32
-	popq	%r14
-	.cfi_def_cfa_offset 24
-	popq	%r15
 	.cfi_def_cfa_offset 16
-	popq	%rbp
+	jmp	.LBB1_1
+.LBB1_1:                                # %L0
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	addq	$-32, %rcx
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.ra@GOTPCREL(%rip), %rax
+	movq	(%rax), %rdx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movq	%rdx, 24(%rax,%rcx)
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rdx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movq	%rdx, 16(%rax,%rcx)
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	addq	$32, %rcx
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.zero@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movl	%eax, %edx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movl	%edx, -20(%rax,%rcx)
+	jmp	.LBB1_3
+.LBB1_2:                                # %L1
+                                        #   in Loop: Header=BB1_3 Depth=1
+	movq	reg.a0@GOTPCREL(%rip), %rax
+	movq	$1, (%rax)
+	callq	f@PLT
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movslq	-20(%rax,%rcx), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+                                        # kill: def $eax killed $eax killed $rax
+	addl	$1, %eax
+	movslq	%eax, %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movl	%eax, %edx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movl	%edx, -20(%rax,%rcx)
+.LBB1_3:                                # %L2
+                                        # =>This Inner Loop Header: Depth=1
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movslq	-20(%rax,%rcx), %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+                                        # kill: def $eax killed $eax killed $rax
+	movslq	%eax, %rcx
+	movq	reg.a4@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movl	$24414, %ecx                    # imm = 0x5F5E
+	shlq	$12, %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	addq	$255, %rcx
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	movq	reg.a4@GOTPCREL(%rip), %rcx
+	cmpq	(%rcx), %rax
+	jge	.LBB1_2
+# %bb.4:                                # %L3
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	$0, (%rax)
+	movq	reg.a5@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.a0@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movq	24(%rax,%rcx), %rcx
+	movq	reg.ra@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	movq	reg.stack@GOTPCREL(%rip), %rax
+	movq	16(%rax,%rcx), %rcx
+	movq	reg.s0@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	(%rax), %rcx
+	addq	$32, %rcx
+	movq	reg.sp@GOTPCREL(%rip), %rax
+	movq	%rcx, (%rax)
+	movq	reg.a0@GOTPCREL(%rip), %rax
+	movq	(%rax), %rax
+	popq	%rcx
 	.cfi_def_cfa_offset 8
 	retq
 .Lfunc_end1:
 	.size	main, .Lfunc_end1-main
 	.cfi_endproc
                                         # -- End function
-	.type	zero,@object                    # @zero
+	.type	reg.zero,@object                # @reg.zero
 	.bss
-	.globl	zero
+	.globl	reg.zero
 	.p2align	3
-zero:
+reg.zero:
 	.quad	0                               # 0x0
-	.size	zero, 8
+	.size	reg.zero, 8
 
-	.type	ra,@object                      # @ra
-	.globl	ra
+	.type	reg.ra,@object                  # @reg.ra
+	.globl	reg.ra
 	.p2align	3
-ra:
+reg.ra:
 	.quad	0                               # 0x0
-	.size	ra, 8
+	.size	reg.ra, 8
 
-	.type	sp,@object                      # @sp
+	.type	reg.sp,@object                  # @reg.sp
 	.data
-	.globl	sp
+	.globl	reg.sp
 	.p2align	3
-sp:
-	.quad	1023                            # 0x3ff
-	.size	sp, 8
+reg.sp:
+	.quad	10240                           # 0x2800
+	.size	reg.sp, 8
 
-	.type	gp,@object                      # @gp
+	.type	reg.gp,@object                  # @reg.gp
 	.bss
-	.globl	gp
+	.globl	reg.gp
 	.p2align	3
-gp:
+reg.gp:
 	.quad	0                               # 0x0
-	.size	gp, 8
+	.size	reg.gp, 8
 
-	.type	tp,@object                      # @tp
-	.globl	tp
+	.type	reg.tp,@object                  # @reg.tp
+	.globl	reg.tp
 	.p2align	3
-tp:
+reg.tp:
 	.quad	0                               # 0x0
-	.size	tp, 8
+	.size	reg.tp, 8
 
-	.type	t0,@object                      # @t0
-	.globl	t0
+	.type	reg.t0,@object                  # @reg.t0
+	.globl	reg.t0
 	.p2align	3
-t0:
+reg.t0:
 	.quad	0                               # 0x0
-	.size	t0, 8
+	.size	reg.t0, 8
 
-	.type	t1,@object                      # @t1
-	.globl	t1
+	.type	reg.t1,@object                  # @reg.t1
+	.globl	reg.t1
 	.p2align	3
-t1:
+reg.t1:
 	.quad	0                               # 0x0
-	.size	t1, 8
+	.size	reg.t1, 8
 
-	.type	t2,@object                      # @t2
-	.globl	t2
+	.type	reg.t2,@object                  # @reg.t2
+	.globl	reg.t2
 	.p2align	3
-t2:
+reg.t2:
 	.quad	0                               # 0x0
-	.size	t2, 8
+	.size	reg.t2, 8
 
-	.type	s0,@object                      # @s0
-	.globl	s0
+	.type	reg.s0,@object                  # @reg.s0
+	.globl	reg.s0
 	.p2align	3
-s0:
+reg.s0:
 	.quad	0                               # 0x0
-	.size	s0, 8
+	.size	reg.s0, 8
 
-	.type	s1,@object                      # @s1
-	.globl	s1
+	.type	reg.s1,@object                  # @reg.s1
+	.globl	reg.s1
 	.p2align	3
-s1:
+reg.s1:
 	.quad	0                               # 0x0
-	.size	s1, 8
+	.size	reg.s1, 8
 
-	.type	a0,@object                      # @a0
-	.globl	a0
+	.type	reg.a0,@object                  # @reg.a0
+	.globl	reg.a0
 	.p2align	3
-a0:
+reg.a0:
 	.quad	0                               # 0x0
-	.size	a0, 8
+	.size	reg.a0, 8
 
-	.type	a1,@object                      # @a1
-	.globl	a1
+	.type	reg.a1,@object                  # @reg.a1
+	.globl	reg.a1
 	.p2align	3
-a1:
+reg.a1:
 	.quad	0                               # 0x0
-	.size	a1, 8
+	.size	reg.a1, 8
 
-	.type	a2,@object                      # @a2
-	.globl	a2
+	.type	reg.a2,@object                  # @reg.a2
+	.globl	reg.a2
 	.p2align	3
-a2:
+reg.a2:
 	.quad	0                               # 0x0
-	.size	a2, 8
+	.size	reg.a2, 8
 
-	.type	a3,@object                      # @a3
-	.globl	a3
+	.type	reg.a3,@object                  # @reg.a3
+	.globl	reg.a3
 	.p2align	3
-a3:
+reg.a3:
 	.quad	0                               # 0x0
-	.size	a3, 8
+	.size	reg.a3, 8
 
-	.type	a4,@object                      # @a4
-	.globl	a4
+	.type	reg.a4,@object                  # @reg.a4
+	.globl	reg.a4
 	.p2align	3
-a4:
+reg.a4:
 	.quad	0                               # 0x0
-	.size	a4, 8
+	.size	reg.a4, 8
 
-	.type	a5,@object                      # @a5
-	.globl	a5
+	.type	reg.a5,@object                  # @reg.a5
+	.globl	reg.a5
 	.p2align	3
-a5:
+reg.a5:
 	.quad	0                               # 0x0
-	.size	a5, 8
+	.size	reg.a5, 8
 
-	.type	a6,@object                      # @a6
-	.globl	a6
+	.type	reg.a6,@object                  # @reg.a6
+	.globl	reg.a6
 	.p2align	3
-a6:
+reg.a6:
 	.quad	0                               # 0x0
-	.size	a6, 8
+	.size	reg.a6, 8
 
-	.type	a7,@object                      # @a7
-	.globl	a7
+	.type	reg.a7,@object                  # @reg.a7
+	.globl	reg.a7
 	.p2align	3
-a7:
+reg.a7:
 	.quad	0                               # 0x0
-	.size	a7, 8
+	.size	reg.a7, 8
 
-	.type	s2,@object                      # @s2
-	.globl	s2
+	.type	reg.s2,@object                  # @reg.s2
+	.globl	reg.s2
 	.p2align	3
-s2:
+reg.s2:
 	.quad	0                               # 0x0
-	.size	s2, 8
+	.size	reg.s2, 8
 
-	.type	s3,@object                      # @s3
-	.globl	s3
+	.type	reg.s3,@object                  # @reg.s3
+	.globl	reg.s3
 	.p2align	3
-s3:
+reg.s3:
 	.quad	0                               # 0x0
-	.size	s3, 8
+	.size	reg.s3, 8
 
-	.type	s4,@object                      # @s4
-	.globl	s4
+	.type	reg.s4,@object                  # @reg.s4
+	.globl	reg.s4
 	.p2align	3
-s4:
+reg.s4:
 	.quad	0                               # 0x0
-	.size	s4, 8
+	.size	reg.s4, 8
 
-	.type	s5,@object                      # @s5
-	.globl	s5
+	.type	reg.s5,@object                  # @reg.s5
+	.globl	reg.s5
 	.p2align	3
-s5:
+reg.s5:
 	.quad	0                               # 0x0
-	.size	s5, 8
+	.size	reg.s5, 8
 
-	.type	s6,@object                      # @s6
-	.globl	s6
+	.type	reg.s6,@object                  # @reg.s6
+	.globl	reg.s6
 	.p2align	3
-s6:
+reg.s6:
 	.quad	0                               # 0x0
-	.size	s6, 8
+	.size	reg.s6, 8
 
-	.type	s7,@object                      # @s7
-	.globl	s7
+	.type	reg.s7,@object                  # @reg.s7
+	.globl	reg.s7
 	.p2align	3
-s7:
+reg.s7:
 	.quad	0                               # 0x0
-	.size	s7, 8
+	.size	reg.s7, 8
 
-	.type	s8,@object                      # @s8
-	.globl	s8
+	.type	reg.s8,@object                  # @reg.s8
+	.globl	reg.s8
 	.p2align	3
-s8:
+reg.s8:
 	.quad	0                               # 0x0
-	.size	s8, 8
+	.size	reg.s8, 8
 
-	.type	s9,@object                      # @s9
-	.globl	s9
+	.type	reg.s9,@object                  # @reg.s9
+	.globl	reg.s9
 	.p2align	3
-s9:
+reg.s9:
 	.quad	0                               # 0x0
-	.size	s9, 8
+	.size	reg.s9, 8
 
-	.type	s10,@object                     # @s10
-	.globl	s10
+	.type	reg.s10,@object                 # @reg.s10
+	.globl	reg.s10
 	.p2align	3
-s10:
+reg.s10:
 	.quad	0                               # 0x0
-	.size	s10, 8
+	.size	reg.s10, 8
 
-	.type	s11,@object                     # @s11
-	.globl	s11
+	.type	reg.s11,@object                 # @reg.s11
+	.globl	reg.s11
 	.p2align	3
-s11:
+reg.s11:
 	.quad	0                               # 0x0
-	.size	s11, 8
+	.size	reg.s11, 8
 
-	.type	t3,@object                      # @t3
-	.globl	t3
+	.type	reg.t3,@object                  # @reg.t3
+	.globl	reg.t3
 	.p2align	3
-t3:
+reg.t3:
 	.quad	0                               # 0x0
-	.size	t3, 8
+	.size	reg.t3, 8
 
-	.type	t4,@object                      # @t4
-	.globl	t4
+	.type	reg.t4,@object                  # @reg.t4
+	.globl	reg.t4
 	.p2align	3
-t4:
+reg.t4:
 	.quad	0                               # 0x0
-	.size	t4, 8
+	.size	reg.t4, 8
 
-	.type	t5,@object                      # @t5
-	.globl	t5
+	.type	reg.t5,@object                  # @reg.t5
+	.globl	reg.t5
 	.p2align	3
-t5:
+reg.t5:
 	.quad	0                               # 0x0
-	.size	t5, 8
+	.size	reg.t5, 8
 
-	.type	t6,@object                      # @t6
-	.globl	t6
+	.type	reg.t6,@object                  # @reg.t6
+	.globl	reg.t6
 	.p2align	3
-t6:
+reg.t6:
 	.quad	0                               # 0x0
-	.size	t6, 8
+	.size	reg.t6, 8
 
-	.type	stack,@object                   # @stack
-	.globl	stack
+	.type	reg.ft0,@object                 # @reg.ft0
+	.globl	reg.ft0
+	.p2align	3
+reg.ft0:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft0, 8
+
+	.type	reg.ft1,@object                 # @reg.ft1
+	.globl	reg.ft1
+	.p2align	3
+reg.ft1:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft1, 8
+
+	.type	reg.ft2,@object                 # @reg.ft2
+	.globl	reg.ft2
+	.p2align	3
+reg.ft2:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft2, 8
+
+	.type	reg.ft3,@object                 # @reg.ft3
+	.globl	reg.ft3
+	.p2align	3
+reg.ft3:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft3, 8
+
+	.type	reg.ft4,@object                 # @reg.ft4
+	.globl	reg.ft4
+	.p2align	3
+reg.ft4:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft4, 8
+
+	.type	reg.ft5,@object                 # @reg.ft5
+	.globl	reg.ft5
+	.p2align	3
+reg.ft5:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft5, 8
+
+	.type	reg.ft6,@object                 # @reg.ft6
+	.globl	reg.ft6
+	.p2align	3
+reg.ft6:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft6, 8
+
+	.type	reg.ft7,@object                 # @reg.ft7
+	.globl	reg.ft7
+	.p2align	3
+reg.ft7:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft7, 8
+
+	.type	reg.fs0,@object                 # @reg.fs0
+	.globl	reg.fs0
+	.p2align	3
+reg.fs0:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs0, 8
+
+	.type	reg.fs1,@object                 # @reg.fs1
+	.globl	reg.fs1
+	.p2align	3
+reg.fs1:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs1, 8
+
+	.type	reg.fa0,@object                 # @reg.fa0
+	.globl	reg.fa0
+	.p2align	3
+reg.fa0:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fa0, 8
+
+	.type	reg.fa1,@object                 # @reg.fa1
+	.globl	reg.fa1
+	.p2align	3
+reg.fa1:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fa1, 8
+
+	.type	reg.fa2,@object                 # @reg.fa2
+	.globl	reg.fa2
+	.p2align	3
+reg.fa2:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fa2, 8
+
+	.type	reg.fa3,@object                 # @reg.fa3
+	.globl	reg.fa3
+	.p2align	3
+reg.fa3:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fa3, 8
+
+	.type	reg.fa4,@object                 # @reg.fa4
+	.globl	reg.fa4
+	.p2align	3
+reg.fa4:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fa4, 8
+
+	.type	reg.fa5,@object                 # @reg.fa5
+	.globl	reg.fa5
+	.p2align	3
+reg.fa5:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fa5, 8
+
+	.type	reg.fa6,@object                 # @reg.fa6
+	.globl	reg.fa6
+	.p2align	3
+reg.fa6:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fa6, 8
+
+	.type	reg.fa7,@object                 # @reg.fa7
+	.globl	reg.fa7
+	.p2align	3
+reg.fa7:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fa7, 8
+
+	.type	reg.fs2,@object                 # @reg.fs2
+	.globl	reg.fs2
+	.p2align	3
+reg.fs2:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs2, 8
+
+	.type	reg.fs3,@object                 # @reg.fs3
+	.globl	reg.fs3
+	.p2align	3
+reg.fs3:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs3, 8
+
+	.type	reg.fs4,@object                 # @reg.fs4
+	.globl	reg.fs4
+	.p2align	3
+reg.fs4:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs4, 8
+
+	.type	reg.fs5,@object                 # @reg.fs5
+	.globl	reg.fs5
+	.p2align	3
+reg.fs5:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs5, 8
+
+	.type	reg.fs6,@object                 # @reg.fs6
+	.globl	reg.fs6
+	.p2align	3
+reg.fs6:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs6, 8
+
+	.type	reg.fs7,@object                 # @reg.fs7
+	.globl	reg.fs7
+	.p2align	3
+reg.fs7:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs7, 8
+
+	.type	reg.fs8,@object                 # @reg.fs8
+	.globl	reg.fs8
+	.p2align	3
+reg.fs8:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs8, 8
+
+	.type	reg.fs9,@object                 # @reg.fs9
+	.globl	reg.fs9
+	.p2align	3
+reg.fs9:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs9, 8
+
+	.type	reg.fs10,@object                # @reg.fs10
+	.globl	reg.fs10
+	.p2align	3
+reg.fs10:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs10, 8
+
+	.type	reg.fs11,@object                # @reg.fs11
+	.globl	reg.fs11
+	.p2align	3
+reg.fs11:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.fs11, 8
+
+	.type	reg.ft8,@object                 # @reg.ft8
+	.globl	reg.ft8
+	.p2align	3
+reg.ft8:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft8, 8
+
+	.type	reg.ft9,@object                 # @reg.ft9
+	.globl	reg.ft9
+	.p2align	3
+reg.ft9:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft9, 8
+
+	.type	reg.ft10,@object                # @reg.ft10
+	.globl	reg.ft10
+	.p2align	3
+reg.ft10:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft10, 8
+
+	.type	reg.ft11,@object                # @reg.ft11
+	.globl	reg.ft11
+	.p2align	3
+reg.ft11:
+	.quad	0x0000000000000000              # double 0
+	.size	reg.ft11, 8
+
+	.type	reg.stack,@object               # @reg.stack
+	.globl	reg.stack
 	.p2align	4
-stack:
-	.zero	1024
-	.size	stack, 1024
+reg.stack:
+	.zero	10240
+	.size	reg.stack, 10240
 
 	.section	".note.GNU-stack","",@progbits
+	.addrsig
+	.addrsig_sym f
+	.addrsig_sym reg.zero
+	.addrsig_sym reg.ra
+	.addrsig_sym reg.sp
+	.addrsig_sym reg.s0
+	.addrsig_sym reg.a0
+	.addrsig_sym reg.a4
+	.addrsig_sym reg.a5
+	.addrsig_sym reg.stack

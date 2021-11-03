@@ -1,4 +1,4 @@
-int s(int n) {
+int f(int n) {
     switch (n) {
         case 1:
             n += 1;
@@ -20,21 +20,8 @@ int s(int n) {
 }
 
 int main(void) {
-    int n = 0;
-    for (int j = 0; j < 100000000; ++j) {
-        n = 0;
-        for (int i = 0; i < 1; ++i) {
-            ++n;
-        }
-        while (n < 2) {
-            ++n;
-        }
-        do {
-            ++n;
-        } while (0);
-        if (1) {
-            n = s(n);
-        }
+    for (int i = 0; i < 100000000; ++i) {
+        f(1);
     }
-    return n;  // `echo $?` => 6
+    return 0;
 }

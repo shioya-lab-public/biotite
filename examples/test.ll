@@ -88,7 +88,7 @@ declare dso_local i64 @syscall(i64, ...)
 
 @reg.stack = global [10240 x i8] zeroinitializer
 
-define void @s() {
+define void @f() {
 Entry:
   br label %L0
 L0:
@@ -143,14 +143,14 @@ L1:
   %temp_36 = shl i64 16, 12
   store i64 %temp_36, i64* @reg.a5
   %temp_37 = load i64, i64* @reg.a5
-  %temp_38 = add i64 %temp_37, 1572
+  %temp_38 = add i64 %temp_37, 1336
   store i64 %temp_38, i64* @reg.a5
   %temp_39 = load i64, i64* @reg.a5
   %temp_40 = load i64, i64* @reg.a4
   %temp_41 = add i64 %temp_39, %temp_40
   store i64 %temp_41, i64* @reg.a5
   %temp_42 = load i64, i64* @reg.a5
-  switch i64 %temp_42, label %Unreachable43 [ i64 67116, label %L3 i64 67124, label %L5 i64 67112, label %L2 i64 67120, label %L4 i64 67108, label %L7 i64 67128, label %L6 ]
+  switch i64 %temp_42, label %Unreachable43 [ i64 66880, label %L3 i64 66872, label %L7 i64 66876, label %L2 i64 66884, label %L4 i64 66888, label %L5 i64 66892, label %L6 ]
 Unreachable43:
   unreachable
 L2:
@@ -173,7 +173,7 @@ L2:
   %temp_58 = load i64, i64* @reg.a5
   %temp_59 = trunc i64 %temp_58 to i32
   store i32 %temp_59, i32* %temp_57
-  br label %L7
+  br label %L3
 L3:
   %temp_60 = load i64, i64* @reg.s0
   %temp_61 = add i64 %temp_60, -20
@@ -285,195 +285,43 @@ Entry:
   br label %L0
 L0:
   %temp_0 = load i64, i64* @reg.sp
-  %temp_1 = add i64 %temp_0, -32
+  %temp_1 = add i64 %temp_0, -16
   store i64 %temp_1, i64* @reg.sp
   %temp_2 = load i64, i64* @reg.sp
-  %temp_3 = add i64 %temp_2, 24
+  %temp_3 = add i64 %temp_2, 8
   %temp_4 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_3
   %temp_5 = bitcast i8* %temp_4 to i64*
   %temp_6 = load i64, i64* @reg.ra
   store i64 %temp_6, i64* %temp_5
   %temp_7 = load i64, i64* @reg.sp
-  %temp_8 = add i64 %temp_7, 16
+  %temp_8 = add i64 %temp_7, 0
   %temp_9 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_8
   %temp_10 = bitcast i8* %temp_9 to i64*
   %temp_11 = load i64, i64* @reg.s0
   store i64 %temp_11, i64* %temp_10
   %temp_12 = load i64, i64* @reg.sp
-  %temp_13 = add i64 %temp_12, 32
+  %temp_13 = add i64 %temp_12, 16
   store i64 %temp_13, i64* @reg.s0
-  %temp_14 = load i64, i64* @reg.s0
-  %temp_15 = add i64 %temp_14, -20
-  %temp_16 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_15
-  %temp_17 = bitcast i8* %temp_16 to i32*
-  %temp_18 = load i64, i64* @reg.zero
-  %temp_19 = trunc i64 %temp_18 to i32
-  store i32 %temp_19, i32* %temp_17
-  %temp_20 = load i64, i64* @reg.s0
-  %temp_21 = add i64 %temp_20, -24
-  %temp_22 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_21
-  %temp_23 = bitcast i8* %temp_22 to i32*
-  %temp_24 = load i64, i64* @reg.zero
-  %temp_25 = trunc i64 %temp_24 to i32
-  store i32 %temp_25, i32* %temp_23
-  br label %L2
-L1:
-  %temp_26 = load i64, i64* @reg.s0
-  %temp_27 = add i64 %temp_26, -20
-  %temp_28 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_27
-  %temp_29 = bitcast i8* %temp_28 to i32*
-  %temp_30 = load i32, i32* %temp_29
-  %temp_31 = sext i32 %temp_30 to i64
-  store i64 %temp_31, i64* @reg.a5
-  %temp_32 = load i64, i64* @reg.a5
-  %temp_33 = trunc i64 %temp_32 to i32
-  %temp_34 = add i32 %temp_33, 1
-  %temp_35 = sext i32 %temp_34 to i64
-  store i64 %temp_35, i64* @reg.a5
-  %temp_36 = load i64, i64* @reg.s0
-  %temp_37 = add i64 %temp_36, -20
-  %temp_38 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_37
-  %temp_39 = bitcast i8* %temp_38 to i32*
-  %temp_40 = load i64, i64* @reg.a5
-  %temp_41 = trunc i64 %temp_40 to i32
-  store i32 %temp_41, i32* %temp_39
-  %temp_42 = load i64, i64* @reg.s0
-  %temp_43 = add i64 %temp_42, -24
-  %temp_44 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_43
-  %temp_45 = bitcast i8* %temp_44 to i32*
-  %temp_46 = load i32, i32* %temp_45
-  %temp_47 = sext i32 %temp_46 to i64
-  store i64 %temp_47, i64* @reg.a5
-  %temp_48 = load i64, i64* @reg.a5
-  %temp_49 = trunc i64 %temp_48 to i32
-  %temp_50 = add i32 %temp_49, 1
-  %temp_51 = sext i32 %temp_50 to i64
-  store i64 %temp_51, i64* @reg.a5
-  %temp_52 = load i64, i64* @reg.s0
-  %temp_53 = add i64 %temp_52, -24
-  %temp_54 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_53
-  %temp_55 = bitcast i8* %temp_54 to i32*
-  %temp_56 = load i64, i64* @reg.a5
-  %temp_57 = trunc i64 %temp_56 to i32
-  store i32 %temp_57, i32* %temp_55
-  br label %L2
-L2:
-  %temp_58 = load i64, i64* @reg.s0
-  %temp_59 = add i64 %temp_58, -24
-  %temp_60 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_59
-  %temp_61 = bitcast i8* %temp_60 to i32*
-  %temp_62 = load i32, i32* %temp_61
-  %temp_63 = sext i32 %temp_62 to i64
-  store i64 %temp_63, i64* @reg.a5
-  %temp_64 = load i64, i64* @reg.a5
-  %temp_65 = trunc i64 %temp_64 to i32
-  %temp_66 = sext i32 %temp_65 to i64
-  store i64 %temp_66, i64* @reg.a5
-  %temp_67 = load i64, i64* @reg.a5
-  %temp_68 = icmp sle i64 %temp_67, 0
-  br i1 %temp_68, label %L1, label %L3
-L3:
-  br label %L5
-L4:
-  %temp_69 = load i64, i64* @reg.s0
-  %temp_70 = add i64 %temp_69, -20
-  %temp_71 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_70
-  %temp_72 = bitcast i8* %temp_71 to i32*
-  %temp_73 = load i32, i32* %temp_72
-  %temp_74 = sext i32 %temp_73 to i64
-  store i64 %temp_74, i64* @reg.a5
-  %temp_75 = load i64, i64* @reg.a5
-  %temp_76 = trunc i64 %temp_75 to i32
-  %temp_77 = add i32 %temp_76, 1
-  %temp_78 = sext i32 %temp_77 to i64
-  store i64 %temp_78, i64* @reg.a5
-  %temp_79 = load i64, i64* @reg.s0
-  %temp_80 = add i64 %temp_79, -20
-  %temp_81 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_80
-  %temp_82 = bitcast i8* %temp_81 to i32*
-  %temp_83 = load i64, i64* @reg.a5
-  %temp_84 = trunc i64 %temp_83 to i32
-  store i32 %temp_84, i32* %temp_82
-  br label %L5
-L5:
-  %temp_85 = load i64, i64* @reg.s0
-  %temp_86 = add i64 %temp_85, -20
-  %temp_87 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_86
-  %temp_88 = bitcast i8* %temp_87 to i32*
-  %temp_89 = load i32, i32* %temp_88
-  %temp_90 = sext i32 %temp_89 to i64
-  store i64 %temp_90, i64* @reg.a5
-  %temp_91 = load i64, i64* @reg.a5
-  %temp_92 = trunc i64 %temp_91 to i32
-  %temp_93 = sext i32 %temp_92 to i64
-  store i64 %temp_93, i64* @reg.a4
-  store i64 1, i64* @reg.a5
-  %temp_94 = load i64, i64* @reg.a5
-  %temp_95 = load i64, i64* @reg.a4
-  %temp_96 = icmp sge i64 %temp_94, %temp_95
-  br i1 %temp_96, label %L4, label %L6
-L6:
-  %temp_97 = load i64, i64* @reg.s0
-  %temp_98 = add i64 %temp_97, -20
-  %temp_99 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_98
-  %temp_100 = bitcast i8* %temp_99 to i32*
-  %temp_101 = load i32, i32* %temp_100
-  %temp_102 = sext i32 %temp_101 to i64
-  store i64 %temp_102, i64* @reg.a5
-  %temp_103 = load i64, i64* @reg.a5
-  %temp_104 = trunc i64 %temp_103 to i32
-  %temp_105 = add i32 %temp_104, 1
-  %temp_106 = sext i32 %temp_105 to i64
-  store i64 %temp_106, i64* @reg.a5
-  %temp_107 = load i64, i64* @reg.s0
-  %temp_108 = add i64 %temp_107, -20
-  %temp_109 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_108
-  %temp_110 = bitcast i8* %temp_109 to i32*
-  %temp_111 = load i64, i64* @reg.a5
-  %temp_112 = trunc i64 %temp_111 to i32
-  store i32 %temp_112, i32* %temp_110
-  %temp_113 = load i64, i64* @reg.s0
-  %temp_114 = add i64 %temp_113, -20
-  %temp_115 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_114
-  %temp_116 = bitcast i8* %temp_115 to i32*
-  %temp_117 = load i32, i32* %temp_116
-  %temp_118 = sext i32 %temp_117 to i64
-  store i64 %temp_118, i64* @reg.a5
-  %temp_119 = load i64, i64* @reg.a5
-  store i64 %temp_119, i64* @reg.a0
-  call void @s()
-  %temp_120 = load i64, i64* @reg.a0
-  store i64 %temp_120, i64* @reg.a5
-  %temp_121 = load i64, i64* @reg.s0
-  %temp_122 = add i64 %temp_121, -20
-  %temp_123 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_122
-  %temp_124 = bitcast i8* %temp_123 to i32*
-  %temp_125 = load i64, i64* @reg.a5
-  %temp_126 = trunc i64 %temp_125 to i32
-  store i32 %temp_126, i32* %temp_124
-  %temp_127 = load i64, i64* @reg.s0
-  %temp_128 = add i64 %temp_127, -20
-  %temp_129 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_128
-  %temp_130 = bitcast i8* %temp_129 to i32*
-  %temp_131 = load i32, i32* %temp_130
-  %temp_132 = sext i32 %temp_131 to i64
-  store i64 %temp_132, i64* @reg.a5
-  %temp_133 = load i64, i64* @reg.a5
-  store i64 %temp_133, i64* @reg.a0
-  %temp_134 = load i64, i64* @reg.sp
-  %temp_135 = add i64 %temp_134, 24
-  %temp_136 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_135
-  %temp_137 = bitcast i8* %temp_136 to i64*
-  %temp_138 = load i64, i64* %temp_137
-  store i64 %temp_138, i64* @reg.ra
-  %temp_139 = load i64, i64* @reg.sp
-  %temp_140 = add i64 %temp_139, 16
-  %temp_141 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_140
-  %temp_142 = bitcast i8* %temp_141 to i64*
-  %temp_143 = load i64, i64* %temp_142
-  store i64 %temp_143, i64* @reg.s0
-  %temp_144 = load i64, i64* @reg.sp
-  %temp_145 = add i64 %temp_144, 32
-  store i64 %temp_145, i64* @reg.sp
+  store i64 1, i64* @reg.a0
+  call void @f()
+  %temp_14 = load i64, i64* @reg.a0
+  store i64 %temp_14, i64* @reg.a5
+  %temp_15 = load i64, i64* @reg.a5
+  store i64 %temp_15, i64* @reg.a0
+  %temp_16 = load i64, i64* @reg.sp
+  %temp_17 = add i64 %temp_16, 8
+  %temp_18 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_17
+  %temp_19 = bitcast i8* %temp_18 to i64*
+  %temp_20 = load i64, i64* %temp_19
+  store i64 %temp_20, i64* @reg.ra
+  %temp_21 = load i64, i64* @reg.sp
+  %temp_22 = add i64 %temp_21, 0
+  %temp_23 = getelementptr [10240 x i8], [10240 x i8]* @reg.stack, i8 0, i64 %temp_22
+  %temp_24 = bitcast i8* %temp_23 to i64*
+  %temp_25 = load i64, i64* %temp_24
+  store i64 %temp_25, i64* @reg.s0
+  %temp_26 = load i64, i64* @reg.sp
+  %temp_27 = add i64 %temp_26, 16
+  store i64 %temp_27, i64* @reg.sp
   %ret = load i64, i64* @reg.a0  ret i64 %ret}
 

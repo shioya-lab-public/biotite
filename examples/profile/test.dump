@@ -13,9 +13,9 @@ Disassembly of section .text:
    103c0:	0030                	addi	a2,sp,8
    103c2:	ff017113          	andi	sp,sp,-16
    103c6:	00000697          	auipc	a3,0x0
-   103ca:	19a68693          	addi	a3,a3,410 # 10560 <__libc_csu_init>
+   103ca:	13e68693          	addi	a3,a3,318 # 10504 <__libc_csu_init>
    103ce:	00000717          	auipc	a4,0x0
-   103d2:	1ea70713          	addi	a4,a4,490 # 105b8 <__libc_csu_fini>
+   103d2:	18e70713          	addi	a4,a4,398 # 1055c <__libc_csu_fini>
    103d6:	880a                	mv	a6,sp
    103d8:	fc9ff0ef          	jal	ra,103a0 <__libc_start_main@plt>
    103dc:	9002                	ebreak
@@ -72,7 +72,7 @@ Disassembly of section .text:
 000000000001044e <frame_dummy>:
    1044e:	bf6d                	j	10408 <register_tm_clones>
 
-0000000000010450 <s>:
+0000000000010450 <f>:
    10450:	1101                	addi	sp,sp,-32
    10452:	ec22                	sd	s0,24(sp)
    10454:	1000                	addi	s0,sp,32
@@ -81,30 +81,30 @@ Disassembly of section .text:
    1045c:	fec42783          	lw	a5,-20(s0)
    10460:	0007871b          	sext.w	a4,a5
    10464:	4795                	li	a5,5
-   10466:	04e7ea63          	bltu	a5,a4,104ba <s+0x6a>
+   10466:	04e7ea63          	bltu	a5,a4,104ba <f+0x6a>
    1046a:	fec46783          	lwu	a5,-20(s0)
    1046e:	00279713          	slli	a4,a5,0x2
    10472:	67c1                	lui	a5,0x10
-   10474:	5bc78793          	addi	a5,a5,1468 # 105bc <__libc_csu_fini+0x4>
+   10474:	56078793          	addi	a5,a5,1376 # 10560 <__libc_csu_fini+0x4>
    10478:	97ba                	add	a5,a5,a4
    1047a:	439c                	lw	a5,0(a5)
    1047c:	8782                	jr	a5
    1047e:	fec42783          	lw	a5,-20(s0)
    10482:	2785                	addiw	a5,a5,1
    10484:	fef42623          	sw	a5,-20(s0)
-   10488:	a80d                	j	104ba <s+0x6a>
+   10488:	a80d                	j	104ba <f+0x6a>
    1048a:	fec42783          	lw	a5,-20(s0)
    1048e:	2789                	addiw	a5,a5,2
    10490:	fef42623          	sw	a5,-20(s0)
-   10494:	a01d                	j	104ba <s+0x6a>
+   10494:	a01d                	j	104ba <f+0x6a>
    10496:	fec42783          	lw	a5,-20(s0)
    1049a:	278d                	addiw	a5,a5,3
    1049c:	fef42623          	sw	a5,-20(s0)
-   104a0:	a829                	j	104ba <s+0x6a>
+   104a0:	a829                	j	104ba <f+0x6a>
    104a2:	fec42783          	lw	a5,-20(s0)
    104a6:	2791                	addiw	a5,a5,4
    104a8:	fef42623          	sw	a5,-20(s0)
-   104ac:	a039                	j	104ba <s+0x6a>
+   104ac:	a039                	j	104ba <f+0x6a>
    104ae:	fec42783          	lw	a5,-20(s0)
    104b2:	2795                	addiw	a5,a5,5
    104b4:	fef42623          	sw	a5,-20(s0)
@@ -121,107 +121,80 @@ Disassembly of section .text:
    104ca:	e822                	sd	s0,16(sp)
    104cc:	1000                	addi	s0,sp,32
    104ce:	fe042623          	sw	zero,-20(s0)
-   104d2:	fe042423          	sw	zero,-24(s0)
-   104d6:	a0a5                	j	1053e <main+0x78>
-   104d8:	fe042623          	sw	zero,-20(s0)
-   104dc:	fe042223          	sw	zero,-28(s0)
-   104e0:	a819                	j	104f6 <main+0x30>
-   104e2:	fec42783          	lw	a5,-20(s0)
-   104e6:	2785                	addiw	a5,a5,1
-   104e8:	fef42623          	sw	a5,-20(s0)
-   104ec:	fe442783          	lw	a5,-28(s0)
-   104f0:	2785                	addiw	a5,a5,1
-   104f2:	fef42223          	sw	a5,-28(s0)
-   104f6:	fe442783          	lw	a5,-28(s0)
-   104fa:	2781                	sext.w	a5,a5
-   104fc:	fef053e3          	blez	a5,104e2 <main+0x1c>
-   10500:	a031                	j	1050c <main+0x46>
-   10502:	fec42783          	lw	a5,-20(s0)
-   10506:	2785                	addiw	a5,a5,1
-   10508:	fef42623          	sw	a5,-20(s0)
-   1050c:	fec42783          	lw	a5,-20(s0)
-   10510:	0007871b          	sext.w	a4,a5
-   10514:	4785                	li	a5,1
-   10516:	fee7d6e3          	bge	a5,a4,10502 <main+0x3c>
-   1051a:	fec42783          	lw	a5,-20(s0)
-   1051e:	2785                	addiw	a5,a5,1
-   10520:	fef42623          	sw	a5,-20(s0)
-   10524:	fec42783          	lw	a5,-20(s0)
-   10528:	853e                	mv	a0,a5
-   1052a:	f27ff0ef          	jal	ra,10450 <s>
-   1052e:	87aa                	mv	a5,a0
-   10530:	fef42623          	sw	a5,-20(s0)
-   10534:	fe842783          	lw	a5,-24(s0)
-   10538:	2785                	addiw	a5,a5,1
-   1053a:	fef42423          	sw	a5,-24(s0)
-   1053e:	fe842783          	lw	a5,-24(s0)
-   10542:	0007871b          	sext.w	a4,a5
-   10546:	05f5e7b7          	lui	a5,0x5f5e
-   1054a:	0ff78793          	addi	a5,a5,255 # 5f5e0ff <__global_pointer$+0x5f4b8ff>
-   1054e:	f8e7d5e3          	bge	a5,a4,104d8 <main+0x12>
-   10552:	fec42783          	lw	a5,-20(s0)
-   10556:	853e                	mv	a0,a5
-   10558:	60e2                	ld	ra,24(sp)
-   1055a:	6442                	ld	s0,16(sp)
-   1055c:	6105                	addi	sp,sp,32
-   1055e:	8082                	ret
+   104d2:	a809                	j	104e4 <main+0x1e>
+   104d4:	4505                	li	a0,1
+   104d6:	f7bff0ef          	jal	ra,10450 <f>
+   104da:	fec42783          	lw	a5,-20(s0)
+   104de:	2785                	addiw	a5,a5,1
+   104e0:	fef42623          	sw	a5,-20(s0)
+   104e4:	fec42783          	lw	a5,-20(s0)
+   104e8:	0007871b          	sext.w	a4,a5
+   104ec:	05f5e7b7          	lui	a5,0x5f5e
+   104f0:	0ff78793          	addi	a5,a5,255 # 5f5e0ff <__global_pointer$+0x5f4b8ff>
+   104f4:	fee7d0e3          	bge	a5,a4,104d4 <main+0xe>
+   104f8:	4781                	li	a5,0
+   104fa:	853e                	mv	a0,a5
+   104fc:	60e2                	ld	ra,24(sp)
+   104fe:	6442                	ld	s0,16(sp)
+   10500:	6105                	addi	sp,sp,32
+   10502:	8082                	ret
 
-0000000000010560 <__libc_csu_init>:
-   10560:	7139                	addi	sp,sp,-64
-   10562:	f822                	sd	s0,48(sp)
-   10564:	f04a                	sd	s2,32(sp)
-   10566:	00002417          	auipc	s0,0x2
-   1056a:	8aa40413          	addi	s0,s0,-1878 # 11e10 <__frame_dummy_init_array_entry>
-   1056e:	00002917          	auipc	s2,0x2
-   10572:	8aa90913          	addi	s2,s2,-1878 # 11e18 <__do_global_dtors_aux_fini_array_entry>
-   10576:	40890933          	sub	s2,s2,s0
-   1057a:	fc06                	sd	ra,56(sp)
-   1057c:	f426                	sd	s1,40(sp)
-   1057e:	ec4e                	sd	s3,24(sp)
-   10580:	e852                	sd	s4,16(sp)
-   10582:	e456                	sd	s5,8(sp)
-   10584:	40395913          	srai	s2,s2,0x3
-   10588:	00090f63          	beqz	s2,105a6 <__libc_csu_init+0x46>
-   1058c:	89aa                	mv	s3,a0
-   1058e:	8a2e                	mv	s4,a1
-   10590:	8ab2                	mv	s5,a2
-   10592:	4481                	li	s1,0
-   10594:	601c                	ld	a5,0(s0)
-   10596:	8656                	mv	a2,s5
-   10598:	85d2                	mv	a1,s4
-   1059a:	854e                	mv	a0,s3
-   1059c:	0485                	addi	s1,s1,1
-   1059e:	9782                	jalr	a5
-   105a0:	0421                	addi	s0,s0,8
-   105a2:	fe9919e3          	bne	s2,s1,10594 <__libc_csu_init+0x34>
-   105a6:	70e2                	ld	ra,56(sp)
-   105a8:	7442                	ld	s0,48(sp)
-   105aa:	74a2                	ld	s1,40(sp)
-   105ac:	7902                	ld	s2,32(sp)
-   105ae:	69e2                	ld	s3,24(sp)
-   105b0:	6a42                	ld	s4,16(sp)
-   105b2:	6aa2                	ld	s5,8(sp)
-   105b4:	6121                	addi	sp,sp,64
-   105b6:	8082                	ret
+0000000000010504 <__libc_csu_init>:
+   10504:	7139                	addi	sp,sp,-64
+   10506:	f822                	sd	s0,48(sp)
+   10508:	f04a                	sd	s2,32(sp)
+   1050a:	00002417          	auipc	s0,0x2
+   1050e:	90640413          	addi	s0,s0,-1786 # 11e10 <__frame_dummy_init_array_entry>
+   10512:	00002917          	auipc	s2,0x2
+   10516:	90690913          	addi	s2,s2,-1786 # 11e18 <__do_global_dtors_aux_fini_array_entry>
+   1051a:	40890933          	sub	s2,s2,s0
+   1051e:	fc06                	sd	ra,56(sp)
+   10520:	f426                	sd	s1,40(sp)
+   10522:	ec4e                	sd	s3,24(sp)
+   10524:	e852                	sd	s4,16(sp)
+   10526:	e456                	sd	s5,8(sp)
+   10528:	40395913          	srai	s2,s2,0x3
+   1052c:	00090f63          	beqz	s2,1054a <__libc_csu_init+0x46>
+   10530:	89aa                	mv	s3,a0
+   10532:	8a2e                	mv	s4,a1
+   10534:	8ab2                	mv	s5,a2
+   10536:	4481                	li	s1,0
+   10538:	601c                	ld	a5,0(s0)
+   1053a:	8656                	mv	a2,s5
+   1053c:	85d2                	mv	a1,s4
+   1053e:	854e                	mv	a0,s3
+   10540:	0485                	addi	s1,s1,1
+   10542:	9782                	jalr	a5
+   10544:	0421                	addi	s0,s0,8
+   10546:	fe9919e3          	bne	s2,s1,10538 <__libc_csu_init+0x34>
+   1054a:	70e2                	ld	ra,56(sp)
+   1054c:	7442                	ld	s0,48(sp)
+   1054e:	74a2                	ld	s1,40(sp)
+   10550:	7902                	ld	s2,32(sp)
+   10552:	69e2                	ld	s3,24(sp)
+   10554:	6a42                	ld	s4,16(sp)
+   10556:	6aa2                	ld	s5,8(sp)
+   10558:	6121                	addi	sp,sp,64
+   1055a:	8082                	ret
 
-00000000000105b8 <__libc_csu_fini>:
-   105b8:	8082                	ret
+000000000001055c <__libc_csu_fini>:
+   1055c:	8082                	ret
 
 Disassembly of section .rodata:
 
-00000000000105bc <.rodata>:
-   105bc:	04ba                	slli	s1,s1,0xe
-   105be:	0001                	nop
-   105c0:	047e                	slli	s0,s0,0x1f
-   105c2:	0001                	nop
-   105c4:	048a                	slli	s1,s1,0x2
-   105c6:	0001                	nop
-   105c8:	0496                	slli	s1,s1,0x5
-   105ca:	0001                	nop
-   105cc:	04a2                	slli	s1,s1,0x8
-   105ce:	0001                	nop
-   105d0:	04ae                	slli	s1,s1,0xb
-   105d2:	0001                	nop
+0000000000010560 <.rodata>:
+   10560:	04ba                	slli	s1,s1,0xe
+   10562:	0001                	nop
+   10564:	047e                	slli	s0,s0,0x1f
+   10566:	0001                	nop
+   10568:	048a                	slli	s1,s1,0x2
+   1056a:	0001                	nop
+   1056c:	0496                	slli	s1,s1,0x5
+   1056e:	0001                	nop
+   10570:	04a2                	slli	s1,s1,0x8
+   10572:	0001                	nop
+   10574:	04ae                	slli	s1,s1,0xb
+   10576:	0001                	nop
 
 Disassembly of section .sdata:
 

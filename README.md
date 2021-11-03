@@ -226,11 +226,22 @@ L7:
 
 ### Todo
 
-- add arbitrary memory access support for ld/sd
+- add arbitrary memory access support for ld/sd: Keep all static sections as static byte array in LLVM.
 - add support for RV32/64A
 - Force x0 always to be 0
 - Fix static variable support
 - Map RV inst to LLVM comment for easy debugging
+- Struct and Arrays: At least for simple structs and arrays, they are compiled away and I do not notice anything special instruction sequence.
+- Func pointer: The function addresss is computed in a variable, then `jalr`. Disassembly comment hint may available in previous instructions where the address is determined for the first time.
+```
+    105ac:	4e078793          	addi	a5,a5,1248 # 104e0 <s>
+    105b0:	fef43023          	sd	a5,-32(s0)
+    105b4:	fec42783          	lw	a5,-20(s0)
+    105b8:	fe043703          	ld	a4,-32(s0)
+    105bc:	853e                	mv	a0,a5
+    105be:	9702                	jalr	a4
+```
+- Break static stack into stack space of seperate functions.
 
 ### Testing Commands
 

@@ -1,8 +1,7 @@
-int s(int n) {
+int f(int n) {
     switch (n) {
         case 1:
             n += 1;
-            break;
         case 2:
             n += 2;
             break;
@@ -19,19 +18,4 @@ int s(int n) {
     return n;
 }
 
-int main(void) {
-    int n = 0;
-    for (int i = 0; i < 1; ++i) {
-        ++n;
-    }
-    while (n < 2) {
-        ++n;
-    }
-    do {
-        ++n;
-    } while (0);
-    if (1) {
-        n = s(n);
-    }
-    return n;  // `echo $?` => 6
-}
+int main(void) { return f(1); }

@@ -1,10 +1,10 @@
-pastchick3@pastchick3:/mnt/c/Users/33160/Desktop$ time ./reference
+pastchick3@pastchick3:~/riscv2llvm$ time examples/profile/reference
 
-real    0m0.758s
-user    0m0.751s
+real    0m0.328s
+user    0m0.328s
 sys     0m0.000s
-pastchick3@pastchick3:/mnt/c/Users/33160/Desktop$ time ./test
+pastchick3@pastchick3:~/riscv2llvm$ time examples/profile/test
 
-real    0m4.371s
-user    0m4.362s
-sys     0m0.001s
+real    0m1.500s
+user    0m1.499s
+sys     0m0.000s
