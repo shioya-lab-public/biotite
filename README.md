@@ -4,7 +4,7 @@ A binary translator that translates RISC-V to LLVM IR.
 
 ## Quick Start
 
-`riscv2llvm` is precompiled as a standalone executable for Linux (not available until the release of `v0.1.0`) and is tested against [riscv-gnu-toolchain Nightly: June 26, 2021](https://github.com/riscv/riscv-gnu-toolchain/releases/tag/2021.06.26) and [LLVM 12.0.0](https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.0) in `Windows WSL 2 (Ubuntu 20.04.2)`.
+`riscv2llvm` is precompiled as a standalone executable for Linux (not available until the release of `v0.1.0`) and is tested against [riscv-gnu-toolchain Nightly: September 21, 2021](https://github.com/riscv-collab/riscv-gnu-toolchain/releases/tag/2021.09.21) and [LLVM 13.0.0](https://github.com/llvm/llvm-project/releases/tag/llvmorg-13.0.0) in `Windows WSL 2 (Ubuntu 20.04.2)`.
 
 Currently, `riscv2llvm` supports most RV64I instructions and is able to translate local functions with basic control flow as `examples/test.c` (below) shows.
 
