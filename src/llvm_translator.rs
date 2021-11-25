@@ -1,4 +1,4 @@
-use crate::cfg::{BasicBlock, Cfg, RiscvFunction};
+use crate::riscv_isa::{BasicBlock, Cfg, RiscvFunction, RiscvProgram};
 use crate::llvm_isa::{
     LlvmFpCondition, LlvmFunction, LlvmInstruction, LlvmIntCondition, LlvmOrdering, LlvmType,
     LlvmValue, Program,
@@ -16,12 +16,16 @@ pub struct LlvmTranslator {
 }
 
 impl LlvmTranslator {
-    pub fn new(cfg: Cfg, statics: HashMap<String, (String, LlvmType)>) -> Self {
-        LlvmTranslator {
-            cfg,
-            statics,
-            temp: 0,
-        }
+    // pub fn new(cfg: Cfg, statics: HashMap<String, (String, LlvmType)>) -> Self {
+    //     LlvmTranslator {
+    //         cfg,
+    //         statics,
+    //         temp: 0,
+    //     }
+    // }
+
+    pub fn new(rv_program: RiscvProgram) -> Self {
+        todo!()
     }
 
     pub fn run(&mut self) -> Program {
@@ -2989,4779 +2993,4779 @@ impl LlvmTranslator {
     }
 }
 
-// 162 tests
-#[cfg(test)]
-mod tests {
-    use super::LlvmTranslator;
-    use crate::cfg_builder::CfgBuilder;
-    use crate::llvm_isa::{
-        LlvmFpCondition, LlvmFunction, LlvmInstruction::*, LlvmIntCondition, LlvmOrdering,
-        LlvmType, LlvmValue, Program,
-    };
-    use crate::riscv_isa::RiscvRegister::*;
-    use crate::riscv_parser;
-    use std::collections::HashMap;
-
-    macro_rules! build_test {
-        ( $( $func:ident ( $source:literal, [ $( $inst:expr, )* ] ), )* ) => {
-            $(
-                #[test]
-                fn $func() {
-                    let source = format!("
-                        Disassembly of section .text:
-                        0000000000010556 <main>:
-                            10556:	1141                	{}
-                            10598:	8082                	ret
-                    ", $source);
-                    let indirect_targets = riscv_parser::parse_rodata(&source);
-                    let mut statics = riscv_parser::parse_sdata(&source);
-                    statics.extend(riscv_parser::parse_sbss(&source));
-                    let rv_insts = riscv_parser::parse_text(&source);
-                    let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
-                    let ll_program = LlvmTranslator::new(cfg, statics).run();
-                    let expected = Program{
-                        statics: HashMap::new(),
-                        functions: vec![LlvmFunction {
-                            name: String::from("main"),
-                            body: vec![
-                                Label(String::from("Entry")),
-                                UnconBr(String::from("L0")),
-                                Label(String::from("L0")),
-                                $(
-                                    $inst,
-                                )*
-                                Ret,
-                            ],
-                        }]
-                    };
-                    assert_eq!(ll_program, expected);
-                }
-            )*
-        };
-    }
-
-    // RV32I (47 tests)
-    build_test! {
-        lui("lui	a0,0x12", [
-            Shl {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0x12_i64.into(),
-                op2: 12_i64.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                pointer: A0.into(),
-            },
-        ]),
-
-        auipc("auipc	a0,0x0", []),
-    }
-
-    #[test]
-    fn jal() {
-        let source = "
-            Disassembly of section .text:
-
-            00000000000104e0 <f>:
-                104e0:	8082                	ret
-
-            00000000000104ee <main>:
-                104ee:	febff0ef          	jal	ra,104e0 <f>
-                10504:	8082                	ret
-        ";
-        let indirect_targets = riscv_parser::parse_rodata(source);
-        let mut statics = riscv_parser::parse_sdata(source);
-        statics.extend(riscv_parser::parse_sbss(source));
-        let rv_insts = riscv_parser::parse_text(source);
-        let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
-        let ll_program = LlvmTranslator::new(cfg, statics).run();
-        let expected = Program {
-            statics: HashMap::new(),
-            functions: vec![
-                LlvmFunction {
-                    name: String::from("f"),
-                    body: vec![
-                        Label(String::from("Entry")),
-                        UnconBr(String::from("L0")),
-                        Label(String::from("L0")),
-                        Ret,
-                    ],
-                },
-                LlvmFunction {
-                    name: String::from("main"),
-                    body: vec![
-                        Label(String::from("Entry")),
-                        UnconBr(String::from("L0")),
-                        Label(String::from("L0")),
-                        Call(String::from("f")),
-                        Ret,
-                    ],
-                },
-            ],
-        };
-        assert_eq!(ll_program, expected);
-    }
-
-    #[test]
-    fn jalr() {
-        let source = "
-            Disassembly of section .text:
-
-            0000000000010506 <f>:
-                10506:	8082                	ret
-
-            000000000001051c <main>:
-                1051c:	00000097          	auipc	ra,0x0
-                10520:	fea080e7          	jalr	-22(ra) # 10506 <f>
-                1052e:	8082                	ret
-        ";
-        let indirect_targets = riscv_parser::parse_rodata(source);
-        let mut statics = riscv_parser::parse_sdata(source);
-        statics.extend(riscv_parser::parse_sbss(source));
-        let rv_insts = riscv_parser::parse_text(source);
-        let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
-        let ll_program = LlvmTranslator::new(cfg, statics).run();
-        let expected = Program {
-            statics: HashMap::new(),
-            functions: vec![
-                LlvmFunction {
-                    name: String::from("f"),
-                    body: vec![
-                        Label(String::from("Entry")),
-                        UnconBr(String::from("L0")),
-                        Label(String::from("L0")),
-                        Ret,
-                    ],
-                },
-                LlvmFunction {
-                    name: String::from("main"),
-                    body: vec![
-                        Label(String::from("Entry")),
-                        UnconBr(String::from("L0")),
-                        Label(String::from("L0")),
-                        Call(String::from("f")),
-                        Ret,
-                    ],
-                },
-            ],
-        };
-        assert_eq!(ll_program, expected);
-    }
-
-    build_test! {
-        beq("beq	a4,a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 2_usize.into(),
-                cond: LlvmIntCondition::Eq,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            ConBr {
-                cond: 2_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        bne("bne	a4,a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 2_usize.into(),
-                cond: LlvmIntCondition::Ne,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            ConBr {
-                cond: 2_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        blt("blt	a4,a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 2_usize.into(),
-                cond: LlvmIntCondition::Slt,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            ConBr {
-                cond: 2_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        bge("bge	a4,a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 2_usize.into(),
-                cond: LlvmIntCondition::Sge,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            ConBr {
-                cond: 2_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        bltu("bltu	a4,a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 2_usize.into(),
-                cond: LlvmIntCondition::Ult,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            ConBr {
-                cond: 2_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        bgeu("bgeu	a4,a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 2_usize.into(),
-                cond: LlvmIntCondition::Uge,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            ConBr {
-                cond: 2_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        lb_global("lb	a4,48(a5) # 12030 <g1>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I8,
-                pointer: LlvmValue::GlobalVar(String::from("g1")),
-            },
-            Sext {
-                result: 1_usize.into(),
-                ty: LlvmType::I8,
-                value: 0_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        lb("lb	a5,-20(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-20_i64).into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Load {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                pointer: 2_usize.into(),
-            },
-            Sext {
-                result: 4_usize.into(),
-                ty: LlvmType::I8,
-                value: 3_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 4_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        lh_global("lh	a4,48(a5) # 12030 <g1>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I16,
-                pointer: LlvmValue::GlobalVar(String::from("g1")),
-            },
-            Sext {
-                result: 1_usize.into(),
-                ty: LlvmType::I16,
-                value: 0_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        lh("lh	a5,-20(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-20_i64).into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::I16,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::I16,
-                pointer: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I16,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        lw_global("lw	a4,48(a5) # 12030 <g1>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I32,
-                pointer: LlvmValue::GlobalVar(String::from("g1")),
-            },
-            Sext {
-                result: 1_usize.into(),
-                ty: LlvmType::I32,
-                value: 0_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        lw("lw	a5,-20(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-20_i64).into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                pointer: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        lbu_global("lbu	a4,48(a5) # 12030 <g1>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I8,
-                pointer: LlvmValue::GlobalVar(String::from("g1")),
-            },
-            Zext {
-                result: 1_usize.into(),
-                ty: LlvmType::I8,
-                value: 0_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        lbu("lbu	a5,-20(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-20_i64).into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Load {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                pointer: 2_usize.into(),
-            },
-            Zext {
-                result: 4_usize.into(),
-                ty: LlvmType::I8,
-                value: 3_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 4_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        lhu_global("lhu	a4,48(a5) # 12030 <g1>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I16,
-                pointer: LlvmValue::GlobalVar(String::from("g1")),
-            },
-            Zext {
-                result: 1_usize.into(),
-                ty: LlvmType::I16,
-                value: 0_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        lhu("lhu	a5,-20(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-20_i64).into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::I16,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::I16,
-                pointer: 3_usize.into(),
-            },
-            Zext {
-                result: 5_usize.into(),
-                ty: LlvmType::I16,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        sb_global("sb	a4,52(a5) # 12034 <g2>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I8,
-            },
-            Store {
-                ty: LlvmType::I8,
-                value: 1_usize.into(),
-                pointer: LlvmValue::GlobalVar(String::from("g2")),
-            },
-        ]),
-
-        sb("sb	a5,48(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 48_i64.into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Load {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 4_usize.into(),
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                ty2: LlvmType::I8,
-            },
-            Store {
-                ty: LlvmType::I8,
-                value: 4_usize.into(),
-                pointer: 2_usize.into(),
-            },
-        ]),
-
-        sh_global("sh	a4,52(a5) # 12034 <g2>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I16,
-            },
-            Store {
-                ty: LlvmType::I16,
-                value: 1_usize.into(),
-                pointer: LlvmValue::GlobalVar(String::from("g2")),
-            },
-        ]),
-
-        sh("sh	a5,48(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 48_i64.into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::I16,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 5_usize.into(),
-                ty: LlvmType::I64,
-                value: 4_usize.into(),
-                ty2: LlvmType::I16,
-            },
-            Store {
-                ty: LlvmType::I16,
-                value: 5_usize.into(),
-                pointer: 3_usize.into(),
-            },
-        ]),
-
-        sw_global("sw	a4,52(a5) # 12034 <g2>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Store {
-                ty: LlvmType::I32,
-                value: 1_usize.into(),
-                pointer: LlvmValue::GlobalVar(String::from("g2")),
-            },
-        ]),
-
-        sw("sw	a5,48(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 48_i64.into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 5_usize.into(),
-                ty: LlvmType::I64,
-                value: 4_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Store {
-                ty: LlvmType::I32,
-                value: 5_usize.into(),
-                pointer: 3_usize.into(),
-            },
-        ]),
-
-        addi("addi	a2,sp,8", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: Sp.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 8_i64.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A2.into(),
-            },
-        ]),
-
-        slti("slti	t0,t1,0", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Slt,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Sext {
-                result: 2_usize.into(),
-                ty: LlvmType::I1,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        sltiu("sltiu	t0,t1,0", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Ult,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Sext {
-                result: 2_usize.into(),
-                ty: LlvmType::I1,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        xori("xori	t0,t1,0", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Xor {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        ori("ori	t0,t1,0", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Or {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        andi("andi	t0,t1,0", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            And {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        slli("slli	a4,a5,0x2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Shl {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0x2_i64.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        srli("srli	a5,a1,0x3f", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A1.into(),
-            },
-            Lshr {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0x3f_i64.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        srai("srai	a5,a1,0x3", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A1.into(),
-            },
-            Ashr {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0x3_i64.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        add("add	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Add {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        sub("sub	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Sub {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        sll("sll	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Shl {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        slt("slt	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Icmp {
-                result: 2_usize.into(),
-                cond: LlvmIntCondition::Slt,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        sltu("sltu	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Icmp {
-                result: 2_usize.into(),
-                cond: LlvmIntCondition::Ult,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        xor("xor	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Xor {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        srl("srl	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Lshr {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        sra("sra	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Ashr {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        or("or	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Or {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        and("and	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            And {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        fence("fence", [
-            Fence(LlvmOrdering::AcqRel),
-        ]),
-
-        ecall("ecall", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A7.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A0.into(),
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A1.into(),
-            },
-            Load {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A2.into(),
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A3.into(),
-            },
-            Load {
-                result: 5_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Load {
-                result: 6_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Syscall {
-                result: 7_usize.into(),
-                no: 0_usize.into(),
-                arg1: 1_usize.into(),
-                arg2: 2_usize.into(),
-                arg3: 3_usize.into(),
-                arg4: 4_usize.into(),
-                arg5: 5_usize.into(),
-                arg6: 6_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 7_usize.into(),
-                pointer: A0.into(),
-            },
-        ]),
-
-        // RV64I (15 tests)
-        lwu_global("lwu	a4,48(a5) # 12030 <g1>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I32,
-                pointer: LlvmValue::GlobalVar(String::from("g1")),
-            },
-            Zext {
-                result: 1_usize.into(),
-                ty: LlvmType::I32,
-                value: 0_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        lwu("lwu	a5,-20(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-20_i64).into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                pointer: 3_usize.into(),
-            },
-            Zext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        ld_global("ld	a4,48(a5) # 12030 <g1>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: LlvmValue::GlobalVar(String::from("g1")),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        ld("ld	a1,0(sp)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: Sp.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::I64,
-                pointer: 3_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 4_usize.into(),
-                pointer: A1.into(),
-            },
-        ]),
-
-        sd_global("sd	a4,52(a5) # 12034 <g2>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A4.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                pointer: LlvmValue::GlobalVar(String::from("g2")),
-            },
-        ]),
-
-        sd("sd	s0,0(sp)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: Sp.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 4_usize.into(),
-                pointer: 3_usize.into(),
-            },
-        ]),
-
-        addiw("addiw	t0,t1,1", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Add {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 1_i64.into(),
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I32,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        slliw("slliw	a4,a5,0x2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Shl {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 0x2_i64.into(),
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I32,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        srliw("srliw	a4,a5,0x2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Lshr {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 0x2_i64.into(),
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I32,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        sraiw("sraiw	a4,a5,0x2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Ashr {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 0x2_i64.into(),
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I32,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        addw("addw	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Trunc {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Add {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        subw("subw	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Trunc {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Sub {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        sllw("sllw	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Trunc {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Shl {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        srlw("srlw	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Trunc {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Lshr {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        sraw("sraw	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Trunc {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Ashr {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        // RV32M (8 tests)
-        mul("mul	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Mul {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        mulh("mulh	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Sext {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I128,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I128,
-            },
-            Mul {
-                result: 4_usize.into(),
-                ty: LlvmType::I128,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Lshr {
-                result: 5_usize.into(),
-                ty: LlvmType::I128,
-                op1: 4_usize.into(),
-                op2: 64_i64.into(),
-            },
-            Trunc {
-                result: 6_usize.into(),
-                ty: LlvmType::I128,
-                value: 5_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 6_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        mulhsu("mulhsu	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Sext {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I128,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Zext {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I128,
-            },
-            Mul {
-                result: 4_usize.into(),
-                ty: LlvmType::I128,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Lshr {
-                result: 5_usize.into(),
-                ty: LlvmType::I128,
-                op1: 4_usize.into(),
-                op2: 64_i64.into(),
-            },
-            Trunc {
-                result: 6_usize.into(),
-                ty: LlvmType::I128,
-                value: 5_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 6_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        mulhu("mulhu	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Zext {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I128,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Zext {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I128,
-            },
-            Mul {
-                result: 4_usize.into(),
-                ty: LlvmType::I128,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Lshr {
-                result: 5_usize.into(),
-                ty: LlvmType::I128,
-                op1: 4_usize.into(),
-                op2: 64_i64.into(),
-            },
-            Trunc {
-                result: 6_usize.into(),
-                ty: LlvmType::I128,
-                value: 5_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 6_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        div("div	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Sdiv {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        divu("divu	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Udiv {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        rem("rem	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Srem {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        remu("remu	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Urem {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        // RV64M (5 tests)
-        mulw("mulw	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Trunc {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Mul {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        divw("divw	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Trunc {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Sdiv {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        divuw("divuw	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Trunc {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Udiv {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        remw("remw	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Trunc {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Srem {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        remuw("remuw	t0,t1,t2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T1.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T2.into(),
-            },
-            Trunc {
-                result: 3_usize.into(),
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Urem {
-                result: 4_usize.into(),
-                ty: LlvmType::I32,
-                op1: 1_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I32,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        // RV32F (27 tests)
-        flw_global("flw	fa0,-20(s0) # 12030 <g1>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F32,
-                pointer: LlvmValue::GlobalVar(String::from("g1")),
-            },
-            Fpext {
-                result: 1_usize.into(),
-                ty: LlvmType::F32,
-                value: 0_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        flw("flw	fa0,-20(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-20_i64).into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::F32,
-                pointer: 3_usize.into(),
-            },
-            Fpext {
-                result: 5_usize.into(),
-                ty: LlvmType::F32,
-                value: 4_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 5_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fsw_global("fsw	fa0,-20(s0) # 12034 <g2>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Fptrunc {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Store {
-                ty: LlvmType::F32,
-                value: 1_usize.into(),
-                pointer: LlvmValue::GlobalVar(String::from("g2")),
-            },
-        ]),
-
-        fsw("fsw	fa0,-20(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-20_i64).into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Fptrunc {
-                result: 5_usize.into(),
-                ty: LlvmType::F64,
-                value: 4_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Store {
-                ty: LlvmType::F32,
-                value: 5_usize.into(),
-                pointer: 3_usize.into(),
-            },
-        ]),
-
-        fmadd_s("fmadd.s	fa0,fa0,fa1,fa2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa1.into(),
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa2.into(),
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 4_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 5_usize.into(),
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fma {
-                result: 6_usize.into(),
-                ty: LlvmType::F32,
-                a: 3_usize.into(),
-                b: 4_usize.into(),
-                c: 5_usize.into(),
-            },
-            Fpext {
-                result: 7_usize.into(),
-                ty: LlvmType::F32,
-                value: 6_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 7_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fmsub_s("fmsub.s	fa0,fa0,fa1,fa2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa1.into(),
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa2.into(),
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 4_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 5_usize.into(),
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fmul {
-                result: 6_usize.into(),
-                ty: LlvmType::F32,
-                op1: 3_usize.into(),
-                op2: 4_usize.into(),
-            },
-            Fsub {
-                result: 7_usize.into(),
-                ty: LlvmType::F32,
-                op1: 6_usize.into(),
-                op2: 5_usize.into(),
-            },
-            Fpext {
-                result: 8_usize.into(),
-                ty: LlvmType::F32,
-                value: 7_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 8_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fnmsub_s("fnmsub.s	fa0,fa0,fa1,fa2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa1.into(),
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa2.into(),
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 4_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 5_usize.into(),
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fmul {
-                result: 6_usize.into(),
-                ty: LlvmType::F32,
-                op1: 3_usize.into(),
-                op2: 4_usize.into(),
-            },
-            Fneg {
-                result: 7_usize.into(),
-                ty: LlvmType::F32,
-                op1: 6_usize.into(),
-            },
-            Fadd {
-                result: 8_usize.into(),
-                ty: LlvmType::F32,
-                op1: 7_usize.into(),
-                op2: 5_usize.into(),
-            },
-            Fpext {
-                result: 9_usize.into(),
-                ty: LlvmType::F32,
-                value: 8_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 9_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fnmadd_s("fnmadd.s	fa0,fa0,fa1,fa2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa1.into(),
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa2.into(),
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 4_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 5_usize.into(),
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fmul {
-                result: 6_usize.into(),
-                ty: LlvmType::F32,
-                op1: 3_usize.into(),
-                op2: 4_usize.into(),
-            },
-            Fneg {
-                result: 7_usize.into(),
-                ty: LlvmType::F32,
-                op1: 6_usize.into(),
-            },
-            Fsub {
-                result: 8_usize.into(),
-                ty: LlvmType::F32,
-                op1: 7_usize.into(),
-                op2: 5_usize.into(),
-            },
-            Fpext {
-                result: 9_usize.into(),
-                ty: LlvmType::F32,
-                value: 8_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 9_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fadd_s("fadd.s	fa3,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fadd {
-                result: 4_usize.into(),
-                ty: LlvmType::F32,
-                op1: 2_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Fpext {
-                result: 5_usize.into(),
-                ty: LlvmType::F32,
-                value: 4_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 5_usize.into(),
-                pointer: Fa3.into(),
-            },
-        ]),
-
-        fsub_s("fsub.s	fa3,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fsub {
-                result: 4_usize.into(),
-                ty: LlvmType::F32,
-                op1: 2_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Fpext {
-                result: 5_usize.into(),
-                ty: LlvmType::F32,
-                value: 4_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 5_usize.into(),
-                pointer: Fa3.into(),
-            },
-        ]),
-
-        fmul_s("fmul.s	fa3,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fmul {
-                result: 4_usize.into(),
-                ty: LlvmType::F32,
-                op1: 2_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Fpext {
-                result: 5_usize.into(),
-                ty: LlvmType::F32,
-                value: 4_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 5_usize.into(),
-                pointer: Fa3.into(),
-            },
-        ]),
-
-        fdiv_s("fdiv.s	fa3,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fdiv {
-                result: 4_usize.into(),
-                ty: LlvmType::F32,
-                op1: 2_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Fpext {
-                result: 5_usize.into(),
-                ty: LlvmType::F32,
-                value: 4_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 5_usize.into(),
-                pointer: Fa3.into(),
-            },
-        ]),
-
-        fsqrt_s("fsqrt.s	fa0,fa1", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa1.into(),
-            },
-            Fptrunc {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Sqrt {
-                result: 2_usize.into(),
-                ty: LlvmType::F32,
-                value: 1_usize.into(),
-            },
-            Fpext {
-                result: 3_usize.into(),
-                ty: LlvmType::F32,
-                value: 2_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 3_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fsgnj_s("fsgnj.s	ft0,ft1,ft2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft2.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Copysign {
-                result: 4_usize.into(),
-                ty: LlvmType::F32,
-                mag: 2_usize.into(),
-                sign: 3_usize.into(),
-            },
-            Fpext {
-                result: 5_usize.into(),
-                ty: LlvmType::F32,
-                value: 4_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 5_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        fsgnjn_s("fsgnjn.s	ft0,ft1,ft2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft2.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fneg {
-                result: 4_usize.into(),
-                ty: LlvmType::F32,
-                op1: 3_usize.into(),
-            },
-            Copysign {
-                result: 5_usize.into(),
-                ty: LlvmType::F32,
-                mag: 2_usize.into(),
-                sign: 4_usize.into(),
-            },
-            Fpext {
-                result: 6_usize.into(),
-                ty: LlvmType::F32,
-                value: 5_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 6_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        fsgnjx_s("fsgnjx.s	ft0,ft1,ft2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft2.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Bitcast {
-                result: 4_usize.into(),
-                ty: LlvmType::F32,
-                value: 2_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Bitcast {
-                result: 5_usize.into(),
-                ty: LlvmType::F32,
-                value: 3_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Xor {
-                result: 6_usize.into(),
-                ty: LlvmType::I32,
-                op1: 4_usize.into(),
-                op2: 5_usize.into(),
-            },
-            Bitcast {
-                result: 7_usize.into(),
-                ty: LlvmType::I32,
-                value: 6_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Copysign {
-                result: 8_usize.into(),
-                ty: LlvmType::F32,
-                mag: 2_usize.into(),
-                sign: 7_usize.into(),
-            },
-            Fpext {
-                result: 9_usize.into(),
-                ty: LlvmType::F32,
-                value: 8_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 9_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        fmin_s("fmin.s	ft0,ft1,ft2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft2.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Minimum {
-                result: 4_usize.into(),
-                ty: LlvmType::F32,
-                op1: 2_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Fpext {
-                result: 5_usize.into(),
-                ty: LlvmType::F32,
-                value: 4_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 5_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        fmax_s("fmax.s	ft0,ft1,ft2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft2.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Maximum {
-                result: 4_usize.into(),
-                ty: LlvmType::F32,
-                op1: 2_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Fpext {
-                result: 5_usize.into(),
-                ty: LlvmType::F32,
-                value: 4_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 5_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        fcvt_w_s("fcvt.w.s	a5,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptosi {
-                result: 2_usize.into(),
-                ty: LlvmType::F32,
-                value: 1_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I32,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fcvt_wu_s("fcvt.wu.s	a5,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptoui {
-                result: 2_usize.into(),
-                ty: LlvmType::F32,
-                value: 1_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Zext {
-                result: 3_usize.into(),
-                ty: LlvmType::I32,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fmv_x_w("fmv.x.w	t0,ft0", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft0.into(),
-            },
-            Fptrunc {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Bitcast {
-                result: 2_usize.into(),
-                ty: LlvmType::F32,
-                value: 1_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I32,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        feq_s("feq.s	a5,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fcmp {
-                result: 4_usize.into(),
-                cond: LlvmFpCondition::Oeq,
-                ty: LlvmType::F32,
-                op1: 2_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I1,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        flt_s("flt.s	a5,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fcmp {
-                result: 4_usize.into(),
-                cond: LlvmFpCondition::Olt,
-                ty: LlvmType::F32,
-                op1: 2_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I1,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fle_s("fle.s	a5,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptrunc {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fcmp {
-                result: 4_usize.into(),
-                cond: LlvmFpCondition::Ole,
-                ty: LlvmType::F32,
-                op1: 2_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Sext {
-                result: 5_usize.into(),
-                ty: LlvmType::I1,
-                value: 4_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 5_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fcvt_s_w("fcvt.s.w	fa5,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Sitofp {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fpext {
-                result: 3_usize.into(),
-                ty: LlvmType::F32,
-                value: 2_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 3_usize.into(),
-                pointer: Fa5.into(),
-            },
-        ]),
-
-        fcvt_s_wu("fcvt.s.wu	fa5,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Uitofp {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fpext {
-                result: 3_usize.into(),
-                ty: LlvmType::F32,
-                value: 2_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 3_usize.into(),
-                pointer: Fa5.into(),
-            },
-        ]),
-
-        fmv_w_x("fmv.w.x	ft0,t0", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T0.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Bitcast {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                value: 1_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fpext {
-                result: 3_usize.into(),
-                ty: LlvmType::F32,
-                value: 2_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 3_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        // RV64F (4 tests)
-        fcvt_l_s("fcvt.l.s	a5,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptosi {
-                result: 2_usize.into(),
-                ty: LlvmType::F32,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fcvt_lu_s("fcvt.lu.s	a5,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fptoui {
-                result: 2_usize.into(),
-                ty: LlvmType::F32,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fcvt_s_l("fcvt.s.l	fa5,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Sitofp {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fpext {
-                result: 2_usize.into(),
-                ty: LlvmType::F32,
-                value: 1_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Fa5.into(),
-            },
-        ]),
-
-        fcvt_s_lu("fcvt.s.lu	fa5,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Uitofp {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fpext {
-                result: 2_usize.into(),
-                ty: LlvmType::F32,
-                value: 1_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Fa5.into(),
-            },
-        ]),
-
-        // RV32D (25 tests)
-        fld_global("fld	fa4,-24(s0) # 12030 <g1>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: LlvmValue::GlobalVar(String::from("g1")),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                pointer: Fa4.into(),
-            },
-        ]),
-
-        fld("fld	fa4,-24(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-24_i64).into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::F64,
-                pointer: 3_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 4_usize.into(),
-                pointer: Fa4.into(),
-            },
-        ]),
-
-        fsd_global("fsd	fa0,-24(s0) # 12034 <g2>", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                pointer: LlvmValue::GlobalVar(String::from("g2")),
-            },
-        ]),
-
-        fsd("fsd	fa0,-24(s0)", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: S0.into(),
-            },
-            Add {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-24_i64).into(),
-            },
-            Getelementptr {
-                result: 2_usize.into(),
-                index: 1_usize.into(),
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::I8,
-                value: 2_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Load {
-                result: 4_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 4_usize.into(),
-                pointer: 3_usize.into(),
-            },
-        ]),
-
-        fmadd_d("fmadd.d	fa0,fa0,fa1,fa2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa1.into(),
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa2.into(),
-            },
-            Fma {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                a: 0_usize.into(),
-                b: 1_usize.into(),
-                c: 2_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 3_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fmsub_d("fmsub.d	fa0,fa0,fa1,fa2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa1.into(),
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa2.into(),
-            },
-            Fmul {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Fsub {
-                result: 4_usize.into(),
-                ty: LlvmType::F64,
-                op1: 3_usize.into(),
-                op2: 2_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 4_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fnmsub_d("fnmsub.d	fa0,fa0,fa1,fa2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa1.into(),
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa2.into(),
-            },
-            Fmul {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Fneg {
-                result: 4_usize.into(),
-                ty: LlvmType::F64,
-                op1: 3_usize.into(),
-            },
-            Fadd {
-                result: 5_usize.into(),
-                ty: LlvmType::F64,
-                op1: 4_usize.into(),
-                op2: 2_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 5_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fnmadd_d("fnmadd.d	fa0,fa0,fa1,fa2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa0.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa1.into(),
-            },
-            Load {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa2.into(),
-            },
-            Fmul {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Fneg {
-                result: 4_usize.into(),
-                ty: LlvmType::F64,
-                op1: 3_usize.into(),
-            },
-            Fsub {
-                result: 5_usize.into(),
-                ty: LlvmType::F64,
-                op1: 4_usize.into(),
-                op2: 2_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 5_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fadd_d("fadd.d	fa3,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fadd {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Fa3.into(),
-            },
-        ]),
-
-        fsub_d("fsub.d	fa3,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fsub {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Fa3.into(),
-            },
-        ]),
-
-        fmul_d("fmul.d	fa3,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fmul {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Fa3.into(),
-            },
-        ]),
-
-        fdiv_d("fdiv.d	fa3,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fdiv {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Fa3.into(),
-            },
-        ]),
-
-        fsqrt_d("fsqrt.d	fa0,fa1", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa1.into(),
-            },
-            Sqrt {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fsgnj_d("fsgnj.d	ft0,ft1,ft2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft2.into(),
-            },
-            Copysign {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                mag: 0_usize.into(),
-                sign: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        fsgnjn_d("fsgnjn.d	ft0,ft1,ft2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft2.into(),
-            },
-            Fneg {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                op1: 1_usize.into(),
-            },
-            Copysign {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                mag: 0_usize.into(),
-                sign: 2_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 3_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        fsgnjx_d("fsgnjx.d	ft0,ft1,ft2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft2.into(),
-            },
-            Bitcast {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Bitcast {
-                result: 3_usize.into(),
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Xor {
-                result: 4_usize.into(),
-                ty: LlvmType::I64,
-                op1: 2_usize.into(),
-                op2: 3_usize.into(),
-            },
-            Bitcast {
-                result: 5_usize.into(),
-                ty: LlvmType::I64,
-                value: 4_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Copysign {
-                result: 6_usize.into(),
-                ty: LlvmType::F64,
-                mag: 0_usize.into(),
-                sign: 5_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 6_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        fmin_d("fmin.d	ft0,ft1,ft2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft2.into(),
-            },
-            Minimum {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        fmax_d("fmax.d	ft0,ft1,ft2", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft1.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft2.into(),
-            },
-            Maximum {
-                result: 2_usize.into(),
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        feq_d("feq.d	a5,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fcmp {
-                result: 2_usize.into(),
-                cond: LlvmFpCondition::Oeq,
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I1,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        flt_d("flt.d	a5,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fcmp {
-                result: 2_usize.into(),
-                cond: LlvmFpCondition::Olt,
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I1,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fle_d("fle.d	a5,fa4,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa4.into(),
-            },
-            Load {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fcmp {
-                result: 2_usize.into(),
-                cond: LlvmFpCondition::Ole,
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-                op2: 1_usize.into(),
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I1,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fcvt_w_d("fcvt.w.d	a5,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptosi {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Sext {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fcvt_wu_d("fcvt.wu.d	a5,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptoui {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Zext {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fcvt_d_w("fcvt.d.w	fa5,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Sitofp {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                value: 1_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Fa5.into(),
-            },
-        ]),
-
-        fcvt_d_wu("fcvt.d.wu	fa5,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Uitofp {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                value: 1_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 2_usize.into(),
-                pointer: Fa5.into(),
-            },
-        ]),
-
-        // RV64D (6 tests)
-        fcvt_l_d("fcvt.l.d	a5,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptosi {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fcvt_lu_d("fcvt.lu.d	a5,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptoui {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        fmv_x_d("fmv.x.d	t0,ft0", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Ft0.into(),
-            },
-            Bitcast {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: T0.into(),
-            },
-        ]),
-
-        fcvt_d_l("fcvt.d.l	fa5,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Sitofp {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                pointer: Fa5.into(),
-            },
-        ]),
-
-        fcvt_d_lu("fcvt.d.lu	fa5,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Uitofp {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                pointer: Fa5.into(),
-            },
-        ]),
-
-        fmv_d_x("fmv.d.x	ft0,t0", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: T0.into(),
-            },
-            Bitcast {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                pointer: Ft0.into(),
-            },
-        ]),
-
-        // Pseudoinstructions (25 tests)
-        li("li	a5,0", [
-            Store {
-                ty: LlvmType::I64,
-                value: 0_i64.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        mv("mv	a5,a0", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A0.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                pointer: A5.into(),
-            },
-        ]),
-
-        not("not	a4,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Xor {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: (-1_i64).into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        neg("neg	a4,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Sub {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                op1: 0_i64.into(),
-                op2: 0_usize.into(),
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 1_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        negw("negw	a4,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Sub {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                op1: 0_i64.into(),
-                op2: 1_usize.into(),
-            },
-            Sext {
-                result: 3_usize.into(),
-                ty: LlvmType::I32,
-                value: 2_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 3_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        sext_w("sext.w	a4,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Trunc {
-                result: 1_usize.into(),
-                ty: LlvmType::I64,
-                value: 0_usize.into(),
-                ty2: LlvmType::I32,
-            },
-            Sext {
-                result: 2_usize.into(),
-                ty: LlvmType::I32,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        seqz("seqz	a4,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Eq,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Sext {
-                result: 2_usize.into(),
-                ty: LlvmType::I1,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        snez("snez	a4,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Ne,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Sext {
-                result: 2_usize.into(),
-                ty: LlvmType::I1,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        sltz("sltz	a4,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Slt,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Sext {
-                result: 2_usize.into(),
-                ty: LlvmType::I1,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        sgtz("sgtz	a4,a5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Sgt,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            Sext {
-                result: 2_usize.into(),
-                ty: LlvmType::I1,
-                value: 1_usize.into(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: 2_usize.into(),
-                pointer: A4.into(),
-            },
-        ]),
-
-        fmv_s("fmv.s	fa0,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fabs_s("fabs.s	fa0,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fabs {
-                result: 2_usize.into(),
-                ty: LlvmType::F32,
-                value: 1_usize.into(),
-            },
-            Fpext {
-                result: 3_usize.into(),
-                ty: LlvmType::F32,
-                value: 2_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 3_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fneg_s("fneg.s	fa0,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fptrunc {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                ty2: LlvmType::F32,
-            },
-            Fneg {
-                result: 2_usize.into(),
-                ty: LlvmType::F32,
-                op1: 1_usize.into(),
-            },
-            Fpext {
-                result: 3_usize.into(),
-                ty: LlvmType::F32,
-                value: 2_usize.into(),
-                ty2: LlvmType::F64,
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 3_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fmv_d("fmv.d	fa0,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fabs_d("fabs.d	fa0,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fabs {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                value: 0_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        fneg_d("fneg.d	fa0,fa5", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::F64,
-                pointer: Fa5.into(),
-            },
-            Fneg {
-                result: 1_usize.into(),
-                ty: LlvmType::F64,
-                op1: 0_usize.into(),
-            },
-            Store {
-                ty: LlvmType::F64,
-                value: 1_usize.into(),
-                pointer: Fa0.into(),
-            },
-        ]),
-
-        beqz("beqz	a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Eq,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            ConBr {
-                cond: 1_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        bnez("bnez	a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Ne,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            ConBr {
-                cond: 1_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        blez("blez	a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Sle,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            ConBr {
-                cond: 1_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        bgez("bgez	a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Sge,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            ConBr {
-                cond: 1_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        bltz("bltz	a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Slt,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            ConBr {
-                cond: 1_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        bgtz("bgtz	a5,10556", [
-            Load {
-                result: 0_usize.into(),
-                ty: LlvmType::I64,
-                pointer: A5.into(),
-            },
-            Icmp {
-                result: 1_usize.into(),
-                cond: LlvmIntCondition::Sgt,
-                ty: LlvmType::I64,
-                op1: 0_usize.into(),
-                op2: 0_i64.into(),
-            },
-            ConBr {
-                cond: 1_usize.into(),
-                iftrue: String::from("L0"),
-                iffalse: String::from("L1"),
-            },
-            Label(String::from("L1")),
-        ]),
-
-        j("j	10556", [
-            UnconBr(String::from("L0")),
-            Label(String::from("L1")),
-        ]),
-    }
-
-    #[test]
-    fn jr() {
-        let source = "
-            Disassembly of section .text:
-
-            00000000000104e0 <main>:
-                104e0:	439c                	lw	a5,0(a5)
-                1050c:	8782                	jr	a5
-                10548:	8082                	ret
-
-            Disassembly of section .rodata:
-
-            00000000000105b0 <.rodata>:
-                105b0:	0548                	addi	a0,sp,644
-                105b2:	0001                	nop
-        ";
-        let indirect_targets = riscv_parser::parse_rodata(source);
-        let mut statics = riscv_parser::parse_sdata(source);
-        statics.extend(riscv_parser::parse_sbss(source));
-        let rv_insts = riscv_parser::parse_text(source);
-        let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
-        let ll_program = LlvmTranslator::new(cfg, statics).run();
-        let expected = Program {
-            statics: HashMap::new(),
-            functions: vec![LlvmFunction {
-                name: String::from("main"),
-                body: vec![
-                    Label(String::from("Entry")),
-                    UnconBr(String::from("L0")),
-                    Label(String::from("L0")),
-                    Load {
-                        result: 0_usize.into(),
-                        ty: LlvmType::I64,
-                        pointer: A5.into(),
-                    },
-                    Switch {
-                        ty: LlvmType::I64,
-                        value: 0_usize.into(),
-                        defaultdest: format!("Unreachable{}", 1),
-                        targets: vec![(LlvmType::I64, 0x105b0_i64.into(), String::from("L1"))],
-                    },
-                    Label(format!("Unreachable{}", 1)),
-                    Unreachable,
-                    Label(format!("L{}", 1)),
-                    Ret,
-                ],
-            }],
-        };
-        assert_eq!(ll_program, expected);
-    }
-
-    build_test! {
-        ret("ret", [
-            Ret,
-            Label(String::from("L1")),
-        ]),
-    }
-}
+// // 162 tests
+// #[cfg(test)]
+// mod tests {
+//     use super::LlvmTranslator;
+//     use crate::cfg_builder::CfgBuilder;
+//     use crate::llvm_isa::{
+//         LlvmFpCondition, LlvmFunction, LlvmInstruction::*, LlvmIntCondition, LlvmOrdering,
+//         LlvmType, LlvmValue, Program,
+//     };
+//     use crate::riscv_isa::RiscvRegister::*;
+//     use crate::riscv_parser;
+//     use std::collections::HashMap;
+
+//     macro_rules! build_test {
+//         ( $( $func:ident ( $source:literal, [ $( $inst:expr, )* ] ), )* ) => {
+//             $(
+//                 #[test]
+//                 fn $func() {
+//                     let source = format!("
+//                         Disassembly of section .text:
+//                         0000000000010556 <main>:
+//                             10556:	1141                	{}
+//                             10598:	8082                	ret
+//                     ", $source);
+//                     let indirect_targets = riscv_parser::parse_rodata(&source);
+//                     let mut statics = riscv_parser::parse_sdata(&source);
+//                     statics.extend(riscv_parser::parse_sbss(&source));
+//                     let rv_insts = riscv_parser::parse_text(&source);
+//                     let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
+//                     let ll_program = LlvmTranslator::new(cfg, statics).run();
+//                     let expected = Program{
+//                         statics: HashMap::new(),
+//                         functions: vec![LlvmFunction {
+//                             name: String::from("main"),
+//                             body: vec![
+//                                 Label(String::from("Entry")),
+//                                 UnconBr(String::from("L0")),
+//                                 Label(String::from("L0")),
+//                                 $(
+//                                     $inst,
+//                                 )*
+//                                 Ret,
+//                             ],
+//                         }]
+//                     };
+//                     assert_eq!(ll_program, expected);
+//                 }
+//             )*
+//         };
+//     }
+
+//     // RV32I (47 tests)
+//     build_test! {
+//         lui("lui	a0,0x12", [
+//             Shl {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0x12_i64.into(),
+//                 op2: 12_i64.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 pointer: A0.into(),
+//             },
+//         ]),
+
+//         auipc("auipc	a0,0x0", []),
+//     }
+
+//     #[test]
+//     fn jal() {
+//         let source = "
+//             Disassembly of section .text:
+
+//             00000000000104e0 <f>:
+//                 104e0:	8082                	ret
+
+//             00000000000104ee <main>:
+//                 104ee:	febff0ef          	jal	ra,104e0 <f>
+//                 10504:	8082                	ret
+//         ";
+//         let indirect_targets = riscv_parser::parse_rodata(source);
+//         let mut statics = riscv_parser::parse_sdata(source);
+//         statics.extend(riscv_parser::parse_sbss(source));
+//         let rv_insts = riscv_parser::parse_text(source);
+//         let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
+//         let ll_program = LlvmTranslator::new(cfg, statics).run();
+//         let expected = Program {
+//             statics: HashMap::new(),
+//             functions: vec![
+//                 LlvmFunction {
+//                     name: String::from("f"),
+//                     body: vec![
+//                         Label(String::from("Entry")),
+//                         UnconBr(String::from("L0")),
+//                         Label(String::from("L0")),
+//                         Ret,
+//                     ],
+//                 },
+//                 LlvmFunction {
+//                     name: String::from("main"),
+//                     body: vec![
+//                         Label(String::from("Entry")),
+//                         UnconBr(String::from("L0")),
+//                         Label(String::from("L0")),
+//                         Call(String::from("f")),
+//                         Ret,
+//                     ],
+//                 },
+//             ],
+//         };
+//         assert_eq!(ll_program, expected);
+//     }
+
+//     #[test]
+//     fn jalr() {
+//         let source = "
+//             Disassembly of section .text:
+
+//             0000000000010506 <f>:
+//                 10506:	8082                	ret
+
+//             000000000001051c <main>:
+//                 1051c:	00000097          	auipc	ra,0x0
+//                 10520:	fea080e7          	jalr	-22(ra) # 10506 <f>
+//                 1052e:	8082                	ret
+//         ";
+//         let indirect_targets = riscv_parser::parse_rodata(source);
+//         let mut statics = riscv_parser::parse_sdata(source);
+//         statics.extend(riscv_parser::parse_sbss(source));
+//         let rv_insts = riscv_parser::parse_text(source);
+//         let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
+//         let ll_program = LlvmTranslator::new(cfg, statics).run();
+//         let expected = Program {
+//             statics: HashMap::new(),
+//             functions: vec![
+//                 LlvmFunction {
+//                     name: String::from("f"),
+//                     body: vec![
+//                         Label(String::from("Entry")),
+//                         UnconBr(String::from("L0")),
+//                         Label(String::from("L0")),
+//                         Ret,
+//                     ],
+//                 },
+//                 LlvmFunction {
+//                     name: String::from("main"),
+//                     body: vec![
+//                         Label(String::from("Entry")),
+//                         UnconBr(String::from("L0")),
+//                         Label(String::from("L0")),
+//                         Call(String::from("f")),
+//                         Ret,
+//                     ],
+//                 },
+//             ],
+//         };
+//         assert_eq!(ll_program, expected);
+//     }
+
+//     build_test! {
+//         beq("beq	a4,a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmIntCondition::Eq,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             ConBr {
+//                 cond: 2_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         bne("bne	a4,a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmIntCondition::Ne,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             ConBr {
+//                 cond: 2_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         blt("blt	a4,a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmIntCondition::Slt,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             ConBr {
+//                 cond: 2_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         bge("bge	a4,a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmIntCondition::Sge,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             ConBr {
+//                 cond: 2_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         bltu("bltu	a4,a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmIntCondition::Ult,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             ConBr {
+//                 cond: 2_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         bgeu("bgeu	a4,a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmIntCondition::Uge,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             ConBr {
+//                 cond: 2_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         lb_global("lb	a4,48(a5) # 12030 <g1>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I8,
+//                 pointer: LlvmValue::GlobalVar(String::from("g1")),
+//             },
+//             Sext {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         lb("lb	a5,-20(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-20_i64).into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Load {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 pointer: 2_usize.into(),
+//             },
+//             Sext {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 3_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 4_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         lh_global("lh	a4,48(a5) # 12030 <g1>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I16,
+//                 pointer: LlvmValue::GlobalVar(String::from("g1")),
+//             },
+//             Sext {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I16,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         lh("lh	a5,-20(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-20_i64).into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I16,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I16,
+//                 pointer: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I16,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         lw_global("lw	a4,48(a5) # 12030 <g1>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I32,
+//                 pointer: LlvmValue::GlobalVar(String::from("g1")),
+//             },
+//             Sext {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         lw("lw	a5,-20(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-20_i64).into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 pointer: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         lbu_global("lbu	a4,48(a5) # 12030 <g1>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I8,
+//                 pointer: LlvmValue::GlobalVar(String::from("g1")),
+//             },
+//             Zext {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         lbu("lbu	a5,-20(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-20_i64).into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Load {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 pointer: 2_usize.into(),
+//             },
+//             Zext {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 3_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 4_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         lhu_global("lhu	a4,48(a5) # 12030 <g1>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I16,
+//                 pointer: LlvmValue::GlobalVar(String::from("g1")),
+//             },
+//             Zext {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I16,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         lhu("lhu	a5,-20(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-20_i64).into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I16,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I16,
+//                 pointer: 3_usize.into(),
+//             },
+//             Zext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I16,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         sb_global("sb	a4,52(a5) # 12034 <g2>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I8,
+//             },
+//             Store {
+//                 ty: LlvmType::I8,
+//                 value: 1_usize.into(),
+//                 pointer: LlvmValue::GlobalVar(String::from("g2")),
+//             },
+//         ]),
+
+//         sb("sb	a5,48(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 48_i64.into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Load {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 ty2: LlvmType::I8,
+//             },
+//             Store {
+//                 ty: LlvmType::I8,
+//                 value: 4_usize.into(),
+//                 pointer: 2_usize.into(),
+//             },
+//         ]),
+
+//         sh_global("sh	a4,52(a5) # 12034 <g2>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I16,
+//             },
+//             Store {
+//                 ty: LlvmType::I16,
+//                 value: 1_usize.into(),
+//                 pointer: LlvmValue::GlobalVar(String::from("g2")),
+//             },
+//         ]),
+
+//         sh("sh	a5,48(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 48_i64.into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I16,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I16,
+//             },
+//             Store {
+//                 ty: LlvmType::I16,
+//                 value: 5_usize.into(),
+//                 pointer: 3_usize.into(),
+//             },
+//         ]),
+
+//         sw_global("sw	a4,52(a5) # 12034 <g2>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Store {
+//                 ty: LlvmType::I32,
+//                 value: 1_usize.into(),
+//                 pointer: LlvmValue::GlobalVar(String::from("g2")),
+//             },
+//         ]),
+
+//         sw("sw	a5,48(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 48_i64.into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Store {
+//                 ty: LlvmType::I32,
+//                 value: 5_usize.into(),
+//                 pointer: 3_usize.into(),
+//             },
+//         ]),
+
+//         addi("addi	a2,sp,8", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: Sp.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 8_i64.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A2.into(),
+//             },
+//         ]),
+
+//         slti("slti	t0,t1,0", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Slt,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Sext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         sltiu("sltiu	t0,t1,0", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Ult,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Sext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         xori("xori	t0,t1,0", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Xor {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         ori("ori	t0,t1,0", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Or {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         andi("andi	t0,t1,0", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             And {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         slli("slli	a4,a5,0x2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Shl {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0x2_i64.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         srli("srli	a5,a1,0x3f", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A1.into(),
+//             },
+//             Lshr {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0x3f_i64.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         srai("srai	a5,a1,0x3", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A1.into(),
+//             },
+//             Ashr {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0x3_i64.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         add("add	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Add {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         sub("sub	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Sub {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         sll("sll	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Shl {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         slt("slt	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Icmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmIntCondition::Slt,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         sltu("sltu	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Icmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmIntCondition::Ult,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         xor("xor	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Xor {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         srl("srl	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Lshr {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         sra("sra	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Ashr {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         or("or	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Or {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         and("and	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             And {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         fence("fence", [
+//             Fence(LlvmOrdering::AcqRel),
+//         ]),
+
+//         ecall("ecall", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A7.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A0.into(),
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A1.into(),
+//             },
+//             Load {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A2.into(),
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A3.into(),
+//             },
+//             Load {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Load {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Syscall {
+//                 result: 7_usize.into(),
+//                 no: 0_usize.into(),
+//                 arg1: 1_usize.into(),
+//                 arg2: 2_usize.into(),
+//                 arg3: 3_usize.into(),
+//                 arg4: 4_usize.into(),
+//                 arg5: 5_usize.into(),
+//                 arg6: 6_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 7_usize.into(),
+//                 pointer: A0.into(),
+//             },
+//         ]),
+
+//         // RV64I (15 tests)
+//         lwu_global("lwu	a4,48(a5) # 12030 <g1>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I32,
+//                 pointer: LlvmValue::GlobalVar(String::from("g1")),
+//             },
+//             Zext {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         lwu("lwu	a5,-20(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-20_i64).into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 pointer: 3_usize.into(),
+//             },
+//             Zext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         ld_global("ld	a4,48(a5) # 12030 <g1>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: LlvmValue::GlobalVar(String::from("g1")),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         ld("ld	a1,0(sp)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: Sp.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: 3_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 4_usize.into(),
+//                 pointer: A1.into(),
+//             },
+//         ]),
+
+//         sd_global("sd	a4,52(a5) # 12034 <g2>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A4.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 pointer: LlvmValue::GlobalVar(String::from("g2")),
+//             },
+//         ]),
+
+//         sd("sd	s0,0(sp)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: Sp.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 4_usize.into(),
+//                 pointer: 3_usize.into(),
+//             },
+//         ]),
+
+//         addiw("addiw	t0,t1,1", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Add {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 1_i64.into(),
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         slliw("slliw	a4,a5,0x2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Shl {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 0x2_i64.into(),
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         srliw("srliw	a4,a5,0x2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Lshr {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 0x2_i64.into(),
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         sraiw("sraiw	a4,a5,0x2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Ashr {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 0x2_i64.into(),
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         addw("addw	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Trunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Add {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         subw("subw	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Trunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Sub {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         sllw("sllw	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Trunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Shl {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         srlw("srlw	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Trunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Lshr {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         sraw("sraw	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Trunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Ashr {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         // RV32M (8 tests)
+//         mul("mul	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Mul {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         mulh("mulh	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Sext {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I128,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I128,
+//             },
+//             Mul {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I128,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Lshr {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I128,
+//                 op1: 4_usize.into(),
+//                 op2: 64_i64.into(),
+//             },
+//             Trunc {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::I128,
+//                 value: 5_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 6_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         mulhsu("mulhsu	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Sext {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I128,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Zext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I128,
+//             },
+//             Mul {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I128,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Lshr {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I128,
+//                 op1: 4_usize.into(),
+//                 op2: 64_i64.into(),
+//             },
+//             Trunc {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::I128,
+//                 value: 5_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 6_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         mulhu("mulhu	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Zext {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I128,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Zext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I128,
+//             },
+//             Mul {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I128,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Lshr {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I128,
+//                 op1: 4_usize.into(),
+//                 op2: 64_i64.into(),
+//             },
+//             Trunc {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::I128,
+//                 value: 5_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 6_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         div("div	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Sdiv {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         divu("divu	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Udiv {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         rem("rem	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Srem {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         remu("remu	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Urem {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         // RV64M (5 tests)
+//         mulw("mulw	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Trunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Mul {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         divw("divw	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Trunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Sdiv {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         divuw("divuw	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Trunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Udiv {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         remw("remw	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Trunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Srem {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         remuw("remuw	t0,t1,t2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T1.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T2.into(),
+//             },
+//             Trunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Urem {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 1_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         // RV32F (27 tests)
+//         flw_global("flw	fa0,-20(s0) # 12030 <g1>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F32,
+//                 pointer: LlvmValue::GlobalVar(String::from("g1")),
+//             },
+//             Fpext {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         flw("flw	fa0,-20(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-20_i64).into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F32,
+//                 pointer: 3_usize.into(),
+//             },
+//             Fpext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 5_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fsw_global("fsw	fa0,-20(s0) # 12034 <g2>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Fptrunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Store {
+//                 ty: LlvmType::F32,
+//                 value: 1_usize.into(),
+//                 pointer: LlvmValue::GlobalVar(String::from("g2")),
+//             },
+//         ]),
+
+//         fsw("fsw	fa0,-20(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-20_i64).into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Fptrunc {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Store {
+//                 ty: LlvmType::F32,
+//                 value: 5_usize.into(),
+//                 pointer: 3_usize.into(),
+//             },
+//         ]),
+
+//         fmadd_s("fmadd.s	fa0,fa0,fa1,fa2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa1.into(),
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa2.into(),
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fma {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::F32,
+//                 a: 3_usize.into(),
+//                 b: 4_usize.into(),
+//                 c: 5_usize.into(),
+//             },
+//             Fpext {
+//                 result: 7_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 6_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 7_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fmsub_s("fmsub.s	fa0,fa0,fa1,fa2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa1.into(),
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa2.into(),
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fmul {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 3_usize.into(),
+//                 op2: 4_usize.into(),
+//             },
+//             Fsub {
+//                 result: 7_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 6_usize.into(),
+//                 op2: 5_usize.into(),
+//             },
+//             Fpext {
+//                 result: 8_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 7_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 8_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fnmsub_s("fnmsub.s	fa0,fa0,fa1,fa2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa1.into(),
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa2.into(),
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fmul {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 3_usize.into(),
+//                 op2: 4_usize.into(),
+//             },
+//             Fneg {
+//                 result: 7_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 6_usize.into(),
+//             },
+//             Fadd {
+//                 result: 8_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 7_usize.into(),
+//                 op2: 5_usize.into(),
+//             },
+//             Fpext {
+//                 result: 9_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 8_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 9_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fnmadd_s("fnmadd.s	fa0,fa0,fa1,fa2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa1.into(),
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa2.into(),
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fmul {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 3_usize.into(),
+//                 op2: 4_usize.into(),
+//             },
+//             Fneg {
+//                 result: 7_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 6_usize.into(),
+//             },
+//             Fsub {
+//                 result: 8_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 7_usize.into(),
+//                 op2: 5_usize.into(),
+//             },
+//             Fpext {
+//                 result: 9_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 8_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 9_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fadd_s("fadd.s	fa3,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fadd {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 2_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Fpext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 5_usize.into(),
+//                 pointer: Fa3.into(),
+//             },
+//         ]),
+
+//         fsub_s("fsub.s	fa3,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fsub {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 2_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Fpext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 5_usize.into(),
+//                 pointer: Fa3.into(),
+//             },
+//         ]),
+
+//         fmul_s("fmul.s	fa3,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fmul {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 2_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Fpext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 5_usize.into(),
+//                 pointer: Fa3.into(),
+//             },
+//         ]),
+
+//         fdiv_s("fdiv.s	fa3,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fdiv {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 2_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Fpext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 5_usize.into(),
+//                 pointer: Fa3.into(),
+//             },
+//         ]),
+
+//         fsqrt_s("fsqrt.s	fa0,fa1", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa1.into(),
+//             },
+//             Fptrunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Sqrt {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 1_usize.into(),
+//             },
+//             Fpext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 3_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fsgnj_s("fsgnj.s	ft0,ft1,ft2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft2.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Copysign {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F32,
+//                 mag: 2_usize.into(),
+//                 sign: 3_usize.into(),
+//             },
+//             Fpext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 5_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         fsgnjn_s("fsgnjn.s	ft0,ft1,ft2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft2.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fneg {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 3_usize.into(),
+//             },
+//             Copysign {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F32,
+//                 mag: 2_usize.into(),
+//                 sign: 4_usize.into(),
+//             },
+//             Fpext {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 5_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 6_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         fsgnjx_s("fsgnjx.s	ft0,ft1,ft2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft2.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Bitcast {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Bitcast {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 3_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Xor {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 4_usize.into(),
+//                 op2: 5_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 7_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 6_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Copysign {
+//                 result: 8_usize.into(),
+//                 ty: LlvmType::F32,
+//                 mag: 2_usize.into(),
+//                 sign: 7_usize.into(),
+//             },
+//             Fpext {
+//                 result: 9_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 8_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 9_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         fmin_s("fmin.s	ft0,ft1,ft2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft2.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Minimum {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 2_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Fpext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 5_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         fmax_s("fmax.s	ft0,ft1,ft2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft2.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Maximum {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 2_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Fpext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 5_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         fcvt_w_s("fcvt.w.s	a5,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptosi {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fcvt_wu_s("fcvt.wu.s	a5,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptoui {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Zext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fmv_x_w("fmv.x.w	t0,ft0", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft0.into(),
+//             },
+//             Fptrunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Bitcast {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         feq_s("feq.s	a5,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fcmp {
+//                 result: 4_usize.into(),
+//                 cond: LlvmFpCondition::Oeq,
+//                 ty: LlvmType::F32,
+//                 op1: 2_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         flt_s("flt.s	a5,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fcmp {
+//                 result: 4_usize.into(),
+//                 cond: LlvmFpCondition::Olt,
+//                 ty: LlvmType::F32,
+//                 op1: 2_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fle_s("fle.s	a5,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptrunc {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fcmp {
+//                 result: 4_usize.into(),
+//                 cond: LlvmFpCondition::Ole,
+//                 ty: LlvmType::F32,
+//                 op1: 2_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Sext {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 5_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fcvt_s_w("fcvt.s.w	fa5,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Sitofp {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fpext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 3_usize.into(),
+//                 pointer: Fa5.into(),
+//             },
+//         ]),
+
+//         fcvt_s_wu("fcvt.s.wu	fa5,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Uitofp {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fpext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 3_usize.into(),
+//                 pointer: Fa5.into(),
+//             },
+//         ]),
+
+//         fmv_w_x("fmv.w.x	ft0,t0", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T0.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Bitcast {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fpext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 3_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         // RV64F (4 tests)
+//         fcvt_l_s("fcvt.l.s	a5,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptosi {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fcvt_lu_s("fcvt.lu.s	a5,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fptoui {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fcvt_s_l("fcvt.s.l	fa5,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Sitofp {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fpext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Fa5.into(),
+//             },
+//         ]),
+
+//         fcvt_s_lu("fcvt.s.lu	fa5,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Uitofp {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fpext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Fa5.into(),
+//             },
+//         ]),
+
+//         // RV32D (25 tests)
+//         fld_global("fld	fa4,-24(s0) # 12030 <g1>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: LlvmValue::GlobalVar(String::from("g1")),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 pointer: Fa4.into(),
+//             },
+//         ]),
+
+//         fld("fld	fa4,-24(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-24_i64).into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: 3_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 4_usize.into(),
+//                 pointer: Fa4.into(),
+//             },
+//         ]),
+
+//         fsd_global("fsd	fa0,-24(s0) # 12034 <g2>", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 pointer: LlvmValue::GlobalVar(String::from("g2")),
+//             },
+//         ]),
+
+//         fsd("fsd	fa0,-24(s0)", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: S0.into(),
+//             },
+//             Add {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-24_i64).into(),
+//             },
+//             Getelementptr {
+//                 result: 2_usize.into(),
+//                 index: 1_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I8,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Load {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 4_usize.into(),
+//                 pointer: 3_usize.into(),
+//             },
+//         ]),
+
+//         fmadd_d("fmadd.d	fa0,fa0,fa1,fa2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa1.into(),
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa2.into(),
+//             },
+//             Fma {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 a: 0_usize.into(),
+//                 b: 1_usize.into(),
+//                 c: 2_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 3_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fmsub_d("fmsub.d	fa0,fa0,fa1,fa2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa1.into(),
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa2.into(),
+//             },
+//             Fmul {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Fsub {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 3_usize.into(),
+//                 op2: 2_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 4_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fnmsub_d("fnmsub.d	fa0,fa0,fa1,fa2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa1.into(),
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa2.into(),
+//             },
+//             Fmul {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Fneg {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 3_usize.into(),
+//             },
+//             Fadd {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 4_usize.into(),
+//                 op2: 2_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 5_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fnmadd_d("fnmadd.d	fa0,fa0,fa1,fa2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa0.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa1.into(),
+//             },
+//             Load {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa2.into(),
+//             },
+//             Fmul {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Fneg {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 3_usize.into(),
+//             },
+//             Fsub {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 4_usize.into(),
+//                 op2: 2_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 5_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fadd_d("fadd.d	fa3,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fadd {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Fa3.into(),
+//             },
+//         ]),
+
+//         fsub_d("fsub.d	fa3,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fsub {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Fa3.into(),
+//             },
+//         ]),
+
+//         fmul_d("fmul.d	fa3,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fmul {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Fa3.into(),
+//             },
+//         ]),
+
+//         fdiv_d("fdiv.d	fa3,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fdiv {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Fa3.into(),
+//             },
+//         ]),
+
+//         fsqrt_d("fsqrt.d	fa0,fa1", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa1.into(),
+//             },
+//             Sqrt {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fsgnj_d("fsgnj.d	ft0,ft1,ft2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft2.into(),
+//             },
+//             Copysign {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 mag: 0_usize.into(),
+//                 sign: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         fsgnjn_d("fsgnjn.d	ft0,ft1,ft2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft2.into(),
+//             },
+//             Fneg {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 1_usize.into(),
+//             },
+//             Copysign {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 mag: 0_usize.into(),
+//                 sign: 2_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 3_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         fsgnjx_d("fsgnjx.d	ft0,ft1,ft2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft2.into(),
+//             },
+//             Bitcast {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Bitcast {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Xor {
+//                 result: 4_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 2_usize.into(),
+//                 op2: 3_usize.into(),
+//             },
+//             Bitcast {
+//                 result: 5_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 4_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Copysign {
+//                 result: 6_usize.into(),
+//                 ty: LlvmType::F64,
+//                 mag: 0_usize.into(),
+//                 sign: 5_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 6_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         fmin_d("fmin.d	ft0,ft1,ft2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft2.into(),
+//             },
+//             Minimum {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         fmax_d("fmax.d	ft0,ft1,ft2", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft1.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft2.into(),
+//             },
+//             Maximum {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         feq_d("feq.d	a5,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fcmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmFpCondition::Oeq,
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         flt_d("flt.d	a5,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fcmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmFpCondition::Olt,
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fle_d("fle.d	a5,fa4,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa4.into(),
+//             },
+//             Load {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fcmp {
+//                 result: 2_usize.into(),
+//                 cond: LlvmFpCondition::Ole,
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fcvt_w_d("fcvt.w.d	a5,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptosi {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Sext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fcvt_wu_d("fcvt.wu.d	a5,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptoui {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Zext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fcvt_d_w("fcvt.d.w	fa5,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Sitofp {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Fa5.into(),
+//             },
+//         ]),
+
+//         fcvt_d_wu("fcvt.d.wu	fa5,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Uitofp {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 2_usize.into(),
+//                 pointer: Fa5.into(),
+//             },
+//         ]),
+
+//         // RV64D (6 tests)
+//         fcvt_l_d("fcvt.l.d	a5,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptosi {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fcvt_lu_d("fcvt.lu.d	a5,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptoui {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         fmv_x_d("fmv.x.d	t0,ft0", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Ft0.into(),
+//             },
+//             Bitcast {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: T0.into(),
+//             },
+//         ]),
+
+//         fcvt_d_l("fcvt.d.l	fa5,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Sitofp {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 pointer: Fa5.into(),
+//             },
+//         ]),
+
+//         fcvt_d_lu("fcvt.d.lu	fa5,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Uitofp {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 pointer: Fa5.into(),
+//             },
+//         ]),
+
+//         fmv_d_x("fmv.d.x	ft0,t0", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: T0.into(),
+//             },
+//             Bitcast {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 pointer: Ft0.into(),
+//             },
+//         ]),
+
+//         // Pseudoinstructions (25 tests)
+//         li("li	a5,0", [
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 0_i64.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         mv("mv	a5,a0", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A0.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 pointer: A5.into(),
+//             },
+//         ]),
+
+//         not("not	a4,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Xor {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: (-1_i64).into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         neg("neg	a4,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Sub {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 op1: 0_i64.into(),
+//                 op2: 0_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 1_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         negw("negw	a4,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Sub {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 op1: 0_i64.into(),
+//                 op2: 1_usize.into(),
+//             },
+//             Sext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 3_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         sext_w("sext.w	a4,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Trunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::I64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::I32,
+//             },
+//             Sext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I32,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         seqz("seqz	a4,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Eq,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Sext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         snez("snez	a4,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Ne,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Sext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         sltz("sltz	a4,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Slt,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Sext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         sgtz("sgtz	a4,a5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Sgt,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             Sext {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::I1,
+//                 value: 1_usize.into(),
+//                 ty2: LlvmType::I64,
+//             },
+//             Store {
+//                 ty: LlvmType::I64,
+//                 value: 2_usize.into(),
+//                 pointer: A4.into(),
+//             },
+//         ]),
+
+//         fmv_s("fmv.s	fa0,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fabs_s("fabs.s	fa0,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fabs {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 1_usize.into(),
+//             },
+//             Fpext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 3_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fneg_s("fneg.s	fa0,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fptrunc {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 ty2: LlvmType::F32,
+//             },
+//             Fneg {
+//                 result: 2_usize.into(),
+//                 ty: LlvmType::F32,
+//                 op1: 1_usize.into(),
+//             },
+//             Fpext {
+//                 result: 3_usize.into(),
+//                 ty: LlvmType::F32,
+//                 value: 2_usize.into(),
+//                 ty2: LlvmType::F64,
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 3_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fmv_d("fmv.d	fa0,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fabs_d("fabs.d	fa0,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fabs {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 value: 0_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         fneg_d("fneg.d	fa0,fa5", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::F64,
+//                 pointer: Fa5.into(),
+//             },
+//             Fneg {
+//                 result: 1_usize.into(),
+//                 ty: LlvmType::F64,
+//                 op1: 0_usize.into(),
+//             },
+//             Store {
+//                 ty: LlvmType::F64,
+//                 value: 1_usize.into(),
+//                 pointer: Fa0.into(),
+//             },
+//         ]),
+
+//         beqz("beqz	a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Eq,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             ConBr {
+//                 cond: 1_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         bnez("bnez	a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Ne,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             ConBr {
+//                 cond: 1_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         blez("blez	a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Sle,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             ConBr {
+//                 cond: 1_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         bgez("bgez	a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Sge,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             ConBr {
+//                 cond: 1_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         bltz("bltz	a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Slt,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             ConBr {
+//                 cond: 1_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         bgtz("bgtz	a5,10556", [
+//             Load {
+//                 result: 0_usize.into(),
+//                 ty: LlvmType::I64,
+//                 pointer: A5.into(),
+//             },
+//             Icmp {
+//                 result: 1_usize.into(),
+//                 cond: LlvmIntCondition::Sgt,
+//                 ty: LlvmType::I64,
+//                 op1: 0_usize.into(),
+//                 op2: 0_i64.into(),
+//             },
+//             ConBr {
+//                 cond: 1_usize.into(),
+//                 iftrue: String::from("L0"),
+//                 iffalse: String::from("L1"),
+//             },
+//             Label(String::from("L1")),
+//         ]),
+
+//         j("j	10556", [
+//             UnconBr(String::from("L0")),
+//             Label(String::from("L1")),
+//         ]),
+//     }
+
+//     #[test]
+//     fn jr() {
+//         let source = "
+//             Disassembly of section .text:
+
+//             00000000000104e0 <main>:
+//                 104e0:	439c                	lw	a5,0(a5)
+//                 1050c:	8782                	jr	a5
+//                 10548:	8082                	ret
+
+//             Disassembly of section .rodata:
+
+//             00000000000105b0 <.rodata>:
+//                 105b0:	0548                	addi	a0,sp,644
+//                 105b2:	0001                	nop
+//         ";
+//         let indirect_targets = riscv_parser::parse_rodata(source);
+//         let mut statics = riscv_parser::parse_sdata(source);
+//         statics.extend(riscv_parser::parse_sbss(source));
+//         let rv_insts = riscv_parser::parse_text(source);
+//         let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
+//         let ll_program = LlvmTranslator::new(cfg, statics).run();
+//         let expected = Program {
+//             statics: HashMap::new(),
+//             functions: vec![LlvmFunction {
+//                 name: String::from("main"),
+//                 body: vec![
+//                     Label(String::from("Entry")),
+//                     UnconBr(String::from("L0")),
+//                     Label(String::from("L0")),
+//                     Load {
+//                         result: 0_usize.into(),
+//                         ty: LlvmType::I64,
+//                         pointer: A5.into(),
+//                     },
+//                     Switch {
+//                         ty: LlvmType::I64,
+//                         value: 0_usize.into(),
+//                         defaultdest: format!("Unreachable{}", 1),
+//                         targets: vec![(LlvmType::I64, 0x105b0_i64.into(), String::from("L1"))],
+//                     },
+//                     Label(format!("Unreachable{}", 1)),
+//                     Unreachable,
+//                     Label(format!("L{}", 1)),
+//                     Ret,
+//                 ],
+//             }],
+//         };
+//         assert_eq!(ll_program, expected);
+//     }
+
+//     build_test! {
+//         ret("ret", [
+//             Ret,
+//             Label(String::from("L1")),
+//         ]),
+//     }
+// }

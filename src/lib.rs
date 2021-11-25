@@ -1,23 +1,18 @@
 #[macro_use]
 extern crate lazy_static;
 
-mod cfg;
-mod cfg_builder;
-mod llvm_isa;
 mod llvm_translator;
+mod riscv_parser;
 mod riscv_isa;
 mod riscv_macro;
-mod riscv_parser;
+mod llvm_isa;
+mod llvm_macro;
 
-use cfg_builder::CfgBuilder;
+use riscv_parser::RiscvParser;
 use llvm_translator::LlvmTranslator;
 
-pub fn run(source: &str) -> String {
-    let indirect_targets = riscv_parser::parse_rodata(source);
-    let mut statics = riscv_parser::parse_sdata(source);
-    statics.extend(riscv_parser::parse_sbss(source));
-    let rv_insts = riscv_parser::parse_text(source);
-    let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
-    let ll_program = LlvmTranslator::new(cfg, statics).run();
+pub fn run(rv_source: &str) -> String {
+    let rv_program = RiscvParser::new(rv_source).run();
+    let ll_program = LlvmTranslator::new(rv_program).run();
     format!("{}", ll_program)
 }

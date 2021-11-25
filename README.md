@@ -2,7 +2,7 @@
 
 A binary translator that translates RISC-V to LLVM IR.
 
-## Quick Start
+## Quick Start (outdated)
 
 `riscv2llvm` is precompiled as a standalone executable for Linux (not available until the release of `v0.1.0`) and is tested against [riscv-gnu-toolchain Nightly: September 21, 2021](https://github.com/riscv-collab/riscv-gnu-toolchain/releases/tag/2021.09.21) and [LLVM 13.0.0](https://github.com/llvm/llvm-project/releases/tag/llvmorg-13.0.0) in `Windows WSL 2 (Ubuntu 20.04.2)`.
 
@@ -63,7 +63,7 @@ $ lli examples/test.ll
 $ echo $? # -> should be 6
 ```
 
-## Implementation
+## Implementation (outdated)
 
 In this section, we will briefly explore the implmentation of `riscv2llvm` by comparing the RISC-V version and the translated LLVM version of the `switch` statement in the function `s` of `examples/test.c`.
 
@@ -207,10 +207,33 @@ L7:
 
 ## Misc
 
+Use binary, source code, and debug info to achieve comparable performance with the native binary.
+
+I suddenly realize that it seems that we do not really need to pass registers around. So we have 3 kinds of registers as below.
+    (1). a few function arguments/return registers
+    (2). 3 control registers: global pointer, stack pointer, and thread pointer
+    (3). other temp registers no matter they are caller-saved or callee-saved
+Then the following translation method seems to work just fine.
+    (a). translate (1) into regular LLVM functions which will hopefully be mapped to corresponding physical registers in the host ISA
+    (b). translate (2) in whichever simple method as there are only three of them and the most heavily used stack will be separately translated into real stack allocations using native LLVM instructions after all
+    (c). just leave all other temp registers as local variables and do not sync them across functions
+How do you think about this? Am I missing something important?
+
+(2) (global context) は，関数の arguments/returns に追加で与えられる，関数の implicit な入出力だと考えることもできると思います
+
+Pass registers as arguments to facilitate multithreading
+
+global variables に fall back する方法
+
+関数の最初で全ての global variables を local variables に読み出し，return 時に中身が書き換えられた local variables の中身を global variables へ書き出す方法があるかもしれません
+
+元のソースコードの情報や Dwarf debug 情報を利用することで元のバイナリの ABI が特定できる場合，それに依存した処理を安全に行うことができるかもしれません
+
 ### Assumptions
 
-- statically linked
-- assume little endian
+- RISC-V Linux ABI
+- little endian
+- Statically linked
 - `-march=rv64imafdc -mabi=lp64d`
 
 ### RISC-V Notes
@@ -223,8 +246,25 @@ L7:
 - The target of `JALR` address is obtained by adding the sign-extended 12-bit I-immediate to the register rs1, then setting the least-significant bit of the result to zero.
 - In RV64I, only the low 6 bits of rs2 are considered for the shift amount
 - Unlike RISC-V, taking the remainder of a division by zero in LLVM is undefined behavior.
+- All CSR instructions atomically read-modify-write a single CSR
+
+CSR
+- If rd=x0, then CSRRW shall not read the CSR and shall not cause any of the side effects that might occur on a CSR read.
+- For both CSRRS and CSRRC, if rs1=x0, then the instruction will not write to the CSR at all, and so shall not cause any of the side effects that might otherwise occur on a CSR write.
+- Both CSRRS and CSRRC always read the addressed CSR and cause any read side effects regardless of rs1 and rd fields.
+-  For CSRRSI and CSRRCI, if the uimm[4:0] field is zero, then these instructions will not write to the CSR, and shall not cause any of the side effects that might otherwise occur on a CSR write. For CSRRWI, if rd=x0, then the instruction shall not read the CSR and shall not cause any of the side effects that might occur on a CSR read. Both CSRRSI and CSRRCI will always read the CSR and cause any read side effects regardless of rd and rs1 fields.
+
+Counter
+- RDCYCLE: The execution environment should provide a means to determine the current rate (cycles/second) at which the cycle counter is incrementing.
+- RDTIME: The execution environment should provide a means of determining the period of the real-time counter (seconds/tick). The environment should provide a means to determine the accuracy of the clock.
+
+
 
 ### Todo
+
+
+- Do not assume executable file.
+- Extract `.text`, `.data`, `.bss`, `.sdata`, and `.sbss`.
 
 - add arbitrary memory access support for ld/sd: Keep all static sections as static byte array in LLVM.
 - add support for RV32/64A
@@ -270,6 +310,9 @@ sudo docker cp straight-env:/work/straight-util/STRAIGHT_Tester/HelloMusl/hello.
 ```
 
 ### Reference
+
+https://llvm.org/doxygen/SROA_8cpp.html
+https://releases.llvm.org/13.0.0/docs/tutorial/MyFirstLanguageFrontend/LangImpl07.html
 
 - [LLVM Language Reference Manual](https://releases.llvm.org/12.0.0/docs/LangRef.html)
 - [A Complete Guide to LLVM for Programming Language Creators](https://mukulrathi.co.uk/create-your-own-programming-language/llvm-ir-cpp-api-tutorial/)
