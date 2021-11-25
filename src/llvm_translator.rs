@@ -1,8 +1,8 @@
-use crate::riscv_isa::{BasicBlock, Cfg, RiscvFunction, RiscvProgram};
 use crate::llvm_isa::{
     LlvmFpCondition, LlvmFunction, LlvmInstruction, LlvmIntCondition, LlvmOrdering, LlvmType,
     LlvmValue, Program,
 };
+use crate::riscv_isa::{BasicBlock, Cfg, RiscvFunction, RiscvProgram};
 use crate::riscv_isa::{RiscvAddress, RiscvImmediate, RiscvInstruction, RiscvRegister};
 use regex::Regex;
 use std::collections::HashMap;
@@ -29,2968 +29,2969 @@ impl LlvmTranslator {
     }
 
     pub fn run(&mut self) -> Program {
-        let functions = mem::take(&mut self.cfg)
-            .into_iter()
-            .map(|f| self.translate_function(f))
-            .collect();
-        Program {
-            statics: mem::take(&mut self.statics),
-            functions,
-        }
+        // let functions = mem::take(&mut self.cfg)
+        //     .into_iter()
+        //     .map(|f| self.translate_function(f))
+        //     .collect();
+        // Program {
+        //     statics: mem::take(&mut self.statics),
+        //     functions,
+        // }
+        todo!()
     }
 
-    fn get_temps(&mut self, n: usize) -> Vec<LlvmValue> {
-        let temps = (self.temp..self.temp + n).map(|t| t.into()).collect();
-        self.temp += n;
-        temps
-    }
-
-    fn translate_function(
-        &mut self,
-        RiscvFunction {
-            name,
-            basic_blocks,
-            indirect_targets,
-        }: RiscvFunction,
-    ) -> LlvmFunction {
-        self.temp = 0;
-        let mut body: Vec<_> = basic_blocks
-            .into_iter()
-            .enumerate()
-            .map(|(i, mut block)| {
-                let jr_indexes: Vec<_> = block
-                    .instructions
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, inst)| matches!(inst, RiscvInstruction::Jr { .. }))
-                    .map(|(i, _)| i)
-                    .rev()
-                    .collect();
-                for i in jr_indexes {
-                    block.instructions.remove(i - 1);
-                }
-
-                let mut insts = vec![LlvmInstruction::Label(format!("L{}", i))];
-                insts.extend(self.translate_basic_block(block, &indirect_targets));
-                insts
-            })
-            .flatten()
-            .collect();
-        body.insert(0, LlvmInstruction::UnconBr(String::from("L0")));
-        body.insert(0, LlvmInstruction::Label(String::from("Entry")));
-        LlvmFunction { name, body }
-    }
-
-    fn translate_basic_block(
-        &mut self,
-        BasicBlock {
-            instructions,
-            continue_target,
-            jump_target,
-        }: BasicBlock,
-        indirect_targets: &HashMap<RiscvAddress, usize>,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction as LI;
-        use RiscvInstruction as RI;
-
-        instructions
-            .into_iter()
-            .map(|inst| match inst {
-                // RV32I
-                RI::Lui { rd, imm, .. } => {
-                    let temps = self.get_temps(1);
-                    vec![
-                        LI::Shl {
-                            result: temps[0].clone(),
-                            ty: LlvmType::I64,
-                            op1: imm.into(),
-                            op2: 12_i64.into(),
-                        },
-                        LI::Store {
-                            ty: LlvmType::I64,
-                            value: temps[0].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::Auipc { .. } => Vec::new(),
-                RI::Jal { comment, .. } | RI::Jalr { comment, .. } => {
-                    lazy_static! {
-                        static ref FUNCTION: Regex = Regex::new(r"<(.+)>").unwrap();
-                    }
-                    let caps = FUNCTION.captures(comment.as_ref().unwrap()).unwrap();
-                    let name = caps[1].to_string();
-                    vec![LI::Call(name)]
-                }
-                RI::Beq { rs1, rs2, .. } => self.build_branch(
-                    rs1,
-                    rs2,
-                    LlvmIntCondition::Eq,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Bne { rs1, rs2, .. } => self.build_branch(
-                    rs1,
-                    rs2,
-                    LlvmIntCondition::Ne,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Blt { rs1, rs2, .. } => self.build_branch(
-                    rs1,
-                    rs2,
-                    LlvmIntCondition::Slt,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Bge { rs1, rs2, .. } => self.build_branch(
-                    rs1,
-                    rs2,
-                    LlvmIntCondition::Sge,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Bltu { rs1, rs2, .. } => self.build_branch(
-                    rs1,
-                    rs2,
-                    LlvmIntCondition::Ult,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Bgeu { rs1, rs2, .. } => self.build_branch(
-                    rs1,
-                    rs2,
-                    LlvmIntCondition::Uge,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Lb {
-                    rd,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_load(rd, imm, rs1, comment, LlvmType::I8, true),
-                RI::Lh {
-                    rd,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_load(rd, imm, rs1, comment, LlvmType::I16, true),
-                RI::Lw {
-                    rd,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_load(rd, imm, rs1, comment, LlvmType::I32, true),
-                RI::Lbu {
-                    rd,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_load(rd, imm, rs1, comment, LlvmType::I8, false),
-                RI::Lhu {
-                    rd,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_load(rd, imm, rs1, comment, LlvmType::I16, false),
-                RI::Sb {
-                    rs2,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_store(rs2, imm, rs1, comment, LlvmType::I8),
-                RI::Sh {
-                    rs2,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_store(rs2, imm, rs1, comment, LlvmType::I16),
-                RI::Sw {
-                    rs2,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_store(rs2, imm, rs1, comment, LlvmType::I32),
-                RI::Addi { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Addi", false)
-                }
-                RI::Slti { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Slti", false)
-                }
-                RI::Sltiu { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Sltiu", false)
-                }
-                RI::Xori { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Xori", false)
-                }
-                RI::Ori { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Ori", false)
-                }
-                RI::Andi { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Andi", false)
-                }
-                RI::Slli { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Slli", false)
-                }
-                RI::Srli { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Srli", false)
-                }
-                RI::Srai { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Srai", false)
-                }
-                RI::Add { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Add", false),
-                RI::Sub { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sub", false),
-                RI::Sll { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sll", false),
-                RI::Slt { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Slt", false),
-                RI::Sltu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sltu", false),
-                RI::Xor { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Xor", false),
-                RI::Srl { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Srl", false),
-                RI::Sra { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sra", false),
-                RI::Or { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Or", false),
-                RI::And { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "And", false),
-                RI::Fence { .. } => vec![LI::Fence(LlvmOrdering::AcqRel)],
-                RI::Ecall { .. } => {
-                    let temps = self.get_temps(8);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::I64,
-                            pointer: RiscvRegister::A7.into(),
-                        },
-                        LI::Load {
-                            result: temps[1].clone(),
-                            ty: LlvmType::I64,
-                            pointer: RiscvRegister::A0.into(),
-                        },
-                        LI::Load {
-                            result: temps[2].clone(),
-                            ty: LlvmType::I64,
-                            pointer: RiscvRegister::A1.into(),
-                        },
-                        LI::Load {
-                            result: temps[3].clone(),
-                            ty: LlvmType::I64,
-                            pointer: RiscvRegister::A2.into(),
-                        },
-                        LI::Load {
-                            result: temps[4].clone(),
-                            ty: LlvmType::I64,
-                            pointer: RiscvRegister::A3.into(),
-                        },
-                        LI::Load {
-                            result: temps[5].clone(),
-                            ty: LlvmType::I64,
-                            pointer: RiscvRegister::A4.into(),
-                        },
-                        LI::Load {
-                            result: temps[6].clone(),
-                            ty: LlvmType::I64,
-                            pointer: RiscvRegister::A5.into(),
-                        },
-                        LI::Syscall {
-                            result: temps[7].clone(),
-                            no: temps[0].clone(),
-                            arg1: temps[1].clone(),
-                            arg2: temps[2].clone(),
-                            arg3: temps[3].clone(),
-                            arg4: temps[4].clone(),
-                            arg5: temps[5].clone(),
-                            arg6: temps[6].clone(),
-                        },
-                        LI::Store {
-                            ty: LlvmType::I64,
-                            value: temps[7].clone(),
-                            pointer: RiscvRegister::A0.into(),
-                        },
-                    ]
-                }
-                RI::Ebreak { .. } => panic!("RISC-V `ebreak` instruction is not supported"),
-
-                // RV64I
-                RI::Lwu {
-                    rd,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_load(rd, imm, rs1, comment, LlvmType::I32, false),
-                RI::Ld {
-                    rd,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_load(rd, imm, rs1, comment, LlvmType::I64, true),
-                RI::Sd {
-                    rs2,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_store(rs2, imm, rs1, comment, LlvmType::I64),
-                RI::Addiw { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Addiw", true)
-                }
-                RI::Slliw { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Slliw", true)
-                }
-                RI::Srliw { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Srliw", true)
-                }
-                RI::Sraiw { rd, rs1, imm, .. } => {
-                    self.build_binary_immediate(rd, rs1, imm, "Sraiw", true)
-                }
-                RI::Addw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Addw", true),
-                RI::Subw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Subw", true),
-                RI::Sllw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sllw", true),
-                RI::Srlw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Srlw", true),
-                RI::Sraw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sraw", true),
-
-                // RV32M
-                RI::Mul { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mul", false),
-                RI::Mulh { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulh", false),
-                RI::Mulhsu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulhsu", false),
-                RI::Mulhu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulhu", false),
-                RI::Div { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Div", false),
-                RI::Divu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Divu", false),
-                RI::Rem { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Rem", false),
-                RI::Remu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remu", false),
-
-                // RV64M
-                RI::Mulw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulw", true),
-                RI::Divw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Divw", true),
-                RI::Divuw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Divuw", true),
-                RI::Remw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remw", true),
-                RI::Remuw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remuw", true),
-
-                // RV32A
-                RI::LrW { .. } => todo!(),
-                RI::ScW { .. } => todo!(),
-                RI::AmoswapW { .. } => todo!(),
-                RI::AmoaddW { .. } => todo!(),
-                RI::AmoxorW { .. } => todo!(),
-                RI::AmoandW { .. } => todo!(),
-                RI::AmoorW { .. } => todo!(),
-                RI::AmominW { .. } => todo!(),
-                RI::AmomaxW { .. } => todo!(),
-                RI::AmominuW { .. } => todo!(),
-                RI::AmomaxuW { .. } => todo!(),
-
-                // RV64A
-                RI::LrD { .. } => todo!(),
-                RI::ScD { .. } => todo!(),
-                RI::AmoswapD { .. } => todo!(),
-                RI::AmoaddD { .. } => todo!(),
-                RI::AmoxorD { .. } => todo!(),
-                RI::AmoandD { .. } => todo!(),
-                RI::AmoorD { .. } => todo!(),
-                RI::AmominD { .. } => todo!(),
-                RI::AmomaxD { .. } => todo!(),
-                RI::AmominuD { .. } => todo!(),
-                RI::AmomaxuD { .. } => todo!(),
-
-                // RV32F
-                RI::Flw {
-                    rd,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_load(rd, imm, rs1, comment, LlvmType::F32, true),
-                RI::Fsw {
-                    rs2,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_store(rs2, imm, rs1, comment, LlvmType::F32),
-                RI::FmaddS {
-                    rd, rs1, rs2, rs3, ..
-                } => self.build_ternary(rd, rs1, rs2, rs3, "FmaddS"),
-                RI::FmsubS {
-                    rd, rs1, rs2, rs3, ..
-                } => self.build_ternary(rd, rs1, rs2, rs3, "FmsubS"),
-                RI::FnmsubS {
-                    rd, rs1, rs2, rs3, ..
-                } => self.build_ternary(rd, rs1, rs2, rs3, "FnmsubS"),
-                RI::FnmaddS {
-                    rd, rs1, rs2, rs3, ..
-                } => self.build_ternary(rd, rs1, rs2, rs3, "FnmaddS"),
-                RI::FaddS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FaddS"),
-                RI::FsubS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsubS"),
-                RI::FmulS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FmulS"),
-                RI::FdivS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FdivS"),
-                RI::FsqrtS { rd, rs1, .. } => {
-                    let temps = self.get_temps(4);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::F64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Fptrunc {
-                            result: temps[1].clone(),
-                            ty: LlvmType::F64,
-                            value: temps[0].clone(),
-                            ty2: LlvmType::F32,
-                        },
-                        LI::Sqrt {
-                            result: temps[2].clone(),
-                            ty: LlvmType::F32,
-                            value: temps[1].clone(),
-                        },
-                        LI::Fpext {
-                            result: temps[3].clone(),
-                            ty: LlvmType::F32,
-                            value: temps[2].clone(),
-                            ty2: LlvmType::F64,
-                        },
-                        LI::Store {
-                            ty: LlvmType::F64,
-                            value: temps[3].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::FsgnjS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjS"),
-                RI::FsgnjnS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjnS"),
-                RI::FsgnjxS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjxS"),
-                RI::FminS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FminS"),
-                RI::FmaxS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FmaxS"),
-                RI::FcvtWS { rd, rs1, .. } => self.build_fptoi(rd, rs1, "S", "W"),
-                RI::FcvtWuS { rd, rs1, .. } => self.build_fptoi(rd, rs1, "S", "Wu"),
-                RI::FmvXW { rd, rs1, .. } => {
-                    let temps = self.get_temps(4);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::F64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Fptrunc {
-                            result: temps[1].clone(),
-                            ty: LlvmType::F64,
-                            value: temps[0].clone(),
-                            ty2: LlvmType::F32,
-                        },
-                        LI::Bitcast {
-                            result: temps[2].clone(),
-                            ty: LlvmType::F32,
-                            value: temps[1].clone(),
-                            ty2: LlvmType::I32,
-                        },
-                        LI::Sext {
-                            result: temps[3].clone(),
-                            ty: LlvmType::I32,
-                            value: temps[2].clone(),
-                            ty2: LlvmType::I64,
-                        },
-                        LI::Store {
-                            ty: LlvmType::I64,
-                            value: temps[3].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::FeqS { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FeqS"),
-                RI::FltS { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FltS"),
-                RI::FleS { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FleS"),
-                RI::FclassS { .. } => unimplemented!(),
-                RI::FcvtSW { rd, rs1, .. } => self.build_itofp(rd, rs1, "W", "S"),
-                RI::FcvtSWu { rd, rs1, .. } => self.build_itofp(rd, rs1, "Wu", "S"),
-                RI::FmvWX { rd, rs1, .. } => {
-                    let temps = self.get_temps(4);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::I64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Trunc {
-                            result: temps[1].clone(),
-                            ty: LlvmType::I64,
-                            value: temps[0].clone(),
-                            ty2: LlvmType::I32,
-                        },
-                        LI::Bitcast {
-                            result: temps[2].clone(),
-                            ty: LlvmType::I32,
-                            value: temps[1].clone(),
-                            ty2: LlvmType::F32,
-                        },
-                        LI::Fpext {
-                            result: temps[3].clone(),
-                            ty: LlvmType::F32,
-                            value: temps[2].clone(),
-                            ty2: LlvmType::F64,
-                        },
-                        LI::Store {
-                            ty: LlvmType::F64,
-                            value: temps[3].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-
-                // RV64F
-                RI::FcvtLS { rd, rs1, .. } => self.build_fptoi(rd, rs1, "S", "L"),
-                RI::FcvtLuS { rd, rs1, .. } => self.build_fptoi(rd, rs1, "S", "Lu"),
-                RI::FcvtSL { rd, rs1, .. } => self.build_itofp(rd, rs1, "L", "S"),
-                RI::FcvtSLu { rd, rs1, .. } => self.build_itofp(rd, rs1, "Lu", "S"),
-
-                // RV32D
-                RI::Fld {
-                    rd,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_load(rd, imm, rs1, comment, LlvmType::F64, true),
-                RI::Fsd {
-                    rs2,
-                    imm,
-                    rs1,
-                    comment,
-                    ..
-                } => self.build_store(rs2, imm, rs1, comment, LlvmType::F64),
-                RI::FmaddD {
-                    rd, rs1, rs2, rs3, ..
-                } => self.build_ternary(rd, rs1, rs2, rs3, "FmaddD"),
-                RI::FmsubD {
-                    rd, rs1, rs2, rs3, ..
-                } => self.build_ternary(rd, rs1, rs2, rs3, "FmsubD"),
-                RI::FnmsubD {
-                    rd, rs1, rs2, rs3, ..
-                } => self.build_ternary(rd, rs1, rs2, rs3, "FnmsubD"),
-                RI::FnmaddD {
-                    rd, rs1, rs2, rs3, ..
-                } => self.build_ternary(rd, rs1, rs2, rs3, "FnmaddD"),
-                RI::FaddD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FaddD"),
-                RI::FsubD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsubD"),
-                RI::FmulD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FmulD"),
-                RI::FdivD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FdivD"),
-                RI::FsqrtD { rd, rs1, .. } => {
-                    let temps = self.get_temps(2);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::F64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Sqrt {
-                            result: temps[1].clone(),
-                            ty: LlvmType::F64,
-                            value: temps[0].clone(),
-                        },
-                        LI::Store {
-                            ty: LlvmType::F64,
-                            value: temps[1].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::FsgnjD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjD"),
-                RI::FsgnjnD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjnD"),
-                RI::FsgnjxD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjxD"),
-                RI::FminD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FminD"),
-                RI::FmaxD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FmaxD"),
-                RI::FcvtSD { .. } => Vec::new(),
-                RI::FcvtDS { .. } => Vec::new(),
-                RI::FeqD { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FeqD"),
-                RI::FltD { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FltD"),
-                RI::FleD { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FleD"),
-                RI::FclassD { .. } => unimplemented!(),
-                RI::FcvtWD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "W"),
-                RI::FcvtWuD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "Wu"),
-                RI::FcvtDW { rd, rs1, .. } => self.build_itofp(rd, rs1, "W", "D"),
-                RI::FcvtDWu { rd, rs1, .. } => self.build_itofp(rd, rs1, "Wu", "D"),
-
-                // RV64D
-                RI::FcvtLD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "L"),
-                RI::FcvtLuD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "Lu"),
-                RI::FmvXD { rd, rs1, .. } => {
-                    let temps = self.get_temps(2);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::F64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Bitcast {
-                            result: temps[1].clone(),
-                            ty: LlvmType::F64,
-                            value: temps[0].clone(),
-                            ty2: LlvmType::I64,
-                        },
-                        LI::Store {
-                            ty: LlvmType::I64,
-                            value: temps[1].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::FcvtDL { rd, rs1, .. } => self.build_itofp(rd, rs1, "L", "D"),
-                RI::FcvtDLu { rd, rs1, .. } => self.build_itofp(rd, rs1, "Lu", "D"),
-                RI::FmvDX { rd, rs1, .. } => {
-                    let temps = self.get_temps(2);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::I64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Bitcast {
-                            result: temps[1].clone(),
-                            ty: LlvmType::I64,
-                            value: temps[0].clone(),
-                            ty2: LlvmType::F64,
-                        },
-                        LI::Store {
-                            ty: LlvmType::F64,
-                            value: temps[1].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-
-                // Pseudoinstructions
-                RI::Nop { .. } => Vec::new(),
-                RI::Li { rd, imm, .. } => vec![LI::Store {
-                    ty: LlvmType::I64,
-                    value: imm.into(),
-                    pointer: rd.into(),
-                }],
-                RI::Mv { rd, rs1, .. } => {
-                    let temps = self.get_temps(1);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::I64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Store {
-                            ty: LlvmType::I64,
-                            value: temps[0].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::Not { rd, rs1, .. } => {
-                    self.build_binary_immediate(rd, rs1, (-1).into(), "Xori", false)
-                }
-                RI::Neg { rd, rs1, .. } => {
-                    let temps = self.get_temps(2);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::I64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Sub {
-                            result: temps[1].clone(),
-                            ty: LlvmType::I64,
-                            op1: 0_i64.into(),
-                            op2: temps[0].clone(),
-                        },
-                        LI::Store {
-                            ty: LlvmType::I64,
-                            value: temps[1].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::Negw { rd, rs1, .. } => {
-                    let temps = self.get_temps(4);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::I64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Trunc {
-                            result: temps[1].clone(),
-                            ty: LlvmType::I64,
-                            value: temps[0].clone(),
-                            ty2: LlvmType::I32,
-                        },
-                        LI::Sub {
-                            result: temps[2].clone(),
-                            ty: LlvmType::I32,
-                            op1: 0_i64.into(),
-                            op2: temps[1].clone(),
-                        },
-                        LI::Sext {
-                            result: temps[3].clone(),
-                            ty: LlvmType::I32,
-                            value: temps[2].clone(),
-                            ty2: LlvmType::I64,
-                        },
-                        LI::Store {
-                            ty: LlvmType::I64,
-                            value: temps[3].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::SextW { rd, rs1, .. } => {
-                    let temps = self.get_temps(3);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::I64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Trunc {
-                            result: temps[1].clone(),
-                            ty: LlvmType::I64,
-                            value: temps[0].clone(),
-                            ty2: LlvmType::I32,
-                        },
-                        LI::Sext {
-                            result: temps[2].clone(),
-                            ty: LlvmType::I32,
-                            value: temps[1].clone(),
-                            ty2: LlvmType::I64,
-                        },
-                        LI::Store {
-                            ty: LlvmType::I64,
-                            value: temps[2].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::Seqz { rd, rs1, .. } => {
-                    self.build_binary_immediate(rd, rs1, 0.into(), "Seqz", false)
-                }
-                RI::Snez { rd, rs1, .. } => {
-                    self.build_binary_immediate(rd, rs1, 0.into(), "Snez", false)
-                }
-                RI::Sltz { rd, rs1, .. } => {
-                    self.build_binary_immediate(rd, rs1, 0.into(), "Sltz", false)
-                }
-                RI::Sgtz { rd, rs1, .. } => {
-                    self.build_binary_immediate(rd, rs1, 0.into(), "Sgtz", false)
-                }
-
-                RI::FmvS { rd, rs1, .. } => {
-                    let temps = self.get_temps(1);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::F64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Store {
-                            ty: LlvmType::F64,
-                            value: temps[0].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::FabsS { rd, rs1, .. } => {
-                    let temps = self.get_temps(4);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::F64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Fptrunc {
-                            result: temps[1].clone(),
-                            ty: LlvmType::F64,
-                            value: temps[0].clone(),
-                            ty2: LlvmType::F32,
-                        },
-                        LI::Fabs {
-                            result: temps[2].clone(),
-                            ty: LlvmType::F32,
-                            value: temps[1].clone(),
-                        },
-                        LI::Fpext {
-                            result: temps[3].clone(),
-                            ty: LlvmType::F32,
-                            value: temps[2].clone(),
-                            ty2: LlvmType::F64,
-                        },
-                        LI::Store {
-                            ty: LlvmType::F64,
-                            value: temps[3].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::FnegS { rd, rs1, .. } => {
-                    let temps = self.get_temps(4);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::F64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Fptrunc {
-                            result: temps[1].clone(),
-                            ty: LlvmType::F64,
-                            value: temps[0].clone(),
-                            ty2: LlvmType::F32,
-                        },
-                        LI::Fneg {
-                            result: temps[2].clone(),
-                            ty: LlvmType::F32,
-                            op1: temps[1].clone(),
-                        },
-                        LI::Fpext {
-                            result: temps[3].clone(),
-                            ty: LlvmType::F32,
-                            value: temps[2].clone(),
-                            ty2: LlvmType::F64,
-                        },
-                        LI::Store {
-                            ty: LlvmType::F64,
-                            value: temps[3].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::FmvD { rd, rs1, .. } => {
-                    let temps = self.get_temps(1);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::F64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Store {
-                            ty: LlvmType::F64,
-                            value: temps[0].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::FabsD { rd, rs1, .. } => {
-                    let temps = self.get_temps(2);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::F64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Fabs {
-                            result: temps[1].clone(),
-                            ty: LlvmType::F64,
-                            value: temps[0].clone(),
-                        },
-                        LI::Store {
-                            ty: LlvmType::F64,
-                            value: temps[1].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-                RI::FnegD { rd, rs1, .. } => {
-                    let temps = self.get_temps(2);
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::F64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Fneg {
-                            result: temps[1].clone(),
-                            ty: LlvmType::F64,
-                            op1: temps[0].clone(),
-                        },
-                        LI::Store {
-                            ty: LlvmType::F64,
-                            value: temps[1].clone(),
-                            pointer: rd.into(),
-                        },
-                    ]
-                }
-
-                RI::Beqz { rs1, .. } => self.build_branchz(
-                    rs1,
-                    LlvmIntCondition::Eq,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Bnez { rs1, .. } => self.build_branchz(
-                    rs1,
-                    LlvmIntCondition::Ne,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Blez { rs1, .. } => self.build_branchz(
-                    rs1,
-                    LlvmIntCondition::Sle,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Bgez { rs1, .. } => self.build_branchz(
-                    rs1,
-                    LlvmIntCondition::Sge,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Bltz { rs1, .. } => self.build_branchz(
-                    rs1,
-                    LlvmIntCondition::Slt,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-                RI::Bgtz { rs1, .. } => self.build_branchz(
-                    rs1,
-                    LlvmIntCondition::Sgt,
-                    jump_target.unwrap(),
-                    continue_target.unwrap(),
-                ),
-
-                RI::J { .. } => vec![LI::UnconBr(format!("L{}", jump_target.unwrap()))],
-                RI::Jr { rs1, .. } => {
-                    let temps = self.get_temps(1);
-                    let lb = format!("Unreachable{}", self.temp);
-                    self.temp += 1;
-                    let targets = indirect_targets
-                        .iter()
-                        .map(|(RiscvAddress(addr), bb)| {
-                            (
-                                LlvmType::I64,
-                                LlvmValue::Int((*addr).try_into().unwrap()),
-                                format!("L{}", bb),
-                            )
-                        })
-                        .collect();
-                    vec![
-                        LI::Load {
-                            result: temps[0].clone(),
-                            ty: LlvmType::I64,
-                            pointer: rs1.into(),
-                        },
-                        LI::Switch {
-                            ty: LlvmType::I64,
-                            value: temps[0].clone(),
-                            defaultdest: lb.clone(),
-                            targets,
-                        },
-                        LI::Label(lb),
-                        LI::Unreachable,
-                    ]
-                }
-                RI::Ret { .. } => vec![LI::Ret],
-            })
-            .flatten()
-            .collect()
-    }
-
-    fn build_branch(
-        &mut self,
-        rs1: RiscvRegister,
-        rs2: RiscvRegister,
-        cond: LlvmIntCondition,
-        jump_target: usize,
-        continue_target: usize,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-        let temps = self.get_temps(3);
-        vec![
-            Load {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                pointer: rs1.into(),
-            },
-            Load {
-                result: temps[1].clone(),
-                ty: LlvmType::I64,
-                pointer: rs2.into(),
-            },
-            Icmp {
-                result: temps[2].clone(),
-                cond,
-                ty: LlvmType::I64,
-                op1: temps[0].clone(),
-                op2: temps[1].clone(),
-            },
-            ConBr {
-                cond: temps[2].clone(),
-                iftrue: format!("L{}", jump_target),
-                iffalse: format!("L{}", continue_target),
-            },
-        ]
-    }
-
-    fn build_branchz(
-        &mut self,
-        rs1: RiscvRegister,
-        cond: LlvmIntCondition,
-        jump_target: usize,
-        continue_target: usize,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-        let temps = self.get_temps(2);
-        vec![
-            Load {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                pointer: rs1.into(),
-            },
-            Icmp {
-                result: temps[1].clone(),
-                cond,
-                ty: LlvmType::I64,
-                op1: temps[0].clone(),
-                op2: 0_i64.into(),
-            },
-            ConBr {
-                cond: temps[1].clone(),
-                iftrue: format!("L{}", jump_target),
-                iffalse: format!("L{}", continue_target),
-            },
-        ]
-    }
-
-    fn build_load(
-        &mut self,
-        rd: RiscvRegister,
-        imm: RiscvImmediate,
-        rs1: RiscvRegister,
-        comment: Option<String>,
-        ty: LlvmType,
-        signed: bool,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-
-        lazy_static! {
-            static ref STATIC: Regex = Regex::new(r"<(.+)>").unwrap();
-        }
-        if let Some(comment) = comment {
-            let caps = STATIC.captures(&comment).unwrap();
-            if let Some(name) = caps.get(1) {
-                match ty {
-                    LlvmType::I64 => {
-                        let temps = self.get_temps(1);
-                        return vec![
-                            Load {
-                                result: temps[0].clone(),
-                                ty,
-                                pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
-                            },
-                            Store {
-                                ty: LlvmType::I64,
-                                value: temps[0].clone(),
-                                pointer: rd.into(),
-                            },
-                        ];
-                    }
-                    LlvmType::F32 => {
-                        let temps = self.get_temps(2);
-                        return vec![
-                            Load {
-                                result: temps[0].clone(),
-                                ty: ty.clone(),
-                                pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
-                            },
-                            Fpext {
-                                result: temps[1].clone(),
-                                ty,
-                                value: temps[0].clone(),
-                                ty2: LlvmType::F64,
-                            },
-                            Store {
-                                ty: LlvmType::F64,
-                                value: temps[1].clone(),
-                                pointer: rd.into(),
-                            },
-                        ];
-                    }
-                    LlvmType::F64 => {
-                        let temps = self.get_temps(1);
-                        return vec![
-                            Load {
-                                result: temps[0].clone(),
-                                ty,
-                                pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
-                            },
-                            Store {
-                                ty: LlvmType::F64,
-                                value: temps[0].clone(),
-                                pointer: rd.into(),
-                            },
-                        ];
-                    }
-                    _ => {
-                        let temps = self.get_temps(2);
-                        return vec![
-                            Load {
-                                result: temps[0].clone(),
-                                ty: ty.clone(),
-                                pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
-                            },
-                            match signed {
-                                true => Sext {
-                                    result: temps[1].clone(),
-                                    ty,
-                                    value: temps[0].clone(),
-                                    ty2: LlvmType::I64,
-                                },
-                                false => Zext {
-                                    result: temps[1].clone(),
-                                    ty,
-                                    value: temps[0].clone(),
-                                    ty2: LlvmType::I64,
-                                },
-                            },
-                            Store {
-                                ty: LlvmType::I64,
-                                value: temps[1].clone(),
-                                pointer: rd.into(),
-                            },
-                        ];
-                    }
-                }
-            }
-        }
-
-        match ty {
-            LlvmType::I8 => {
-                let temps = self.get_temps(5);
-                vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Add {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: imm.into(),
-                    },
-                    Getelementptr {
-                        result: temps[2].clone(),
-                        index: temps[1].clone(),
-                    },
-                    Load {
-                        result: temps[3].clone(),
-                        ty: ty.clone(),
-                        pointer: temps[2].clone(),
-                    },
-                    match signed {
-                        true => Sext {
-                            result: temps[4].clone(),
-                            ty,
-                            value: temps[3].clone(),
-                            ty2: LlvmType::I64,
-                        },
-                        false => Zext {
-                            result: temps[4].clone(),
-                            ty,
-                            value: temps[3].clone(),
-                            ty2: LlvmType::I64,
-                        },
-                    },
-                    Store {
-                        ty: LlvmType::I64,
-                        value: temps[4].clone(),
-                        pointer: rd.into(),
-                    },
-                ]
-            }
-            LlvmType::I64 => {
-                let temps = self.get_temps(5);
-                vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Add {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: imm.into(),
-                    },
-                    Getelementptr {
-                        result: temps[2].clone(),
-                        index: temps[1].clone(),
-                    },
-                    Bitcast {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I8,
-                        value: temps[2].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Load {
-                        result: temps[4].clone(),
-                        ty,
-                        pointer: temps[3].clone(),
-                    },
-                    Store {
-                        ty: LlvmType::I64,
-                        value: temps[4].clone(),
-                        pointer: rd.into(),
-                    },
-                ]
-            }
-            LlvmType::F32 => {
-                let temps = self.get_temps(6);
-                vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Add {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: imm.into(),
-                    },
-                    Getelementptr {
-                        result: temps[2].clone(),
-                        index: temps[1].clone(),
-                    },
-                    Bitcast {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I8,
-                        value: temps[2].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Load {
-                        result: temps[4].clone(),
-                        ty: ty.clone(),
-                        pointer: temps[3].clone(),
-                    },
-                    Fpext {
-                        result: temps[5].clone(),
-                        ty,
-                        value: temps[4].clone(),
-                        ty2: LlvmType::F64,
-                    },
-                    Store {
-                        ty: LlvmType::F64,
-                        value: temps[5].clone(),
-                        pointer: rd.into(),
-                    },
-                ]
-            }
-            LlvmType::F64 => {
-                let temps = self.get_temps(5);
-                vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Add {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: imm.into(),
-                    },
-                    Getelementptr {
-                        result: temps[2].clone(),
-                        index: temps[1].clone(),
-                    },
-                    Bitcast {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I8,
-                        value: temps[2].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Load {
-                        result: temps[4].clone(),
-                        ty,
-                        pointer: temps[3].clone(),
-                    },
-                    Store {
-                        ty: LlvmType::F64,
-                        value: temps[4].clone(),
-                        pointer: rd.into(),
-                    },
-                ]
-            }
-            _ => {
-                let temps = self.get_temps(6);
-                vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Add {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: imm.into(),
-                    },
-                    Getelementptr {
-                        result: temps[2].clone(),
-                        index: temps[1].clone(),
-                    },
-                    Bitcast {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I8,
-                        value: temps[2].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Load {
-                        result: temps[4].clone(),
-                        ty: ty.clone(),
-                        pointer: temps[3].clone(),
-                    },
-                    match signed {
-                        true => Sext {
-                            result: temps[5].clone(),
-                            ty,
-                            value: temps[4].clone(),
-                            ty2: LlvmType::I64,
-                        },
-                        false => Zext {
-                            result: temps[5].clone(),
-                            ty,
-                            value: temps[4].clone(),
-                            ty2: LlvmType::I64,
-                        },
-                    },
-                    Store {
-                        ty: LlvmType::I64,
-                        value: temps[5].clone(),
-                        pointer: rd.into(),
-                    },
-                ]
-            }
-        }
-    }
-
-    fn build_store(
-        &mut self,
-        rs2: RiscvRegister,
-        imm: RiscvImmediate,
-        rs1: RiscvRegister,
-        comment: Option<String>,
-        ty: LlvmType,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-
-        lazy_static! {
-            static ref STATIC: Regex = Regex::new(r"<(.+)>").unwrap();
-        }
-        if let Some(comment) = comment {
-            let caps = STATIC.captures(&comment).unwrap();
-            if let Some(name) = caps.get(1) {
-                match ty {
-                    LlvmType::I64 => {
-                        let temps = self.get_temps(1);
-                        return vec![
-                            Load {
-                                result: temps[0].clone(),
-                                ty: LlvmType::I64,
-                                pointer: rs2.into(),
-                            },
-                            Store {
-                                ty,
-                                value: temps[0].clone(),
-                                pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
-                            },
-                        ];
-                    }
-                    LlvmType::F32 => {
-                        let temps = self.get_temps(2);
-                        return vec![
-                            Load {
-                                result: temps[0].clone(),
-                                ty: LlvmType::F64,
-                                pointer: rs2.into(),
-                            },
-                            Fptrunc {
-                                result: temps[1].clone(),
-                                ty: LlvmType::F64,
-                                value: temps[0].clone(),
-                                ty2: LlvmType::F32,
-                            },
-                            Store {
-                                ty,
-                                value: temps[1].clone(),
-                                pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
-                            },
-                        ];
-                    }
-                    LlvmType::F64 => {
-                        let temps = self.get_temps(1);
-                        return vec![
-                            Load {
-                                result: temps[0].clone(),
-                                ty: LlvmType::F64,
-                                pointer: rs2.into(),
-                            },
-                            Store {
-                                ty,
-                                value: temps[0].clone(),
-                                pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
-                            },
-                        ];
-                    }
-                    _ => {
-                        let temps = self.get_temps(2);
-                        return vec![
-                            Load {
-                                result: temps[0].clone(),
-                                ty: LlvmType::I64,
-                                pointer: rs2.into(),
-                            },
-                            Trunc {
-                                result: temps[1].clone(),
-                                ty: LlvmType::I64,
-                                value: temps[0].clone(),
-                                ty2: ty.clone(),
-                            },
-                            Store {
-                                ty,
-                                value: temps[1].clone(),
-                                pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
-                            },
-                        ];
-                    }
-                }
-            }
-        }
-
-        match ty {
-            LlvmType::I8 => {
-                let temps = self.get_temps(5);
-                vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Add {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: imm.into(),
-                    },
-                    Getelementptr {
-                        result: temps[2].clone(),
-                        index: temps[1].clone(),
-                    },
-                    Load {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs2.into(),
-                    },
-                    Trunc {
-                        result: temps[4].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[3].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Store {
-                        ty,
-                        value: temps[4].clone(),
-                        pointer: temps[2].clone(),
-                    },
-                ]
-            }
-            LlvmType::I64 => {
-                let temps = self.get_temps(5);
-                vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Add {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: imm.into(),
-                    },
-                    Getelementptr {
-                        result: temps[2].clone(),
-                        index: temps[1].clone(),
-                    },
-                    Bitcast {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I8,
-                        value: temps[2].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Load {
-                        result: temps[4].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs2.into(),
-                    },
-                    Store {
-                        ty,
-                        value: temps[4].clone(),
-                        pointer: temps[3].clone(),
-                    },
-                ]
-            }
-            LlvmType::F32 => {
-                let temps = self.get_temps(6);
-                vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Add {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: imm.into(),
-                    },
-                    Getelementptr {
-                        result: temps[2].clone(),
-                        index: temps[1].clone(),
-                    },
-                    Bitcast {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I8,
-                        value: temps[2].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Load {
-                        result: temps[4].clone(),
-                        ty: LlvmType::F64,
-                        pointer: rs2.into(),
-                    },
-                    Fptrunc {
-                        result: temps[5].clone(),
-                        ty: LlvmType::F64,
-                        value: temps[4].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Store {
-                        ty,
-                        value: temps[5].clone(),
-                        pointer: temps[3].clone(),
-                    },
-                ]
-            }
-            LlvmType::F64 => {
-                let temps = self.get_temps(5);
-                vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Add {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: imm.into(),
-                    },
-                    Getelementptr {
-                        result: temps[2].clone(),
-                        index: temps[1].clone(),
-                    },
-                    Bitcast {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I8,
-                        value: temps[2].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Load {
-                        result: temps[4].clone(),
-                        ty: ty.clone(),
-                        pointer: rs2.into(),
-                    },
-                    Store {
-                        ty,
-                        value: temps[4].clone(),
-                        pointer: temps[3].clone(),
-                    },
-                ]
-            }
-            _ => {
-                let temps = self.get_temps(6);
-                vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Add {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: imm.into(),
-                    },
-                    Getelementptr {
-                        result: temps[2].clone(),
-                        index: temps[1].clone(),
-                    },
-                    Bitcast {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I8,
-                        value: temps[2].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Load {
-                        result: temps[4].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs2.into(),
-                    },
-                    Trunc {
-                        result: temps[5].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[4].clone(),
-                        ty2: ty.clone(),
-                    },
-                    Store {
-                        ty,
-                        value: temps[5].clone(),
-                        pointer: temps[3].clone(),
-                    },
-                ]
-            }
-        }
-    }
-
-    fn build_binary_immediate(
-        &mut self,
-        rd: RiscvRegister,
-        rs1: RiscvRegister,
-        imm: RiscvImmediate,
-        op: &str,
-        word: bool,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-
-        let (op1, mut insts) = match word {
-            true => {
-                let temps = self.get_temps(2);
-                let insts = vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Trunc {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[0].clone(),
-                        ty2: LlvmType::I32,
-                    },
-                ];
-                (temps[1].clone(), insts)
-            }
-            false => {
-                let temps = self.get_temps(1);
-                let insts = vec![Load {
-                    result: temps[0].clone(),
-                    ty: LlvmType::I64,
-                    pointer: rs1.into(),
-                }];
-                (temps[0].clone(), insts)
-            }
-        };
-
-        let temps = self.get_temps(1);
-        insts.push(match op {
-            "Addi" => Add {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Slti" => Icmp {
-                result: temps[0].clone(),
-                cond: LlvmIntCondition::Slt,
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Sltiu" => Icmp {
-                result: temps[0].clone(),
-                cond: LlvmIntCondition::Ult,
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Xori" => Xor {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Ori" => Or {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Andi" => And {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Slli" => Shl {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Srli" => Lshr {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Srai" => Ashr {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Addiw" => Add {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2: imm.into(),
-            },
-            "Slliw" => Shl {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2: imm.into(),
-            },
-            "Srliw" => Lshr {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2: imm.into(),
-            },
-            "Sraiw" => Ashr {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2: imm.into(),
-            },
-            "Seqz" => Icmp {
-                result: temps[0].clone(),
-                cond: LlvmIntCondition::Eq,
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Snez" => Icmp {
-                result: temps[0].clone(),
-                cond: LlvmIntCondition::Ne,
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Sltz" => Icmp {
-                result: temps[0].clone(),
-                cond: LlvmIntCondition::Slt,
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            "Sgtz" => Icmp {
-                result: temps[0].clone(),
-                cond: LlvmIntCondition::Sgt,
-                ty: LlvmType::I64,
-                op1,
-                op2: imm.into(),
-            },
-            _ => unreachable!(),
-        });
-        let mut value = temps[0].clone();
-
-        if let "Slti" | "Sltiu" | "Seqz" | "Snez" | "Sltz" | "Sgtz" = op {
-            let temps = self.get_temps(1);
-            insts.push(Sext {
-                result: temps[0].clone(),
-                ty: LlvmType::I1,
-                value,
-                ty2: LlvmType::I64,
-            });
-            value = temps[0].clone();
-        }
-
-        if word {
-            let temps = self.get_temps(1);
-            insts.extend(vec![
-                Sext {
-                    result: temps[0].clone(),
-                    ty: LlvmType::I32,
-                    value,
-                    ty2: LlvmType::I64,
-                },
-                Store {
-                    ty: LlvmType::I64,
-                    value: temps[0].clone(),
-                    pointer: rd.into(),
-                },
-            ]);
-        } else {
-            insts.push(Store {
-                ty: LlvmType::I64,
-                value,
-                pointer: rd.into(),
-            })
-        }
-
-        insts
-    }
-
-    fn build_binary(
-        &mut self,
-        rd: RiscvRegister,
-        rs1: RiscvRegister,
-        rs2: RiscvRegister,
-        op: &str,
-        word: bool,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-
-        let (op1, op2, mut insts) = match (op, word) {
-            ("Mulh", _) => {
-                let temps = self.get_temps(4);
-                let insts = vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Sext {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[0].clone(),
-                        ty2: LlvmType::I128,
-                    },
-                    Load {
-                        result: temps[2].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs2.into(),
-                    },
-                    Sext {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[2].clone(),
-                        ty2: LlvmType::I128,
-                    },
-                ];
-                (temps[1].clone(), temps[3].clone(), insts)
-            }
-            ("Mulhsu", _) => {
-                let temps = self.get_temps(4);
-                let insts = vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Sext {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[0].clone(),
-                        ty2: LlvmType::I128,
-                    },
-                    Load {
-                        result: temps[2].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs2.into(),
-                    },
-                    Zext {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[2].clone(),
-                        ty2: LlvmType::I128,
-                    },
-                ];
-                (temps[1].clone(), temps[3].clone(), insts)
-            }
-            ("Mulhu", _) => {
-                let temps = self.get_temps(4);
-                let insts = vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Zext {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[0].clone(),
-                        ty2: LlvmType::I128,
-                    },
-                    Load {
-                        result: temps[2].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs2.into(),
-                    },
-                    Zext {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[2].clone(),
-                        ty2: LlvmType::I128,
-                    },
-                ];
-                (temps[1].clone(), temps[3].clone(), insts)
-            }
-            (_, true) => {
-                let temps = self.get_temps(4);
-                let insts = vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Trunc {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[0].clone(),
-                        ty2: LlvmType::I32,
-                    },
-                    Load {
-                        result: temps[2].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs2.into(),
-                    },
-                    Trunc {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[2].clone(),
-                        ty2: LlvmType::I32,
-                    },
-                ];
-                (temps[1].clone(), temps[3].clone(), insts)
-            }
-            (_, false) => {
-                let temps = self.get_temps(2);
-                let insts = vec![
-                    Load {
-                        result: temps[0].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs1.into(),
-                    },
-                    Load {
-                        result: temps[1].clone(),
-                        ty: LlvmType::I64,
-                        pointer: rs2.into(),
-                    },
-                ];
-                (temps[0].clone(), temps[1].clone(), insts)
-            }
-        };
-
-        let temps = self.get_temps(1);
-        insts.push(match op {
-            "Add" => Add {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Sub" => Sub {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Sll" => Shl {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Slt" => Icmp {
-                result: temps[0].clone(),
-                cond: LlvmIntCondition::Slt,
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Sltu" => Icmp {
-                result: temps[0].clone(),
-                cond: LlvmIntCondition::Ult,
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Xor" => Xor {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Srl" => Lshr {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Sra" => Ashr {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Or" => Or {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "And" => And {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Addw" => Add {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2,
-            },
-            "Subw" => Sub {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2,
-            },
-            "Sllw" => Shl {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2,
-            },
-            "Srlw" => Lshr {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2,
-            },
-            "Sraw" => Ashr {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2,
-            },
-            "Mul" => Mul {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Mulh" | "Mulhsu" | "Mulhu" => Mul {
-                result: temps[0].clone(),
-                ty: LlvmType::I128,
-                op1,
-                op2,
-            },
-            "Div" => Sdiv {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Divu" => Udiv {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Rem" => Srem {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Remu" => Urem {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                op1,
-                op2,
-            },
-            "Mulw" => Mul {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2,
-            },
-            "Divw" => Sdiv {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2,
-            },
-            "Divuw" => Udiv {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2,
-            },
-            "Remw" => Srem {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2,
-            },
-            "Remuw" => Urem {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                op1,
-                op2,
-            },
-            _ => unreachable!(),
-        });
-
-        let value = temps[0].clone();
-        if let "Mulh" | "Mulhsu" | "Mulhu" = op {
-            let temps = self.get_temps(2);
-            insts.extend(vec![
-                Lshr {
-                    result: temps[0].clone(),
-                    ty: LlvmType::I128,
-                    op1: value,
-                    op2: 64_i64.into(),
-                },
-                Trunc {
-                    result: temps[1].clone(),
-                    ty: LlvmType::I128,
-                    value: temps[0].clone(),
-                    ty2: LlvmType::I64,
-                },
-                Store {
-                    ty: LlvmType::I64,
-                    value: temps[1].clone(),
-                    pointer: rd.into(),
-                },
-            ]);
-        } else if word {
-            let temps = self.get_temps(1);
-            insts.extend(vec![
-                Sext {
-                    result: temps[0].clone(),
-                    ty: LlvmType::I32,
-                    value,
-                    ty2: LlvmType::I64,
-                },
-                Store {
-                    ty: LlvmType::I64,
-                    value: temps[0].clone(),
-                    pointer: rd.into(),
-                },
-            ]);
-        } else {
-            insts.push(Store {
-                ty: LlvmType::I64,
-                value,
-                pointer: rd.into(),
-            });
-        }
-
-        insts
-    }
-
-    fn build_ternary(
-        &mut self,
-        rd: RiscvRegister,
-        rs1: RiscvRegister,
-        rs2: RiscvRegister,
-        rs3: RiscvRegister,
-        op: &str,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-
-        let temps = self.get_temps(3);
-        let mut insts = vec![
-            Load {
-                result: temps[0].clone(),
-                ty: LlvmType::F64,
-                pointer: rs1.into(),
-            },
-            Load {
-                result: temps[1].clone(),
-                ty: LlvmType::F64,
-                pointer: rs2.into(),
-            },
-            Load {
-                result: temps[2].clone(),
-                ty: LlvmType::F64,
-                pointer: rs3.into(),
-            },
-        ];
-        let mut op1 = temps[0].clone();
-        let mut op2 = temps[1].clone();
-        let mut op3 = temps[2].clone();
-
-        if op.ends_with('S') {
-            let temps = self.get_temps(3);
-            insts.extend(vec![
-                Fptrunc {
-                    result: temps[0].clone(),
-                    ty: LlvmType::F64,
-                    value: op1,
-                    ty2: LlvmType::F32,
-                },
-                Fptrunc {
-                    result: temps[1].clone(),
-                    ty: LlvmType::F64,
-                    value: op2,
-                    ty2: LlvmType::F32,
-                },
-                Fptrunc {
-                    result: temps[2].clone(),
-                    ty: LlvmType::F64,
-                    value: op3,
-                    ty2: LlvmType::F32,
-                },
-            ]);
-            op1 = temps[0].clone();
-            op2 = temps[1].clone();
-            op3 = temps[2].clone();
-        }
-
-        let (mut value, ists) = match op {
-            "FmaddS" => {
-                let temps = self.get_temps(1);
-                let ists = vec![Fma {
-                    result: temps[0].clone(),
-                    ty: LlvmType::F32,
-                    a: op1,
-                    b: op2,
-                    c: op3,
-                }];
-                (temps[0].clone(), ists)
-            }
-            "FmsubS" => {
-                let temps = self.get_temps(2);
-                let ists = vec![
-                    Fmul {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        op1,
-                        op2,
-                    },
-                    Fsub {
-                        result: temps[1].clone(),
-                        ty: LlvmType::F32,
-                        op1: temps[0].clone(),
-                        op2: op3,
-                    },
-                ];
-                (temps[1].clone(), ists)
-            }
-            "FnmsubS" => {
-                let temps = self.get_temps(3);
-                let ists = vec![
-                    Fmul {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        op1,
-                        op2,
-                    },
-                    Fneg {
-                        result: temps[1].clone(),
-                        ty: LlvmType::F32,
-                        op1: temps[0].clone(),
-                    },
-                    Fadd {
-                        result: temps[2].clone(),
-                        ty: LlvmType::F32,
-                        op1: temps[1].clone(),
-                        op2: op3,
-                    },
-                ];
-                (temps[2].clone(), ists)
-            }
-            "FnmaddS" => {
-                let temps = self.get_temps(3);
-                let ists = vec![
-                    Fmul {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        op1,
-                        op2,
-                    },
-                    Fneg {
-                        result: temps[1].clone(),
-                        ty: LlvmType::F32,
-                        op1: temps[0].clone(),
-                    },
-                    Fsub {
-                        result: temps[2].clone(),
-                        ty: LlvmType::F32,
-                        op1: temps[1].clone(),
-                        op2: op3,
-                    },
-                ];
-                (temps[2].clone(), ists)
-            }
-            "FmaddD" => {
-                let temps = self.get_temps(1);
-                let ists = vec![Fma {
-                    result: temps[0].clone(),
-                    ty: LlvmType::F64,
-                    a: op1,
-                    b: op2,
-                    c: op3,
-                }];
-                (temps[0].clone(), ists)
-            }
-            "FmsubD" => {
-                let temps = self.get_temps(2);
-                let ists = vec![
-                    Fmul {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        op1,
-                        op2,
-                    },
-                    Fsub {
-                        result: temps[1].clone(),
-                        ty: LlvmType::F64,
-                        op1: temps[0].clone(),
-                        op2: op3,
-                    },
-                ];
-                (temps[1].clone(), ists)
-            }
-            "FnmsubD" => {
-                let temps = self.get_temps(3);
-                let ists = vec![
-                    Fmul {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        op1,
-                        op2,
-                    },
-                    Fneg {
-                        result: temps[1].clone(),
-                        ty: LlvmType::F64,
-                        op1: temps[0].clone(),
-                    },
-                    Fadd {
-                        result: temps[2].clone(),
-                        ty: LlvmType::F64,
-                        op1: temps[1].clone(),
-                        op2: op3,
-                    },
-                ];
-                (temps[2].clone(), ists)
-            }
-            "FnmaddD" => {
-                let temps = self.get_temps(3);
-                let ists = vec![
-                    Fmul {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        op1,
-                        op2,
-                    },
-                    Fneg {
-                        result: temps[1].clone(),
-                        ty: LlvmType::F64,
-                        op1: temps[0].clone(),
-                    },
-                    Fsub {
-                        result: temps[2].clone(),
-                        ty: LlvmType::F64,
-                        op1: temps[1].clone(),
-                        op2: op3,
-                    },
-                ];
-                (temps[2].clone(), ists)
-            }
-            _ => unreachable!(),
-        };
-        insts.extend(ists);
-
-        if op.ends_with('S') {
-            let temps = self.get_temps(1);
-            insts.push(Fpext {
-                result: temps[0].clone(),
-                ty: LlvmType::F32,
-                value,
-                ty2: LlvmType::F64,
-            });
-            value = temps[0].clone();
-        }
-
-        insts.push(Store {
-            ty: LlvmType::F64,
-            value,
-            pointer: rd.into(),
-        });
-
-        insts
-    }
-
-    fn build_binary_fp(
-        &mut self,
-        rd: RiscvRegister,
-        rs1: RiscvRegister,
-        rs2: RiscvRegister,
-        op: &str,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-
-        let temps = self.get_temps(2);
-        let mut insts = vec![
-            Load {
-                result: temps[0].clone(),
-                ty: LlvmType::F64,
-                pointer: rs1.into(),
-            },
-            Load {
-                result: temps[1].clone(),
-                ty: LlvmType::F64,
-                pointer: rs2.into(),
-            },
-        ];
-        let mut op1 = temps[0].clone();
-        let mut op2 = temps[1].clone();
-
-        if op.ends_with('S') {
-            let temps = self.get_temps(2);
-            insts.extend(vec![
-                Fptrunc {
-                    result: temps[0].clone(),
-                    ty: LlvmType::F64,
-                    value: op1,
-                    ty2: LlvmType::F32,
-                },
-                Fptrunc {
-                    result: temps[1].clone(),
-                    ty: LlvmType::F64,
-                    value: op2,
-                    ty2: LlvmType::F32,
-                },
-            ]);
-            op1 = temps[0].clone();
-            op2 = temps[1].clone();
-        }
-
-        let mut value = match op {
-            "FsgnjnS" => {
-                let temps = self.get_temps(2);
-                insts.extend(vec![
-                    Fneg {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        op1: op2,
-                    },
-                    Copysign {
-                        result: temps[1].clone(),
-                        ty: LlvmType::F32,
-                        mag: op1,
-                        sign: temps[0].clone(),
-                    },
-                ]);
-                temps[1].clone()
-            }
-            "FsgnjxS" => {
-                let temps = self.get_temps(5);
-                insts.extend(vec![
-                    Bitcast {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        value: op1.clone(),
-                        ty2: LlvmType::I32,
-                    },
-                    Bitcast {
-                        result: temps[1].clone(),
-                        ty: LlvmType::F32,
-                        value: op2,
-                        ty2: LlvmType::I32,
-                    },
-                    Xor {
-                        result: temps[2].clone(),
-                        ty: LlvmType::I32,
-                        op1: temps[0].clone(),
-                        op2: temps[1].clone(),
-                    },
-                    Bitcast {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I32,
-                        value: temps[2].clone(),
-                        ty2: LlvmType::F32,
-                    },
-                    Copysign {
-                        result: temps[4].clone(),
-                        ty: LlvmType::F32,
-                        mag: op1,
-                        sign: temps[3].clone(),
-                    },
-                ]);
-                temps[4].clone()
-            }
-            "FsgnjnD" => {
-                let temps = self.get_temps(2);
-                insts.extend(vec![
-                    Fneg {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        op1: op2,
-                    },
-                    Copysign {
-                        result: temps[1].clone(),
-                        ty: LlvmType::F64,
-                        mag: op1,
-                        sign: temps[0].clone(),
-                    },
-                ]);
-                temps[1].clone()
-            }
-            "FsgnjxD" => {
-                let temps = self.get_temps(5);
-                insts.extend(vec![
-                    Bitcast {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        value: op1.clone(),
-                        ty2: LlvmType::I64,
-                    },
-                    Bitcast {
-                        result: temps[1].clone(),
-                        ty: LlvmType::F64,
-                        value: op2,
-                        ty2: LlvmType::I64,
-                    },
-                    Xor {
-                        result: temps[2].clone(),
-                        ty: LlvmType::I64,
-                        op1: temps[0].clone(),
-                        op2: temps[1].clone(),
-                    },
-                    Bitcast {
-                        result: temps[3].clone(),
-                        ty: LlvmType::I64,
-                        value: temps[2].clone(),
-                        ty2: LlvmType::F64,
-                    },
-                    Copysign {
-                        result: temps[4].clone(),
-                        ty: LlvmType::F64,
-                        mag: op1,
-                        sign: temps[3].clone(),
-                    },
-                ]);
-                temps[4].clone()
-            }
-            _ => {
-                let temps = self.get_temps(1);
-                insts.push(match op {
-                    "FaddS" => Fadd {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        op1,
-                        op2,
-                    },
-                    "FsubS" => Fsub {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        op1,
-                        op2,
-                    },
-                    "FmulS" => Fmul {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        op1,
-                        op2,
-                    },
-                    "FdivS" => Fdiv {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        op1,
-                        op2,
-                    },
-                    "FsgnjS" => Copysign {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        mag: op1,
-                        sign: op2,
-                    },
-                    "FminS" => Minimum {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        op1,
-                        op2,
-                    },
-                    "FmaxS" => Maximum {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F32,
-                        op1,
-                        op2,
-                    },
-                    "FaddD" => Fadd {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        op1,
-                        op2,
-                    },
-                    "FsubD" => Fsub {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        op1,
-                        op2,
-                    },
-                    "FmulD" => Fmul {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        op1,
-                        op2,
-                    },
-                    "FdivD" => Fdiv {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        op1,
-                        op2,
-                    },
-                    "FsgnjD" => Copysign {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        mag: op1,
-                        sign: op2,
-                    },
-                    "FminD" => Minimum {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        op1,
-                        op2,
-                    },
-                    "FmaxD" => Maximum {
-                        result: temps[0].clone(),
-                        ty: LlvmType::F64,
-                        op1,
-                        op2,
-                    },
-                    _ => unreachable!(),
-                });
-                temps[0].clone()
-            }
-        };
-
-        if op.ends_with('S') {
-            let temps = self.get_temps(1);
-            insts.push(Fpext {
-                result: temps[0].clone(),
-                ty: LlvmType::F32,
-                value,
-                ty2: LlvmType::F64,
-            });
-            value = temps[0].clone();
-        }
-
-        insts.push(Store {
-            ty: LlvmType::F64,
-            value,
-            pointer: rd.into(),
-        });
-
-        insts
-    }
-
-    fn build_fptoi(
-        &mut self,
-        rd: RiscvRegister,
-        rs1: RiscvRegister,
-        fp: &str,
-        int: &str,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-
-        let temps = self.get_temps(1);
-        let mut insts = vec![Load {
-            result: temps[0].clone(),
-            ty: LlvmType::F64,
-            pointer: rs1.into(),
-        }];
-        let mut op1 = temps[0].clone();
-
-        if fp == "S" {
-            let temps = self.get_temps(1);
-            insts.push(Fptrunc {
-                result: temps[0].clone(),
-                ty: LlvmType::F64,
-                value: op1,
-                ty2: LlvmType::F32,
-            });
-            op1 = temps[0].clone();
-        }
-
-        let temps = self.get_temps(1);
-        insts.push(match (fp, int) {
-            ("S", "W") => Fptosi {
-                result: temps[0].clone(),
-                ty: LlvmType::F32,
-                value: op1,
-                ty2: LlvmType::I32,
-            },
-            ("S", "Wu") => Fptoui {
-                result: temps[0].clone(),
-                ty: LlvmType::F32,
-                value: op1,
-                ty2: LlvmType::I32,
-            },
-            ("S", "L") => Fptosi {
-                result: temps[0].clone(),
-                ty: LlvmType::F32,
-                value: op1,
-                ty2: LlvmType::I64,
-            },
-            ("S", "Lu") => Fptoui {
-                result: temps[0].clone(),
-                ty: LlvmType::F32,
-                value: op1,
-                ty2: LlvmType::I64,
-            },
-            ("D", "W") => Fptosi {
-                result: temps[0].clone(),
-                ty: LlvmType::F64,
-                value: op1,
-                ty2: LlvmType::I32,
-            },
-            ("D", "Wu") => Fptoui {
-                result: temps[0].clone(),
-                ty: LlvmType::F64,
-                value: op1,
-                ty2: LlvmType::I32,
-            },
-            ("D", "L") => Fptosi {
-                result: temps[0].clone(),
-                ty: LlvmType::F64,
-                value: op1,
-                ty2: LlvmType::I64,
-            },
-            ("D", "Lu") => Fptoui {
-                result: temps[0].clone(),
-                ty: LlvmType::F64,
-                value: op1,
-                ty2: LlvmType::I64,
-            },
-            _ => unreachable!(),
-        });
-        let mut value = temps[0].clone();
-
-        if int == "W" {
-            let temps = self.get_temps(1);
-            insts.push(Sext {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                value,
-                ty2: LlvmType::I64,
-            });
-            value = temps[0].clone();
-        } else if int == "Wu" {
-            let temps = self.get_temps(1);
-            insts.push(Zext {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                value,
-                ty2: LlvmType::I64,
-            });
-            value = temps[0].clone();
-        }
-
-        insts.push(Store {
-            ty: LlvmType::I64,
-            value,
-            pointer: rd.into(),
-        });
-
-        insts
-    }
-
-    fn build_fcmp(
-        &mut self,
-        rd: RiscvRegister,
-        rs1: RiscvRegister,
-        rs2: RiscvRegister,
-        op: &str,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-
-        let temps = self.get_temps(2);
-        let mut insts = vec![
-            Load {
-                result: temps[0].clone(),
-                ty: LlvmType::F64,
-                pointer: rs1.into(),
-            },
-            Load {
-                result: temps[1].clone(),
-                ty: LlvmType::F64,
-                pointer: rs2.into(),
-            },
-        ];
-        let mut op1 = temps[0].clone();
-        let mut op2 = temps[1].clone();
-
-        if op.ends_with('S') {
-            let temps = self.get_temps(2);
-            insts.extend(vec![
-                Fptrunc {
-                    result: temps[0].clone(),
-                    ty: LlvmType::F64,
-                    value: op1,
-                    ty2: LlvmType::F32,
-                },
-                Fptrunc {
-                    result: temps[1].clone(),
-                    ty: LlvmType::F64,
-                    value: op2,
-                    ty2: LlvmType::F32,
-                },
-            ]);
-            op1 = temps[0].clone();
-            op2 = temps[1].clone();
-        }
-
-        let temps = self.get_temps(2);
-        insts.extend(vec![
-            Fcmp {
-                result: temps[0].clone(),
-                cond: match &op[0..3] {
-                    "Feq" => LlvmFpCondition::Oeq,
-                    "Flt" => LlvmFpCondition::Olt,
-                    "Fle" => LlvmFpCondition::Ole,
-                    _ => unreachable!(),
-                },
-                ty: if op.ends_with('S') {
-                    LlvmType::F32
-                } else {
-                    LlvmType::F64
-                },
-                op1,
-                op2,
-            },
-            Sext {
-                result: temps[1].clone(),
-                ty: LlvmType::I1,
-                value: temps[0].clone(),
-                ty2: LlvmType::I64,
-            },
-            Store {
-                ty: LlvmType::I64,
-                value: temps[1].clone(),
-                pointer: rd.into(),
-            },
-        ]);
-
-        insts
-    }
-
-    fn build_itofp(
-        &mut self,
-        rd: RiscvRegister,
-        rs1: RiscvRegister,
-        int: &str,
-        fp: &str,
-    ) -> Vec<LlvmInstruction> {
-        use LlvmInstruction::*;
-
-        let temps = self.get_temps(1);
-        let mut insts = vec![Load {
-            result: temps[0].clone(),
-            ty: LlvmType::I64,
-            pointer: rs1.into(),
-        }];
-        let mut op1 = temps[0].clone();
-
-        if let "W" | "Wu" = int {
-            let temps = self.get_temps(1);
-            insts.push(Trunc {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                value: op1,
-                ty2: LlvmType::I32,
-            });
-            op1 = temps[0].clone();
-        }
-
-        let temps = self.get_temps(1);
-        insts.push(match (int, fp) {
-            ("W", "S") => Sitofp {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                value: op1,
-                ty2: LlvmType::F32,
-            },
-            ("Wu", "S") => Uitofp {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                value: op1,
-                ty2: LlvmType::F32,
-            },
-            ("L", "S") => Sitofp {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                value: op1,
-                ty2: LlvmType::F32,
-            },
-            ("Lu", "S") => Uitofp {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                value: op1,
-                ty2: LlvmType::F32,
-            },
-            ("W", "D") => Sitofp {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                value: op1,
-                ty2: LlvmType::F64,
-            },
-            ("Wu", "D") => Uitofp {
-                result: temps[0].clone(),
-                ty: LlvmType::I32,
-                value: op1,
-                ty2: LlvmType::F64,
-            },
-            ("L", "D") => Sitofp {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                value: op1,
-                ty2: LlvmType::F64,
-            },
-            ("Lu", "D") => Uitofp {
-                result: temps[0].clone(),
-                ty: LlvmType::I64,
-                value: op1,
-                ty2: LlvmType::F64,
-            },
-            _ => unreachable!(),
-        });
-        let mut value = temps[0].clone();
-
-        if fp == "S" {
-            let temps = self.get_temps(1);
-            insts.push(Fpext {
-                result: temps[0].clone(),
-                ty: LlvmType::F32,
-                value,
-                ty2: LlvmType::F64,
-            });
-            value = temps[0].clone();
-        }
-
-        insts.push(Store {
-            ty: LlvmType::F64,
-            value,
-            pointer: rd.into(),
-        });
-
-        insts
-    }
+    // fn get_temps(&mut self, n: usize) -> Vec<LlvmValue> {
+    //     let temps = (self.temp..self.temp + n).map(|t| t.into()).collect();
+    //     self.temp += n;
+    //     temps
+    // }
+
+    // fn translate_function(
+    //     &mut self,
+    //     RiscvFunction {
+    //         name,
+    //         basic_blocks,
+    //         indirect_targets,
+    //     }: RiscvFunction,
+    // ) -> LlvmFunction {
+    //     self.temp = 0;
+    //     let mut body: Vec<_> = basic_blocks
+    //         .into_iter()
+    //         .enumerate()
+    //         .map(|(i, mut block)| {
+    //             let jr_indexes: Vec<_> = block
+    //                 .instructions
+    //                 .iter()
+    //                 .enumerate()
+    //                 .filter(|(_, inst)| matches!(inst, RiscvInstruction::Jr { .. }))
+    //                 .map(|(i, _)| i)
+    //                 .rev()
+    //                 .collect();
+    //             for i in jr_indexes {
+    //                 block.instructions.remove(i - 1);
+    //             }
+
+    //             let mut insts = vec![LlvmInstruction::Label(format!("L{}", i))];
+    //             insts.extend(self.translate_basic_block(block, &indirect_targets));
+    //             insts
+    //         })
+    //         .flatten()
+    //         .collect();
+    //     body.insert(0, LlvmInstruction::UnconBr(String::from("L0")));
+    //     body.insert(0, LlvmInstruction::Label(String::from("Entry")));
+    //     LlvmFunction { name, body }
+    // }
+
+    // fn translate_basic_block(
+    //     &mut self,
+    //     BasicBlock {
+    //         instructions,
+    //         continue_target,
+    //         jump_target,
+    //     }: BasicBlock,
+    //     indirect_targets: &HashMap<RiscvAddress, usize>,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction as LI;
+    //     use RiscvInstruction as RI;
+
+    //     instructions
+    //         .into_iter()
+    //         .map(|inst| match inst {
+    //             // RV32I
+    //             RI::Lui { rd, imm, .. } => {
+    //                 let temps = self.get_temps(1);
+    //                 vec![
+    //                     LI::Shl {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::I64,
+    //                         op1: imm.into(),
+    //                         op2: 12_i64.into(),
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::I64,
+    //                         value: temps[0].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::Auipc { .. } => Vec::new(),
+    //             RI::Jal { comment, .. } | RI::Jalr { comment, .. } => {
+    //                 lazy_static! {
+    //                     static ref FUNCTION: Regex = Regex::new(r"<(.+)>").unwrap();
+    //                 }
+    //                 let caps = FUNCTION.captures(comment.as_ref().unwrap()).unwrap();
+    //                 let name = caps[1].to_string();
+    //                 vec![LI::Call(name)]
+    //             }
+    //             RI::Beq { rs1, rs2, .. } => self.build_branch(
+    //                 rs1,
+    //                 rs2,
+    //                 LlvmIntCondition::Eq,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Bne { rs1, rs2, .. } => self.build_branch(
+    //                 rs1,
+    //                 rs2,
+    //                 LlvmIntCondition::Ne,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Blt { rs1, rs2, .. } => self.build_branch(
+    //                 rs1,
+    //                 rs2,
+    //                 LlvmIntCondition::Slt,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Bge { rs1, rs2, .. } => self.build_branch(
+    //                 rs1,
+    //                 rs2,
+    //                 LlvmIntCondition::Sge,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Bltu { rs1, rs2, .. } => self.build_branch(
+    //                 rs1,
+    //                 rs2,
+    //                 LlvmIntCondition::Ult,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Bgeu { rs1, rs2, .. } => self.build_branch(
+    //                 rs1,
+    //                 rs2,
+    //                 LlvmIntCondition::Uge,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Lb {
+    //                 rd,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_load(rd, imm, rs1, comment, LlvmType::I8, true),
+    //             RI::Lh {
+    //                 rd,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_load(rd, imm, rs1, comment, LlvmType::I16, true),
+    //             RI::Lw {
+    //                 rd,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_load(rd, imm, rs1, comment, LlvmType::I32, true),
+    //             RI::Lbu {
+    //                 rd,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_load(rd, imm, rs1, comment, LlvmType::I8, false),
+    //             RI::Lhu {
+    //                 rd,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_load(rd, imm, rs1, comment, LlvmType::I16, false),
+    //             RI::Sb {
+    //                 rs2,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_store(rs2, imm, rs1, comment, LlvmType::I8),
+    //             RI::Sh {
+    //                 rs2,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_store(rs2, imm, rs1, comment, LlvmType::I16),
+    //             RI::Sw {
+    //                 rs2,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_store(rs2, imm, rs1, comment, LlvmType::I32),
+    //             RI::Addi { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Addi", false)
+    //             }
+    //             RI::Slti { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Slti", false)
+    //             }
+    //             RI::Sltiu { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Sltiu", false)
+    //             }
+    //             RI::Xori { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Xori", false)
+    //             }
+    //             RI::Ori { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Ori", false)
+    //             }
+    //             RI::Andi { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Andi", false)
+    //             }
+    //             RI::Slli { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Slli", false)
+    //             }
+    //             RI::Srli { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Srli", false)
+    //             }
+    //             RI::Srai { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Srai", false)
+    //             }
+    //             RI::Add { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Add", false),
+    //             RI::Sub { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sub", false),
+    //             RI::Sll { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sll", false),
+    //             RI::Slt { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Slt", false),
+    //             RI::Sltu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sltu", false),
+    //             RI::Xor { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Xor", false),
+    //             RI::Srl { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Srl", false),
+    //             RI::Sra { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sra", false),
+    //             RI::Or { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Or", false),
+    //             RI::And { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "And", false),
+    //             RI::Fence { .. } => vec![LI::Fence(LlvmOrdering::AcqRel)],
+    //             RI::Ecall { .. } => {
+    //                 let temps = self.get_temps(8);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: RiscvRegister::A7.into(),
+    //                     },
+    //                     LI::Load {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: RiscvRegister::A0.into(),
+    //                     },
+    //                     LI::Load {
+    //                         result: temps[2].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: RiscvRegister::A1.into(),
+    //                     },
+    //                     LI::Load {
+    //                         result: temps[3].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: RiscvRegister::A2.into(),
+    //                     },
+    //                     LI::Load {
+    //                         result: temps[4].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: RiscvRegister::A3.into(),
+    //                     },
+    //                     LI::Load {
+    //                         result: temps[5].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: RiscvRegister::A4.into(),
+    //                     },
+    //                     LI::Load {
+    //                         result: temps[6].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: RiscvRegister::A5.into(),
+    //                     },
+    //                     LI::Syscall {
+    //                         result: temps[7].clone(),
+    //                         no: temps[0].clone(),
+    //                         arg1: temps[1].clone(),
+    //                         arg2: temps[2].clone(),
+    //                         arg3: temps[3].clone(),
+    //                         arg4: temps[4].clone(),
+    //                         arg5: temps[5].clone(),
+    //                         arg6: temps[6].clone(),
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::I64,
+    //                         value: temps[7].clone(),
+    //                         pointer: RiscvRegister::A0.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::Ebreak { .. } => panic!("RISC-V `ebreak` instruction is not supported"),
+
+    //             // RV64I
+    //             RI::Lwu {
+    //                 rd,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_load(rd, imm, rs1, comment, LlvmType::I32, false),
+    //             RI::Ld {
+    //                 rd,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_load(rd, imm, rs1, comment, LlvmType::I64, true),
+    //             RI::Sd {
+    //                 rs2,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_store(rs2, imm, rs1, comment, LlvmType::I64),
+    //             RI::Addiw { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Addiw", true)
+    //             }
+    //             RI::Slliw { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Slliw", true)
+    //             }
+    //             RI::Srliw { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Srliw", true)
+    //             }
+    //             RI::Sraiw { rd, rs1, imm, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, imm, "Sraiw", true)
+    //             }
+    //             RI::Addw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Addw", true),
+    //             RI::Subw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Subw", true),
+    //             RI::Sllw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sllw", true),
+    //             RI::Srlw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Srlw", true),
+    //             RI::Sraw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Sraw", true),
+
+    //             // RV32M
+    //             RI::Mul { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mul", false),
+    //             RI::Mulh { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulh", false),
+    //             RI::Mulhsu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulhsu", false),
+    //             RI::Mulhu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulhu", false),
+    //             RI::Div { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Div", false),
+    //             RI::Divu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Divu", false),
+    //             RI::Rem { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Rem", false),
+    //             RI::Remu { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remu", false),
+
+    //             // RV64M
+    //             RI::Mulw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Mulw", true),
+    //             RI::Divw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Divw", true),
+    //             RI::Divuw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Divuw", true),
+    //             RI::Remw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remw", true),
+    //             RI::Remuw { rd, rs1, rs2, .. } => self.build_binary(rd, rs1, rs2, "Remuw", true),
+
+    //             // RV32A
+    //             RI::LrW { .. } => todo!(),
+    //             RI::ScW { .. } => todo!(),
+    //             RI::AmoswapW { .. } => todo!(),
+    //             RI::AmoaddW { .. } => todo!(),
+    //             RI::AmoxorW { .. } => todo!(),
+    //             RI::AmoandW { .. } => todo!(),
+    //             RI::AmoorW { .. } => todo!(),
+    //             RI::AmominW { .. } => todo!(),
+    //             RI::AmomaxW { .. } => todo!(),
+    //             RI::AmominuW { .. } => todo!(),
+    //             RI::AmomaxuW { .. } => todo!(),
+
+    //             // RV64A
+    //             RI::LrD { .. } => todo!(),
+    //             RI::ScD { .. } => todo!(),
+    //             RI::AmoswapD { .. } => todo!(),
+    //             RI::AmoaddD { .. } => todo!(),
+    //             RI::AmoxorD { .. } => todo!(),
+    //             RI::AmoandD { .. } => todo!(),
+    //             RI::AmoorD { .. } => todo!(),
+    //             RI::AmominD { .. } => todo!(),
+    //             RI::AmomaxD { .. } => todo!(),
+    //             RI::AmominuD { .. } => todo!(),
+    //             RI::AmomaxuD { .. } => todo!(),
+
+    //             // RV32F
+    //             RI::Flw {
+    //                 rd,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_load(rd, imm, rs1, comment, LlvmType::F32, true),
+    //             RI::Fsw {
+    //                 rs2,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_store(rs2, imm, rs1, comment, LlvmType::F32),
+    //             RI::FmaddS {
+    //                 rd, rs1, rs2, rs3, ..
+    //             } => self.build_ternary(rd, rs1, rs2, rs3, "FmaddS"),
+    //             RI::FmsubS {
+    //                 rd, rs1, rs2, rs3, ..
+    //             } => self.build_ternary(rd, rs1, rs2, rs3, "FmsubS"),
+    //             RI::FnmsubS {
+    //                 rd, rs1, rs2, rs3, ..
+    //             } => self.build_ternary(rd, rs1, rs2, rs3, "FnmsubS"),
+    //             RI::FnmaddS {
+    //                 rd, rs1, rs2, rs3, ..
+    //             } => self.build_ternary(rd, rs1, rs2, rs3, "FnmaddS"),
+    //             RI::FaddS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FaddS"),
+    //             RI::FsubS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsubS"),
+    //             RI::FmulS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FmulS"),
+    //             RI::FdivS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FdivS"),
+    //             RI::FsqrtS { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(4);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::F64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Fptrunc {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::F64,
+    //                         value: temps[0].clone(),
+    //                         ty2: LlvmType::F32,
+    //                     },
+    //                     LI::Sqrt {
+    //                         result: temps[2].clone(),
+    //                         ty: LlvmType::F32,
+    //                         value: temps[1].clone(),
+    //                     },
+    //                     LI::Fpext {
+    //                         result: temps[3].clone(),
+    //                         ty: LlvmType::F32,
+    //                         value: temps[2].clone(),
+    //                         ty2: LlvmType::F64,
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::F64,
+    //                         value: temps[3].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::FsgnjS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjS"),
+    //             RI::FsgnjnS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjnS"),
+    //             RI::FsgnjxS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjxS"),
+    //             RI::FminS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FminS"),
+    //             RI::FmaxS { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FmaxS"),
+    //             RI::FcvtWS { rd, rs1, .. } => self.build_fptoi(rd, rs1, "S", "W"),
+    //             RI::FcvtWuS { rd, rs1, .. } => self.build_fptoi(rd, rs1, "S", "Wu"),
+    //             RI::FmvXW { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(4);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::F64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Fptrunc {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::F64,
+    //                         value: temps[0].clone(),
+    //                         ty2: LlvmType::F32,
+    //                     },
+    //                     LI::Bitcast {
+    //                         result: temps[2].clone(),
+    //                         ty: LlvmType::F32,
+    //                         value: temps[1].clone(),
+    //                         ty2: LlvmType::I32,
+    //                     },
+    //                     LI::Sext {
+    //                         result: temps[3].clone(),
+    //                         ty: LlvmType::I32,
+    //                         value: temps[2].clone(),
+    //                         ty2: LlvmType::I64,
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::I64,
+    //                         value: temps[3].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::FeqS { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FeqS"),
+    //             RI::FltS { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FltS"),
+    //             RI::FleS { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FleS"),
+    //             RI::FclassS { .. } => unimplemented!(),
+    //             RI::FcvtSW { rd, rs1, .. } => self.build_itofp(rd, rs1, "W", "S"),
+    //             RI::FcvtSWu { rd, rs1, .. } => self.build_itofp(rd, rs1, "Wu", "S"),
+    //             RI::FmvWX { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(4);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Trunc {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::I64,
+    //                         value: temps[0].clone(),
+    //                         ty2: LlvmType::I32,
+    //                     },
+    //                     LI::Bitcast {
+    //                         result: temps[2].clone(),
+    //                         ty: LlvmType::I32,
+    //                         value: temps[1].clone(),
+    //                         ty2: LlvmType::F32,
+    //                     },
+    //                     LI::Fpext {
+    //                         result: temps[3].clone(),
+    //                         ty: LlvmType::F32,
+    //                         value: temps[2].clone(),
+    //                         ty2: LlvmType::F64,
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::F64,
+    //                         value: temps[3].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+
+    //             // RV64F
+    //             RI::FcvtLS { rd, rs1, .. } => self.build_fptoi(rd, rs1, "S", "L"),
+    //             RI::FcvtLuS { rd, rs1, .. } => self.build_fptoi(rd, rs1, "S", "Lu"),
+    //             RI::FcvtSL { rd, rs1, .. } => self.build_itofp(rd, rs1, "L", "S"),
+    //             RI::FcvtSLu { rd, rs1, .. } => self.build_itofp(rd, rs1, "Lu", "S"),
+
+    //             // RV32D
+    //             RI::Fld {
+    //                 rd,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_load(rd, imm, rs1, comment, LlvmType::F64, true),
+    //             RI::Fsd {
+    //                 rs2,
+    //                 imm,
+    //                 rs1,
+    //                 comment,
+    //                 ..
+    //             } => self.build_store(rs2, imm, rs1, comment, LlvmType::F64),
+    //             RI::FmaddD {
+    //                 rd, rs1, rs2, rs3, ..
+    //             } => self.build_ternary(rd, rs1, rs2, rs3, "FmaddD"),
+    //             RI::FmsubD {
+    //                 rd, rs1, rs2, rs3, ..
+    //             } => self.build_ternary(rd, rs1, rs2, rs3, "FmsubD"),
+    //             RI::FnmsubD {
+    //                 rd, rs1, rs2, rs3, ..
+    //             } => self.build_ternary(rd, rs1, rs2, rs3, "FnmsubD"),
+    //             RI::FnmaddD {
+    //                 rd, rs1, rs2, rs3, ..
+    //             } => self.build_ternary(rd, rs1, rs2, rs3, "FnmaddD"),
+    //             RI::FaddD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FaddD"),
+    //             RI::FsubD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsubD"),
+    //             RI::FmulD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FmulD"),
+    //             RI::FdivD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FdivD"),
+    //             RI::FsqrtD { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(2);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::F64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Sqrt {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::F64,
+    //                         value: temps[0].clone(),
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::F64,
+    //                         value: temps[1].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::FsgnjD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjD"),
+    //             RI::FsgnjnD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjnD"),
+    //             RI::FsgnjxD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FsgnjxD"),
+    //             RI::FminD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FminD"),
+    //             RI::FmaxD { rd, rs1, rs2, .. } => self.build_binary_fp(rd, rs1, rs2, "FmaxD"),
+    //             RI::FcvtSD { .. } => Vec::new(),
+    //             RI::FcvtDS { .. } => Vec::new(),
+    //             RI::FeqD { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FeqD"),
+    //             RI::FltD { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FltD"),
+    //             RI::FleD { rd, rs1, rs2, .. } => self.build_fcmp(rd, rs1, rs2, "FleD"),
+    //             RI::FclassD { .. } => unimplemented!(),
+    //             RI::FcvtWD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "W"),
+    //             RI::FcvtWuD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "Wu"),
+    //             RI::FcvtDW { rd, rs1, .. } => self.build_itofp(rd, rs1, "W", "D"),
+    //             RI::FcvtDWu { rd, rs1, .. } => self.build_itofp(rd, rs1, "Wu", "D"),
+
+    //             // RV64D
+    //             RI::FcvtLD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "L"),
+    //             RI::FcvtLuD { rd, rs1, .. } => self.build_fptoi(rd, rs1, "D", "Lu"),
+    //             RI::FmvXD { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(2);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::F64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Bitcast {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::F64,
+    //                         value: temps[0].clone(),
+    //                         ty2: LlvmType::I64,
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::I64,
+    //                         value: temps[1].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::FcvtDL { rd, rs1, .. } => self.build_itofp(rd, rs1, "L", "D"),
+    //             RI::FcvtDLu { rd, rs1, .. } => self.build_itofp(rd, rs1, "Lu", "D"),
+    //             RI::FmvDX { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(2);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Bitcast {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::I64,
+    //                         value: temps[0].clone(),
+    //                         ty2: LlvmType::F64,
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::F64,
+    //                         value: temps[1].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+
+    //             // Pseudoinstructions
+    //             RI::Nop { .. } => Vec::new(),
+    //             RI::Li { rd, imm, .. } => vec![LI::Store {
+    //                 ty: LlvmType::I64,
+    //                 value: imm.into(),
+    //                 pointer: rd.into(),
+    //             }],
+    //             RI::Mv { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(1);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::I64,
+    //                         value: temps[0].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::Not { rd, rs1, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, (-1).into(), "Xori", false)
+    //             }
+    //             RI::Neg { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(2);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Sub {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::I64,
+    //                         op1: 0_i64.into(),
+    //                         op2: temps[0].clone(),
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::I64,
+    //                         value: temps[1].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::Negw { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(4);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Trunc {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::I64,
+    //                         value: temps[0].clone(),
+    //                         ty2: LlvmType::I32,
+    //                     },
+    //                     LI::Sub {
+    //                         result: temps[2].clone(),
+    //                         ty: LlvmType::I32,
+    //                         op1: 0_i64.into(),
+    //                         op2: temps[1].clone(),
+    //                     },
+    //                     LI::Sext {
+    //                         result: temps[3].clone(),
+    //                         ty: LlvmType::I32,
+    //                         value: temps[2].clone(),
+    //                         ty2: LlvmType::I64,
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::I64,
+    //                         value: temps[3].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::SextW { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(3);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Trunc {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::I64,
+    //                         value: temps[0].clone(),
+    //                         ty2: LlvmType::I32,
+    //                     },
+    //                     LI::Sext {
+    //                         result: temps[2].clone(),
+    //                         ty: LlvmType::I32,
+    //                         value: temps[1].clone(),
+    //                         ty2: LlvmType::I64,
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::I64,
+    //                         value: temps[2].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::Seqz { rd, rs1, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, 0.into(), "Seqz", false)
+    //             }
+    //             RI::Snez { rd, rs1, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, 0.into(), "Snez", false)
+    //             }
+    //             RI::Sltz { rd, rs1, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, 0.into(), "Sltz", false)
+    //             }
+    //             RI::Sgtz { rd, rs1, .. } => {
+    //                 self.build_binary_immediate(rd, rs1, 0.into(), "Sgtz", false)
+    //             }
+
+    //             RI::FmvS { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(1);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::F64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::F64,
+    //                         value: temps[0].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::FabsS { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(4);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::F64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Fptrunc {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::F64,
+    //                         value: temps[0].clone(),
+    //                         ty2: LlvmType::F32,
+    //                     },
+    //                     LI::Fabs {
+    //                         result: temps[2].clone(),
+    //                         ty: LlvmType::F32,
+    //                         value: temps[1].clone(),
+    //                     },
+    //                     LI::Fpext {
+    //                         result: temps[3].clone(),
+    //                         ty: LlvmType::F32,
+    //                         value: temps[2].clone(),
+    //                         ty2: LlvmType::F64,
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::F64,
+    //                         value: temps[3].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::FnegS { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(4);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::F64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Fptrunc {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::F64,
+    //                         value: temps[0].clone(),
+    //                         ty2: LlvmType::F32,
+    //                     },
+    //                     LI::Fneg {
+    //                         result: temps[2].clone(),
+    //                         ty: LlvmType::F32,
+    //                         op1: temps[1].clone(),
+    //                     },
+    //                     LI::Fpext {
+    //                         result: temps[3].clone(),
+    //                         ty: LlvmType::F32,
+    //                         value: temps[2].clone(),
+    //                         ty2: LlvmType::F64,
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::F64,
+    //                         value: temps[3].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::FmvD { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(1);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::F64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::F64,
+    //                         value: temps[0].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::FabsD { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(2);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::F64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Fabs {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::F64,
+    //                         value: temps[0].clone(),
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::F64,
+    //                         value: temps[1].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+    //             RI::FnegD { rd, rs1, .. } => {
+    //                 let temps = self.get_temps(2);
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::F64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Fneg {
+    //                         result: temps[1].clone(),
+    //                         ty: LlvmType::F64,
+    //                         op1: temps[0].clone(),
+    //                     },
+    //                     LI::Store {
+    //                         ty: LlvmType::F64,
+    //                         value: temps[1].clone(),
+    //                         pointer: rd.into(),
+    //                     },
+    //                 ]
+    //             }
+
+    //             RI::Beqz { rs1, .. } => self.build_branchz(
+    //                 rs1,
+    //                 LlvmIntCondition::Eq,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Bnez { rs1, .. } => self.build_branchz(
+    //                 rs1,
+    //                 LlvmIntCondition::Ne,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Blez { rs1, .. } => self.build_branchz(
+    //                 rs1,
+    //                 LlvmIntCondition::Sle,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Bgez { rs1, .. } => self.build_branchz(
+    //                 rs1,
+    //                 LlvmIntCondition::Sge,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Bltz { rs1, .. } => self.build_branchz(
+    //                 rs1,
+    //                 LlvmIntCondition::Slt,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+    //             RI::Bgtz { rs1, .. } => self.build_branchz(
+    //                 rs1,
+    //                 LlvmIntCondition::Sgt,
+    //                 jump_target.unwrap(),
+    //                 continue_target.unwrap(),
+    //             ),
+
+    //             RI::J { .. } => vec![LI::UnconBr(format!("L{}", jump_target.unwrap()))],
+    //             RI::Jr { rs1, .. } => {
+    //                 let temps = self.get_temps(1);
+    //                 let lb = format!("Unreachable{}", self.temp);
+    //                 self.temp += 1;
+    //                 let targets = indirect_targets
+    //                     .iter()
+    //                     .map(|(RiscvAddress(addr), bb)| {
+    //                         (
+    //                             LlvmType::I64,
+    //                             LlvmValue::Int((*addr).try_into().unwrap()),
+    //                             format!("L{}", bb),
+    //                         )
+    //                     })
+    //                     .collect();
+    //                 vec![
+    //                     LI::Load {
+    //                         result: temps[0].clone(),
+    //                         ty: LlvmType::I64,
+    //                         pointer: rs1.into(),
+    //                     },
+    //                     LI::Switch {
+    //                         ty: LlvmType::I64,
+    //                         value: temps[0].clone(),
+    //                         defaultdest: lb.clone(),
+    //                         targets,
+    //                     },
+    //                     LI::Label(lb),
+    //                     LI::Unreachable,
+    //                 ]
+    //             }
+    //             RI::Ret { .. } => vec![LI::Ret],
+    //         })
+    //         .flatten()
+    //         .collect()
+    // }
+
+    // fn build_branch(
+    //     &mut self,
+    //     rs1: RiscvRegister,
+    //     rs2: RiscvRegister,
+    //     cond: LlvmIntCondition,
+    //     jump_target: usize,
+    //     continue_target: usize,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+    //     let temps = self.get_temps(3);
+    //     vec![
+    //         Load {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             pointer: rs1.into(),
+    //         },
+    //         Load {
+    //             result: temps[1].clone(),
+    //             ty: LlvmType::I64,
+    //             pointer: rs2.into(),
+    //         },
+    //         Icmp {
+    //             result: temps[2].clone(),
+    //             cond,
+    //             ty: LlvmType::I64,
+    //             op1: temps[0].clone(),
+    //             op2: temps[1].clone(),
+    //         },
+    //         ConBr {
+    //             cond: temps[2].clone(),
+    //             iftrue: format!("L{}", jump_target),
+    //             iffalse: format!("L{}", continue_target),
+    //         },
+    //     ]
+    // }
+
+    // fn build_branchz(
+    //     &mut self,
+    //     rs1: RiscvRegister,
+    //     cond: LlvmIntCondition,
+    //     jump_target: usize,
+    //     continue_target: usize,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+    //     let temps = self.get_temps(2);
+    //     vec![
+    //         Load {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             pointer: rs1.into(),
+    //         },
+    //         Icmp {
+    //             result: temps[1].clone(),
+    //             cond,
+    //             ty: LlvmType::I64,
+    //             op1: temps[0].clone(),
+    //             op2: 0_i64.into(),
+    //         },
+    //         ConBr {
+    //             cond: temps[1].clone(),
+    //             iftrue: format!("L{}", jump_target),
+    //             iffalse: format!("L{}", continue_target),
+    //         },
+    //     ]
+    // }
+
+    // fn build_load(
+    //     &mut self,
+    //     rd: RiscvRegister,
+    //     imm: RiscvImmediate,
+    //     rs1: RiscvRegister,
+    //     comment: Option<String>,
+    //     ty: LlvmType,
+    //     signed: bool,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+
+    //     lazy_static! {
+    //         static ref STATIC: Regex = Regex::new(r"<(.+)>").unwrap();
+    //     }
+    //     if let Some(comment) = comment {
+    //         let caps = STATIC.captures(&comment).unwrap();
+    //         if let Some(name) = caps.get(1) {
+    //             match ty {
+    //                 LlvmType::I64 => {
+    //                     let temps = self.get_temps(1);
+    //                     return vec![
+    //                         Load {
+    //                             result: temps[0].clone(),
+    //                             ty,
+    //                             pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+    //                         },
+    //                         Store {
+    //                             ty: LlvmType::I64,
+    //                             value: temps[0].clone(),
+    //                             pointer: rd.into(),
+    //                         },
+    //                     ];
+    //                 }
+    //                 LlvmType::F32 => {
+    //                     let temps = self.get_temps(2);
+    //                     return vec![
+    //                         Load {
+    //                             result: temps[0].clone(),
+    //                             ty: ty.clone(),
+    //                             pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+    //                         },
+    //                         Fpext {
+    //                             result: temps[1].clone(),
+    //                             ty,
+    //                             value: temps[0].clone(),
+    //                             ty2: LlvmType::F64,
+    //                         },
+    //                         Store {
+    //                             ty: LlvmType::F64,
+    //                             value: temps[1].clone(),
+    //                             pointer: rd.into(),
+    //                         },
+    //                     ];
+    //                 }
+    //                 LlvmType::F64 => {
+    //                     let temps = self.get_temps(1);
+    //                     return vec![
+    //                         Load {
+    //                             result: temps[0].clone(),
+    //                             ty,
+    //                             pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+    //                         },
+    //                         Store {
+    //                             ty: LlvmType::F64,
+    //                             value: temps[0].clone(),
+    //                             pointer: rd.into(),
+    //                         },
+    //                     ];
+    //                 }
+    //                 _ => {
+    //                     let temps = self.get_temps(2);
+    //                     return vec![
+    //                         Load {
+    //                             result: temps[0].clone(),
+    //                             ty: ty.clone(),
+    //                             pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+    //                         },
+    //                         match signed {
+    //                             true => Sext {
+    //                                 result: temps[1].clone(),
+    //                                 ty,
+    //                                 value: temps[0].clone(),
+    //                                 ty2: LlvmType::I64,
+    //                             },
+    //                             false => Zext {
+    //                                 result: temps[1].clone(),
+    //                                 ty,
+    //                                 value: temps[0].clone(),
+    //                                 ty2: LlvmType::I64,
+    //                             },
+    //                         },
+    //                         Store {
+    //                             ty: LlvmType::I64,
+    //                             value: temps[1].clone(),
+    //                             pointer: rd.into(),
+    //                         },
+    //                     ];
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     match ty {
+    //         LlvmType::I8 => {
+    //             let temps = self.get_temps(5);
+    //             vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Add {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: imm.into(),
+    //                 },
+    //                 Getelementptr {
+    //                     result: temps[2].clone(),
+    //                     index: temps[1].clone(),
+    //                 },
+    //                 Load {
+    //                     result: temps[3].clone(),
+    //                     ty: ty.clone(),
+    //                     pointer: temps[2].clone(),
+    //                 },
+    //                 match signed {
+    //                     true => Sext {
+    //                         result: temps[4].clone(),
+    //                         ty,
+    //                         value: temps[3].clone(),
+    //                         ty2: LlvmType::I64,
+    //                     },
+    //                     false => Zext {
+    //                         result: temps[4].clone(),
+    //                         ty,
+    //                         value: temps[3].clone(),
+    //                         ty2: LlvmType::I64,
+    //                     },
+    //                 },
+    //                 Store {
+    //                     ty: LlvmType::I64,
+    //                     value: temps[4].clone(),
+    //                     pointer: rd.into(),
+    //                 },
+    //             ]
+    //         }
+    //         LlvmType::I64 => {
+    //             let temps = self.get_temps(5);
+    //             vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Add {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: imm.into(),
+    //                 },
+    //                 Getelementptr {
+    //                     result: temps[2].clone(),
+    //                     index: temps[1].clone(),
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I8,
+    //                     value: temps[2].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Load {
+    //                     result: temps[4].clone(),
+    //                     ty,
+    //                     pointer: temps[3].clone(),
+    //                 },
+    //                 Store {
+    //                     ty: LlvmType::I64,
+    //                     value: temps[4].clone(),
+    //                     pointer: rd.into(),
+    //                 },
+    //             ]
+    //         }
+    //         LlvmType::F32 => {
+    //             let temps = self.get_temps(6);
+    //             vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Add {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: imm.into(),
+    //                 },
+    //                 Getelementptr {
+    //                     result: temps[2].clone(),
+    //                     index: temps[1].clone(),
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I8,
+    //                     value: temps[2].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Load {
+    //                     result: temps[4].clone(),
+    //                     ty: ty.clone(),
+    //                     pointer: temps[3].clone(),
+    //                 },
+    //                 Fpext {
+    //                     result: temps[5].clone(),
+    //                     ty,
+    //                     value: temps[4].clone(),
+    //                     ty2: LlvmType::F64,
+    //                 },
+    //                 Store {
+    //                     ty: LlvmType::F64,
+    //                     value: temps[5].clone(),
+    //                     pointer: rd.into(),
+    //                 },
+    //             ]
+    //         }
+    //         LlvmType::F64 => {
+    //             let temps = self.get_temps(5);
+    //             vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Add {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: imm.into(),
+    //                 },
+    //                 Getelementptr {
+    //                     result: temps[2].clone(),
+    //                     index: temps[1].clone(),
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I8,
+    //                     value: temps[2].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Load {
+    //                     result: temps[4].clone(),
+    //                     ty,
+    //                     pointer: temps[3].clone(),
+    //                 },
+    //                 Store {
+    //                     ty: LlvmType::F64,
+    //                     value: temps[4].clone(),
+    //                     pointer: rd.into(),
+    //                 },
+    //             ]
+    //         }
+    //         _ => {
+    //             let temps = self.get_temps(6);
+    //             vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Add {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: imm.into(),
+    //                 },
+    //                 Getelementptr {
+    //                     result: temps[2].clone(),
+    //                     index: temps[1].clone(),
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I8,
+    //                     value: temps[2].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Load {
+    //                     result: temps[4].clone(),
+    //                     ty: ty.clone(),
+    //                     pointer: temps[3].clone(),
+    //                 },
+    //                 match signed {
+    //                     true => Sext {
+    //                         result: temps[5].clone(),
+    //                         ty,
+    //                         value: temps[4].clone(),
+    //                         ty2: LlvmType::I64,
+    //                     },
+    //                     false => Zext {
+    //                         result: temps[5].clone(),
+    //                         ty,
+    //                         value: temps[4].clone(),
+    //                         ty2: LlvmType::I64,
+    //                     },
+    //                 },
+    //                 Store {
+    //                     ty: LlvmType::I64,
+    //                     value: temps[5].clone(),
+    //                     pointer: rd.into(),
+    //                 },
+    //             ]
+    //         }
+    //     }
+    // }
+
+    // fn build_store(
+    //     &mut self,
+    //     rs2: RiscvRegister,
+    //     imm: RiscvImmediate,
+    //     rs1: RiscvRegister,
+    //     comment: Option<String>,
+    //     ty: LlvmType,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+
+    //     lazy_static! {
+    //         static ref STATIC: Regex = Regex::new(r"<(.+)>").unwrap();
+    //     }
+    //     if let Some(comment) = comment {
+    //         let caps = STATIC.captures(&comment).unwrap();
+    //         if let Some(name) = caps.get(1) {
+    //             match ty {
+    //                 LlvmType::I64 => {
+    //                     let temps = self.get_temps(1);
+    //                     return vec![
+    //                         Load {
+    //                             result: temps[0].clone(),
+    //                             ty: LlvmType::I64,
+    //                             pointer: rs2.into(),
+    //                         },
+    //                         Store {
+    //                             ty,
+    //                             value: temps[0].clone(),
+    //                             pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+    //                         },
+    //                     ];
+    //                 }
+    //                 LlvmType::F32 => {
+    //                     let temps = self.get_temps(2);
+    //                     return vec![
+    //                         Load {
+    //                             result: temps[0].clone(),
+    //                             ty: LlvmType::F64,
+    //                             pointer: rs2.into(),
+    //                         },
+    //                         Fptrunc {
+    //                             result: temps[1].clone(),
+    //                             ty: LlvmType::F64,
+    //                             value: temps[0].clone(),
+    //                             ty2: LlvmType::F32,
+    //                         },
+    //                         Store {
+    //                             ty,
+    //                             value: temps[1].clone(),
+    //                             pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+    //                         },
+    //                     ];
+    //                 }
+    //                 LlvmType::F64 => {
+    //                     let temps = self.get_temps(1);
+    //                     return vec![
+    //                         Load {
+    //                             result: temps[0].clone(),
+    //                             ty: LlvmType::F64,
+    //                             pointer: rs2.into(),
+    //                         },
+    //                         Store {
+    //                             ty,
+    //                             value: temps[0].clone(),
+    //                             pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+    //                         },
+    //                     ];
+    //                 }
+    //                 _ => {
+    //                     let temps = self.get_temps(2);
+    //                     return vec![
+    //                         Load {
+    //                             result: temps[0].clone(),
+    //                             ty: LlvmType::I64,
+    //                             pointer: rs2.into(),
+    //                         },
+    //                         Trunc {
+    //                             result: temps[1].clone(),
+    //                             ty: LlvmType::I64,
+    //                             value: temps[0].clone(),
+    //                             ty2: ty.clone(),
+    //                         },
+    //                         Store {
+    //                             ty,
+    //                             value: temps[1].clone(),
+    //                             pointer: LlvmValue::GlobalVar(name.as_str().to_string()),
+    //                         },
+    //                     ];
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     match ty {
+    //         LlvmType::I8 => {
+    //             let temps = self.get_temps(5);
+    //             vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Add {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: imm.into(),
+    //                 },
+    //                 Getelementptr {
+    //                     result: temps[2].clone(),
+    //                     index: temps[1].clone(),
+    //                 },
+    //                 Load {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs2.into(),
+    //                 },
+    //                 Trunc {
+    //                     result: temps[4].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[3].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Store {
+    //                     ty,
+    //                     value: temps[4].clone(),
+    //                     pointer: temps[2].clone(),
+    //                 },
+    //             ]
+    //         }
+    //         LlvmType::I64 => {
+    //             let temps = self.get_temps(5);
+    //             vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Add {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: imm.into(),
+    //                 },
+    //                 Getelementptr {
+    //                     result: temps[2].clone(),
+    //                     index: temps[1].clone(),
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I8,
+    //                     value: temps[2].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Load {
+    //                     result: temps[4].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs2.into(),
+    //                 },
+    //                 Store {
+    //                     ty,
+    //                     value: temps[4].clone(),
+    //                     pointer: temps[3].clone(),
+    //                 },
+    //             ]
+    //         }
+    //         LlvmType::F32 => {
+    //             let temps = self.get_temps(6);
+    //             vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Add {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: imm.into(),
+    //                 },
+    //                 Getelementptr {
+    //                     result: temps[2].clone(),
+    //                     index: temps[1].clone(),
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I8,
+    //                     value: temps[2].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Load {
+    //                     result: temps[4].clone(),
+    //                     ty: LlvmType::F64,
+    //                     pointer: rs2.into(),
+    //                 },
+    //                 Fptrunc {
+    //                     result: temps[5].clone(),
+    //                     ty: LlvmType::F64,
+    //                     value: temps[4].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Store {
+    //                     ty,
+    //                     value: temps[5].clone(),
+    //                     pointer: temps[3].clone(),
+    //                 },
+    //             ]
+    //         }
+    //         LlvmType::F64 => {
+    //             let temps = self.get_temps(5);
+    //             vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Add {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: imm.into(),
+    //                 },
+    //                 Getelementptr {
+    //                     result: temps[2].clone(),
+    //                     index: temps[1].clone(),
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I8,
+    //                     value: temps[2].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Load {
+    //                     result: temps[4].clone(),
+    //                     ty: ty.clone(),
+    //                     pointer: rs2.into(),
+    //                 },
+    //                 Store {
+    //                     ty,
+    //                     value: temps[4].clone(),
+    //                     pointer: temps[3].clone(),
+    //                 },
+    //             ]
+    //         }
+    //         _ => {
+    //             let temps = self.get_temps(6);
+    //             vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Add {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: imm.into(),
+    //                 },
+    //                 Getelementptr {
+    //                     result: temps[2].clone(),
+    //                     index: temps[1].clone(),
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I8,
+    //                     value: temps[2].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Load {
+    //                     result: temps[4].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs2.into(),
+    //                 },
+    //                 Trunc {
+    //                     result: temps[5].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[4].clone(),
+    //                     ty2: ty.clone(),
+    //                 },
+    //                 Store {
+    //                     ty,
+    //                     value: temps[5].clone(),
+    //                     pointer: temps[3].clone(),
+    //                 },
+    //             ]
+    //         }
+    //     }
+    // }
+
+    // fn build_binary_immediate(
+    //     &mut self,
+    //     rd: RiscvRegister,
+    //     rs1: RiscvRegister,
+    //     imm: RiscvImmediate,
+    //     op: &str,
+    //     word: bool,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+
+    //     let (op1, mut insts) = match word {
+    //         true => {
+    //             let temps = self.get_temps(2);
+    //             let insts = vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Trunc {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[0].clone(),
+    //                     ty2: LlvmType::I32,
+    //                 },
+    //             ];
+    //             (temps[1].clone(), insts)
+    //         }
+    //         false => {
+    //             let temps = self.get_temps(1);
+    //             let insts = vec![Load {
+    //                 result: temps[0].clone(),
+    //                 ty: LlvmType::I64,
+    //                 pointer: rs1.into(),
+    //             }];
+    //             (temps[0].clone(), insts)
+    //         }
+    //     };
+
+    //     let temps = self.get_temps(1);
+    //     insts.push(match op {
+    //         "Addi" => Add {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Slti" => Icmp {
+    //             result: temps[0].clone(),
+    //             cond: LlvmIntCondition::Slt,
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Sltiu" => Icmp {
+    //             result: temps[0].clone(),
+    //             cond: LlvmIntCondition::Ult,
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Xori" => Xor {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Ori" => Or {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Andi" => And {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Slli" => Shl {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Srli" => Lshr {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Srai" => Ashr {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Addiw" => Add {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Slliw" => Shl {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Srliw" => Lshr {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Sraiw" => Ashr {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Seqz" => Icmp {
+    //             result: temps[0].clone(),
+    //             cond: LlvmIntCondition::Eq,
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Snez" => Icmp {
+    //             result: temps[0].clone(),
+    //             cond: LlvmIntCondition::Ne,
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Sltz" => Icmp {
+    //             result: temps[0].clone(),
+    //             cond: LlvmIntCondition::Slt,
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         "Sgtz" => Icmp {
+    //             result: temps[0].clone(),
+    //             cond: LlvmIntCondition::Sgt,
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2: imm.into(),
+    //         },
+    //         _ => unreachable!(),
+    //     });
+    //     let mut value = temps[0].clone();
+
+    //     if let "Slti" | "Sltiu" | "Seqz" | "Snez" | "Sltz" | "Sgtz" = op {
+    //         let temps = self.get_temps(1);
+    //         insts.push(Sext {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I1,
+    //             value,
+    //             ty2: LlvmType::I64,
+    //         });
+    //         value = temps[0].clone();
+    //     }
+
+    //     if word {
+    //         let temps = self.get_temps(1);
+    //         insts.extend(vec![
+    //             Sext {
+    //                 result: temps[0].clone(),
+    //                 ty: LlvmType::I32,
+    //                 value,
+    //                 ty2: LlvmType::I64,
+    //             },
+    //             Store {
+    //                 ty: LlvmType::I64,
+    //                 value: temps[0].clone(),
+    //                 pointer: rd.into(),
+    //             },
+    //         ]);
+    //     } else {
+    //         insts.push(Store {
+    //             ty: LlvmType::I64,
+    //             value,
+    //             pointer: rd.into(),
+    //         })
+    //     }
+
+    //     insts
+    // }
+
+    // fn build_binary(
+    //     &mut self,
+    //     rd: RiscvRegister,
+    //     rs1: RiscvRegister,
+    //     rs2: RiscvRegister,
+    //     op: &str,
+    //     word: bool,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+
+    //     let (op1, op2, mut insts) = match (op, word) {
+    //         ("Mulh", _) => {
+    //             let temps = self.get_temps(4);
+    //             let insts = vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Sext {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[0].clone(),
+    //                     ty2: LlvmType::I128,
+    //                 },
+    //                 Load {
+    //                     result: temps[2].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs2.into(),
+    //                 },
+    //                 Sext {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[2].clone(),
+    //                     ty2: LlvmType::I128,
+    //                 },
+    //             ];
+    //             (temps[1].clone(), temps[3].clone(), insts)
+    //         }
+    //         ("Mulhsu", _) => {
+    //             let temps = self.get_temps(4);
+    //             let insts = vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Sext {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[0].clone(),
+    //                     ty2: LlvmType::I128,
+    //                 },
+    //                 Load {
+    //                     result: temps[2].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs2.into(),
+    //                 },
+    //                 Zext {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[2].clone(),
+    //                     ty2: LlvmType::I128,
+    //                 },
+    //             ];
+    //             (temps[1].clone(), temps[3].clone(), insts)
+    //         }
+    //         ("Mulhu", _) => {
+    //             let temps = self.get_temps(4);
+    //             let insts = vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Zext {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[0].clone(),
+    //                     ty2: LlvmType::I128,
+    //                 },
+    //                 Load {
+    //                     result: temps[2].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs2.into(),
+    //                 },
+    //                 Zext {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[2].clone(),
+    //                     ty2: LlvmType::I128,
+    //                 },
+    //             ];
+    //             (temps[1].clone(), temps[3].clone(), insts)
+    //         }
+    //         (_, true) => {
+    //             let temps = self.get_temps(4);
+    //             let insts = vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Trunc {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[0].clone(),
+    //                     ty2: LlvmType::I32,
+    //                 },
+    //                 Load {
+    //                     result: temps[2].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs2.into(),
+    //                 },
+    //                 Trunc {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[2].clone(),
+    //                     ty2: LlvmType::I32,
+    //                 },
+    //             ];
+    //             (temps[1].clone(), temps[3].clone(), insts)
+    //         }
+    //         (_, false) => {
+    //             let temps = self.get_temps(2);
+    //             let insts = vec![
+    //                 Load {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs1.into(),
+    //                 },
+    //                 Load {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::I64,
+    //                     pointer: rs2.into(),
+    //                 },
+    //             ];
+    //             (temps[0].clone(), temps[1].clone(), insts)
+    //         }
+    //     };
+
+    //     let temps = self.get_temps(1);
+    //     insts.push(match op {
+    //         "Add" => Add {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Sub" => Sub {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Sll" => Shl {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Slt" => Icmp {
+    //             result: temps[0].clone(),
+    //             cond: LlvmIntCondition::Slt,
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Sltu" => Icmp {
+    //             result: temps[0].clone(),
+    //             cond: LlvmIntCondition::Ult,
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Xor" => Xor {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Srl" => Lshr {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Sra" => Ashr {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Or" => Or {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "And" => And {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Addw" => Add {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Subw" => Sub {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Sllw" => Shl {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Srlw" => Lshr {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Sraw" => Ashr {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Mul" => Mul {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Mulh" | "Mulhsu" | "Mulhu" => Mul {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I128,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Div" => Sdiv {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Divu" => Udiv {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Rem" => Srem {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Remu" => Urem {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Mulw" => Mul {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Divw" => Sdiv {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Divuw" => Udiv {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Remw" => Srem {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2,
+    //         },
+    //         "Remuw" => Urem {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             op1,
+    //             op2,
+    //         },
+    //         _ => unreachable!(),
+    //     });
+
+    //     let value = temps[0].clone();
+    //     if let "Mulh" | "Mulhsu" | "Mulhu" = op {
+    //         let temps = self.get_temps(2);
+    //         insts.extend(vec![
+    //             Lshr {
+    //                 result: temps[0].clone(),
+    //                 ty: LlvmType::I128,
+    //                 op1: value,
+    //                 op2: 64_i64.into(),
+    //             },
+    //             Trunc {
+    //                 result: temps[1].clone(),
+    //                 ty: LlvmType::I128,
+    //                 value: temps[0].clone(),
+    //                 ty2: LlvmType::I64,
+    //             },
+    //             Store {
+    //                 ty: LlvmType::I64,
+    //                 value: temps[1].clone(),
+    //                 pointer: rd.into(),
+    //             },
+    //         ]);
+    //     } else if word {
+    //         let temps = self.get_temps(1);
+    //         insts.extend(vec![
+    //             Sext {
+    //                 result: temps[0].clone(),
+    //                 ty: LlvmType::I32,
+    //                 value,
+    //                 ty2: LlvmType::I64,
+    //             },
+    //             Store {
+    //                 ty: LlvmType::I64,
+    //                 value: temps[0].clone(),
+    //                 pointer: rd.into(),
+    //             },
+    //         ]);
+    //     } else {
+    //         insts.push(Store {
+    //             ty: LlvmType::I64,
+    //             value,
+    //             pointer: rd.into(),
+    //         });
+    //     }
+
+    //     insts
+    // }
+
+    // fn build_ternary(
+    //     &mut self,
+    //     rd: RiscvRegister,
+    //     rs1: RiscvRegister,
+    //     rs2: RiscvRegister,
+    //     rs3: RiscvRegister,
+    //     op: &str,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+
+    //     let temps = self.get_temps(3);
+    //     let mut insts = vec![
+    //         Load {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F64,
+    //             pointer: rs1.into(),
+    //         },
+    //         Load {
+    //             result: temps[1].clone(),
+    //             ty: LlvmType::F64,
+    //             pointer: rs2.into(),
+    //         },
+    //         Load {
+    //             result: temps[2].clone(),
+    //             ty: LlvmType::F64,
+    //             pointer: rs3.into(),
+    //         },
+    //     ];
+    //     let mut op1 = temps[0].clone();
+    //     let mut op2 = temps[1].clone();
+    //     let mut op3 = temps[2].clone();
+
+    //     if op.ends_with('S') {
+    //         let temps = self.get_temps(3);
+    //         insts.extend(vec![
+    //             Fptrunc {
+    //                 result: temps[0].clone(),
+    //                 ty: LlvmType::F64,
+    //                 value: op1,
+    //                 ty2: LlvmType::F32,
+    //             },
+    //             Fptrunc {
+    //                 result: temps[1].clone(),
+    //                 ty: LlvmType::F64,
+    //                 value: op2,
+    //                 ty2: LlvmType::F32,
+    //             },
+    //             Fptrunc {
+    //                 result: temps[2].clone(),
+    //                 ty: LlvmType::F64,
+    //                 value: op3,
+    //                 ty2: LlvmType::F32,
+    //             },
+    //         ]);
+    //         op1 = temps[0].clone();
+    //         op2 = temps[1].clone();
+    //         op3 = temps[2].clone();
+    //     }
+
+    //     let (mut value, ists) = match op {
+    //         "FmaddS" => {
+    //             let temps = self.get_temps(1);
+    //             let ists = vec![Fma {
+    //                 result: temps[0].clone(),
+    //                 ty: LlvmType::F32,
+    //                 a: op1,
+    //                 b: op2,
+    //                 c: op3,
+    //             }];
+    //             (temps[0].clone(), ists)
+    //         }
+    //         "FmsubS" => {
+    //             let temps = self.get_temps(2);
+    //             let ists = vec![
+    //                 Fmul {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 Fsub {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1: temps[0].clone(),
+    //                     op2: op3,
+    //                 },
+    //             ];
+    //             (temps[1].clone(), ists)
+    //         }
+    //         "FnmsubS" => {
+    //             let temps = self.get_temps(3);
+    //             let ists = vec![
+    //                 Fmul {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 Fneg {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1: temps[0].clone(),
+    //                 },
+    //                 Fadd {
+    //                     result: temps[2].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1: temps[1].clone(),
+    //                     op2: op3,
+    //                 },
+    //             ];
+    //             (temps[2].clone(), ists)
+    //         }
+    //         "FnmaddS" => {
+    //             let temps = self.get_temps(3);
+    //             let ists = vec![
+    //                 Fmul {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 Fneg {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1: temps[0].clone(),
+    //                 },
+    //                 Fsub {
+    //                     result: temps[2].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1: temps[1].clone(),
+    //                     op2: op3,
+    //                 },
+    //             ];
+    //             (temps[2].clone(), ists)
+    //         }
+    //         "FmaddD" => {
+    //             let temps = self.get_temps(1);
+    //             let ists = vec![Fma {
+    //                 result: temps[0].clone(),
+    //                 ty: LlvmType::F64,
+    //                 a: op1,
+    //                 b: op2,
+    //                 c: op3,
+    //             }];
+    //             (temps[0].clone(), ists)
+    //         }
+    //         "FmsubD" => {
+    //             let temps = self.get_temps(2);
+    //             let ists = vec![
+    //                 Fmul {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 Fsub {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1: temps[0].clone(),
+    //                     op2: op3,
+    //                 },
+    //             ];
+    //             (temps[1].clone(), ists)
+    //         }
+    //         "FnmsubD" => {
+    //             let temps = self.get_temps(3);
+    //             let ists = vec![
+    //                 Fmul {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 Fneg {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1: temps[0].clone(),
+    //                 },
+    //                 Fadd {
+    //                     result: temps[2].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1: temps[1].clone(),
+    //                     op2: op3,
+    //                 },
+    //             ];
+    //             (temps[2].clone(), ists)
+    //         }
+    //         "FnmaddD" => {
+    //             let temps = self.get_temps(3);
+    //             let ists = vec![
+    //                 Fmul {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 Fneg {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1: temps[0].clone(),
+    //                 },
+    //                 Fsub {
+    //                     result: temps[2].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1: temps[1].clone(),
+    //                     op2: op3,
+    //                 },
+    //             ];
+    //             (temps[2].clone(), ists)
+    //         }
+    //         _ => unreachable!(),
+    //     };
+    //     insts.extend(ists);
+
+    //     if op.ends_with('S') {
+    //         let temps = self.get_temps(1);
+    //         insts.push(Fpext {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F32,
+    //             value,
+    //             ty2: LlvmType::F64,
+    //         });
+    //         value = temps[0].clone();
+    //     }
+
+    //     insts.push(Store {
+    //         ty: LlvmType::F64,
+    //         value,
+    //         pointer: rd.into(),
+    //     });
+
+    //     insts
+    // }
+
+    // fn build_binary_fp(
+    //     &mut self,
+    //     rd: RiscvRegister,
+    //     rs1: RiscvRegister,
+    //     rs2: RiscvRegister,
+    //     op: &str,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+
+    //     let temps = self.get_temps(2);
+    //     let mut insts = vec![
+    //         Load {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F64,
+    //             pointer: rs1.into(),
+    //         },
+    //         Load {
+    //             result: temps[1].clone(),
+    //             ty: LlvmType::F64,
+    //             pointer: rs2.into(),
+    //         },
+    //     ];
+    //     let mut op1 = temps[0].clone();
+    //     let mut op2 = temps[1].clone();
+
+    //     if op.ends_with('S') {
+    //         let temps = self.get_temps(2);
+    //         insts.extend(vec![
+    //             Fptrunc {
+    //                 result: temps[0].clone(),
+    //                 ty: LlvmType::F64,
+    //                 value: op1,
+    //                 ty2: LlvmType::F32,
+    //             },
+    //             Fptrunc {
+    //                 result: temps[1].clone(),
+    //                 ty: LlvmType::F64,
+    //                 value: op2,
+    //                 ty2: LlvmType::F32,
+    //             },
+    //         ]);
+    //         op1 = temps[0].clone();
+    //         op2 = temps[1].clone();
+    //     }
+
+    //     let mut value = match op {
+    //         "FsgnjnS" => {
+    //             let temps = self.get_temps(2);
+    //             insts.extend(vec![
+    //                 Fneg {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1: op2,
+    //                 },
+    //                 Copysign {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::F32,
+    //                     mag: op1,
+    //                     sign: temps[0].clone(),
+    //                 },
+    //             ]);
+    //             temps[1].clone()
+    //         }
+    //         "FsgnjxS" => {
+    //             let temps = self.get_temps(5);
+    //             insts.extend(vec![
+    //                 Bitcast {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     value: op1.clone(),
+    //                     ty2: LlvmType::I32,
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::F32,
+    //                     value: op2,
+    //                     ty2: LlvmType::I32,
+    //                 },
+    //                 Xor {
+    //                     result: temps[2].clone(),
+    //                     ty: LlvmType::I32,
+    //                     op1: temps[0].clone(),
+    //                     op2: temps[1].clone(),
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I32,
+    //                     value: temps[2].clone(),
+    //                     ty2: LlvmType::F32,
+    //                 },
+    //                 Copysign {
+    //                     result: temps[4].clone(),
+    //                     ty: LlvmType::F32,
+    //                     mag: op1,
+    //                     sign: temps[3].clone(),
+    //                 },
+    //             ]);
+    //             temps[4].clone()
+    //         }
+    //         "FsgnjnD" => {
+    //             let temps = self.get_temps(2);
+    //             insts.extend(vec![
+    //                 Fneg {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1: op2,
+    //                 },
+    //                 Copysign {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::F64,
+    //                     mag: op1,
+    //                     sign: temps[0].clone(),
+    //                 },
+    //             ]);
+    //             temps[1].clone()
+    //         }
+    //         "FsgnjxD" => {
+    //             let temps = self.get_temps(5);
+    //             insts.extend(vec![
+    //                 Bitcast {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     value: op1.clone(),
+    //                     ty2: LlvmType::I64,
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[1].clone(),
+    //                     ty: LlvmType::F64,
+    //                     value: op2,
+    //                     ty2: LlvmType::I64,
+    //                 },
+    //                 Xor {
+    //                     result: temps[2].clone(),
+    //                     ty: LlvmType::I64,
+    //                     op1: temps[0].clone(),
+    //                     op2: temps[1].clone(),
+    //                 },
+    //                 Bitcast {
+    //                     result: temps[3].clone(),
+    //                     ty: LlvmType::I64,
+    //                     value: temps[2].clone(),
+    //                     ty2: LlvmType::F64,
+    //                 },
+    //                 Copysign {
+    //                     result: temps[4].clone(),
+    //                     ty: LlvmType::F64,
+    //                     mag: op1,
+    //                     sign: temps[3].clone(),
+    //                 },
+    //             ]);
+    //             temps[4].clone()
+    //         }
+    //         _ => {
+    //             let temps = self.get_temps(1);
+    //             insts.push(match op {
+    //                 "FaddS" => Fadd {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FsubS" => Fsub {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FmulS" => Fmul {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FdivS" => Fdiv {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FsgnjS" => Copysign {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     mag: op1,
+    //                     sign: op2,
+    //                 },
+    //                 "FminS" => Minimum {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FmaxS" => Maximum {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F32,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FaddD" => Fadd {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FsubD" => Fsub {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FmulD" => Fmul {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FdivD" => Fdiv {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FsgnjD" => Copysign {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     mag: op1,
+    //                     sign: op2,
+    //                 },
+    //                 "FminD" => Minimum {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 "FmaxD" => Maximum {
+    //                     result: temps[0].clone(),
+    //                     ty: LlvmType::F64,
+    //                     op1,
+    //                     op2,
+    //                 },
+    //                 _ => unreachable!(),
+    //             });
+    //             temps[0].clone()
+    //         }
+    //     };
+
+    //     if op.ends_with('S') {
+    //         let temps = self.get_temps(1);
+    //         insts.push(Fpext {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F32,
+    //             value,
+    //             ty2: LlvmType::F64,
+    //         });
+    //         value = temps[0].clone();
+    //     }
+
+    //     insts.push(Store {
+    //         ty: LlvmType::F64,
+    //         value,
+    //         pointer: rd.into(),
+    //     });
+
+    //     insts
+    // }
+
+    // fn build_fptoi(
+    //     &mut self,
+    //     rd: RiscvRegister,
+    //     rs1: RiscvRegister,
+    //     fp: &str,
+    //     int: &str,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+
+    //     let temps = self.get_temps(1);
+    //     let mut insts = vec![Load {
+    //         result: temps[0].clone(),
+    //         ty: LlvmType::F64,
+    //         pointer: rs1.into(),
+    //     }];
+    //     let mut op1 = temps[0].clone();
+
+    //     if fp == "S" {
+    //         let temps = self.get_temps(1);
+    //         insts.push(Fptrunc {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F64,
+    //             value: op1,
+    //             ty2: LlvmType::F32,
+    //         });
+    //         op1 = temps[0].clone();
+    //     }
+
+    //     let temps = self.get_temps(1);
+    //     insts.push(match (fp, int) {
+    //         ("S", "W") => Fptosi {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F32,
+    //             value: op1,
+    //             ty2: LlvmType::I32,
+    //         },
+    //         ("S", "Wu") => Fptoui {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F32,
+    //             value: op1,
+    //             ty2: LlvmType::I32,
+    //         },
+    //         ("S", "L") => Fptosi {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F32,
+    //             value: op1,
+    //             ty2: LlvmType::I64,
+    //         },
+    //         ("S", "Lu") => Fptoui {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F32,
+    //             value: op1,
+    //             ty2: LlvmType::I64,
+    //         },
+    //         ("D", "W") => Fptosi {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F64,
+    //             value: op1,
+    //             ty2: LlvmType::I32,
+    //         },
+    //         ("D", "Wu") => Fptoui {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F64,
+    //             value: op1,
+    //             ty2: LlvmType::I32,
+    //         },
+    //         ("D", "L") => Fptosi {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F64,
+    //             value: op1,
+    //             ty2: LlvmType::I64,
+    //         },
+    //         ("D", "Lu") => Fptoui {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F64,
+    //             value: op1,
+    //             ty2: LlvmType::I64,
+    //         },
+    //         _ => unreachable!(),
+    //     });
+    //     let mut value = temps[0].clone();
+
+    //     if int == "W" {
+    //         let temps = self.get_temps(1);
+    //         insts.push(Sext {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             value,
+    //             ty2: LlvmType::I64,
+    //         });
+    //         value = temps[0].clone();
+    //     } else if int == "Wu" {
+    //         let temps = self.get_temps(1);
+    //         insts.push(Zext {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             value,
+    //             ty2: LlvmType::I64,
+    //         });
+    //         value = temps[0].clone();
+    //     }
+
+    //     insts.push(Store {
+    //         ty: LlvmType::I64,
+    //         value,
+    //         pointer: rd.into(),
+    //     });
+
+    //     insts
+    // }
+
+    // fn build_fcmp(
+    //     &mut self,
+    //     rd: RiscvRegister,
+    //     rs1: RiscvRegister,
+    //     rs2: RiscvRegister,
+    //     op: &str,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+
+    //     let temps = self.get_temps(2);
+    //     let mut insts = vec![
+    //         Load {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F64,
+    //             pointer: rs1.into(),
+    //         },
+    //         Load {
+    //             result: temps[1].clone(),
+    //             ty: LlvmType::F64,
+    //             pointer: rs2.into(),
+    //         },
+    //     ];
+    //     let mut op1 = temps[0].clone();
+    //     let mut op2 = temps[1].clone();
+
+    //     if op.ends_with('S') {
+    //         let temps = self.get_temps(2);
+    //         insts.extend(vec![
+    //             Fptrunc {
+    //                 result: temps[0].clone(),
+    //                 ty: LlvmType::F64,
+    //                 value: op1,
+    //                 ty2: LlvmType::F32,
+    //             },
+    //             Fptrunc {
+    //                 result: temps[1].clone(),
+    //                 ty: LlvmType::F64,
+    //                 value: op2,
+    //                 ty2: LlvmType::F32,
+    //             },
+    //         ]);
+    //         op1 = temps[0].clone();
+    //         op2 = temps[1].clone();
+    //     }
+
+    //     let temps = self.get_temps(2);
+    //     insts.extend(vec![
+    //         Fcmp {
+    //             result: temps[0].clone(),
+    //             cond: match &op[0..3] {
+    //                 "Feq" => LlvmFpCondition::Oeq,
+    //                 "Flt" => LlvmFpCondition::Olt,
+    //                 "Fle" => LlvmFpCondition::Ole,
+    //                 _ => unreachable!(),
+    //             },
+    //             ty: if op.ends_with('S') {
+    //                 LlvmType::F32
+    //             } else {
+    //                 LlvmType::F64
+    //             },
+    //             op1,
+    //             op2,
+    //         },
+    //         Sext {
+    //             result: temps[1].clone(),
+    //             ty: LlvmType::I1,
+    //             value: temps[0].clone(),
+    //             ty2: LlvmType::I64,
+    //         },
+    //         Store {
+    //             ty: LlvmType::I64,
+    //             value: temps[1].clone(),
+    //             pointer: rd.into(),
+    //         },
+    //     ]);
+
+    //     insts
+    // }
+
+    // fn build_itofp(
+    //     &mut self,
+    //     rd: RiscvRegister,
+    //     rs1: RiscvRegister,
+    //     int: &str,
+    //     fp: &str,
+    // ) -> Vec<LlvmInstruction> {
+    //     use LlvmInstruction::*;
+
+    //     let temps = self.get_temps(1);
+    //     let mut insts = vec![Load {
+    //         result: temps[0].clone(),
+    //         ty: LlvmType::I64,
+    //         pointer: rs1.into(),
+    //     }];
+    //     let mut op1 = temps[0].clone();
+
+    //     if let "W" | "Wu" = int {
+    //         let temps = self.get_temps(1);
+    //         insts.push(Trunc {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             value: op1,
+    //             ty2: LlvmType::I32,
+    //         });
+    //         op1 = temps[0].clone();
+    //     }
+
+    //     let temps = self.get_temps(1);
+    //     insts.push(match (int, fp) {
+    //         ("W", "S") => Sitofp {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             value: op1,
+    //             ty2: LlvmType::F32,
+    //         },
+    //         ("Wu", "S") => Uitofp {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             value: op1,
+    //             ty2: LlvmType::F32,
+    //         },
+    //         ("L", "S") => Sitofp {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             value: op1,
+    //             ty2: LlvmType::F32,
+    //         },
+    //         ("Lu", "S") => Uitofp {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             value: op1,
+    //             ty2: LlvmType::F32,
+    //         },
+    //         ("W", "D") => Sitofp {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             value: op1,
+    //             ty2: LlvmType::F64,
+    //         },
+    //         ("Wu", "D") => Uitofp {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I32,
+    //             value: op1,
+    //             ty2: LlvmType::F64,
+    //         },
+    //         ("L", "D") => Sitofp {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             value: op1,
+    //             ty2: LlvmType::F64,
+    //         },
+    //         ("Lu", "D") => Uitofp {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::I64,
+    //             value: op1,
+    //             ty2: LlvmType::F64,
+    //         },
+    //         _ => unreachable!(),
+    //     });
+    //     let mut value = temps[0].clone();
+
+    //     if fp == "S" {
+    //         let temps = self.get_temps(1);
+    //         insts.push(Fpext {
+    //             result: temps[0].clone(),
+    //             ty: LlvmType::F32,
+    //             value,
+    //             ty2: LlvmType::F64,
+    //         });
+    //         value = temps[0].clone();
+    //     }
+
+    //     insts.push(Store {
+    //         ty: LlvmType::F64,
+    //         value,
+    //         pointer: rd.into(),
+    //     });
+
+    //     insts
+    // }
 }
 
 // // 162 tests

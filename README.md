@@ -264,7 +264,7 @@ Counter
 
 
 - Do not assume executable file.
-- Extract `.text`, `.data`, `.bss`, `.sdata`, and `.sbss`.
+- Extract `.text`, `.rodata`, `.data`, `.bss`, `.sdata`, and `.sbss`.
 
 - add arbitrary memory access support for ld/sd: Keep all static sections as static byte array in LLVM.
 - add support for RV32/64A

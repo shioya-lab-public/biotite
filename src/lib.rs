@@ -1,15 +1,15 @@
 #[macro_use]
 extern crate lazy_static;
 
-mod llvm_translator;
-mod riscv_parser;
-mod riscv_isa;
-mod riscv_macro;
 mod llvm_isa;
 mod llvm_macro;
+mod llvm_translator;
+mod riscv_isa;
+mod riscv_macro;
+mod riscv_parser;
 
-use riscv_parser::RiscvParser;
 use llvm_translator::LlvmTranslator;
+use riscv_parser::RiscvParser;
 
 pub fn run(rv_source: &str) -> String {
     let rv_program = RiscvParser::new(rv_source).run();
