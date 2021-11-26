@@ -258,10 +258,7 @@ Counter
 - RDCYCLE: The execution environment should provide a means to determine the current rate (cycles/second) at which the cycle counter is incrementing.
 - RDTIME: The execution environment should provide a means of determining the period of the real-time counter (seconds/tick). The environment should provide a means to determine the accuracy of the clock.
 
-
-
 ### Todo
-
 
 - Do not assume executable file.
 - Extract `.text`, `.rodata`, `.data`, `.bss`, `.sdata`, and `.sbss`.
@@ -288,14 +285,12 @@ Counter
 ``` Bash
 clang -emit-llvm examples/test.c -S -o examples/reference.ll
 
-riscv64-unknown-linux-gnu-gcc examples/test.c -o examples/test
-riscv64-unknown-linux-gnu-objdump -d -j.text -j.rodata -j.sdata -j.sbss examples/test > examples/test.dump
+riscv64-unknown-linux-gnu-gcc -static test.c -o test
+riscv64-unknown-linux-gnu-objdump -D -j.text -j.rodata -j.data -j.bss -j.sdata -j.sbss -wz test > test.dump
 
 cargo run -- examples/test.dump -o examples/test.ll
 lli examples/test.ll
 echo $?
-
-riscv64-unknown-linux-gnu-gcc -pthread examples/test.c -o examples/test && riscv64-unknown-linux-gnu-objdump -d -j.text -j.rodata -j.sdata -j.sbss examples/test > examples/test.dump
 ```
 
 ### STRAIGHT Commands

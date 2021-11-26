@@ -1,28 +1,32 @@
-use crate::{addr, define_instruction, imm, ord, rd, rs1, rs2, rs3};
-use regex::{Regex, RegexSet};
-
 use std::collections::HashMap;
 
-pub type Cfg = Vec<RiscvFunction>;
+#[derive(Debug, PartialEq)]
+pub struct Program {
+    pub functions: Vec<Function>,
+    pub data: HashMap<Address, u8>,
+}
 
-pub type RiscvProgram = Vec<RiscvFunction>;
+pub type Target = usize;
 
 #[derive(Debug, PartialEq)]
-pub struct RiscvFunction {
+pub struct Function {
     pub name: String,
     pub basic_blocks: Vec<BasicBlock>,
-    pub indirect_targets: HashMap<RiscvAddress, usize>,
+    pub indirect_targets: HashMap<Address, Target>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct BasicBlock {
-    pub instructions: Vec<RiscvInstruction>,
-    pub continue_target: Option<usize>,
-    pub jump_target: Option<usize>,
+    pub instructions: Vec<Instruction>,
+    pub continue_target: Option<Target>,
+    pub jump_target: Option<Target>,
 }
 
+use crate::{addr, define_instruction, imm, ord, rd, rs1, rs2, rs3};
+use regex::{Regex, RegexSet};
+
 #[derive(Debug, PartialEq, Clone)]
-pub enum RiscvRegister {
+pub enum Register {
     // Integer
     Zero,
     Ra,
@@ -92,9 +96,9 @@ pub enum RiscvRegister {
     Ft11,
 }
 
-impl RiscvRegister {
+impl Register {
     fn new(s: &str) -> Self {
-        use RiscvRegister::*;
+        use Register::*;
 
         match s {
             "zero" => Zero,
@@ -169,50 +173,50 @@ impl RiscvRegister {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct RiscvImmediate(pub i64);
+pub struct Immediate(pub i64);
 
-impl RiscvImmediate {
+impl Immediate {
     pub fn new(s: &str) -> Self {
         let imm = match s.strip_prefix("0x") {
             Some(s) => i64::from_str_radix(s, 16).unwrap(),
             None => s.parse().unwrap(),
         };
-        RiscvImmediate(imm)
+        Immediate(imm)
     }
 }
 
-impl From<i64> for RiscvImmediate {
+impl From<i64> for Immediate {
     fn from(imm: i64) -> Self {
-        RiscvImmediate::new(&imm.to_string())
+        Immediate::new(&imm.to_string())
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct RiscvAddress(pub usize);
+pub struct Address(pub usize);
 
-impl RiscvAddress {
+impl Address {
     pub fn new(s: &str) -> Self {
-        RiscvAddress(usize::from_str_radix(s, 16).unwrap())
+        Address(usize::from_str_radix(s, 16).unwrap())
     }
 }
 
-impl From<usize> for RiscvAddress {
+impl From<usize> for Address {
     fn from(imm: usize) -> Self {
-        RiscvAddress(imm)
+        Address(imm)
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum RiscvOrdering {
+pub enum Ordering {
     Empty,
     Aq,
     Rl,
     Aqrl,
 }
 
-impl RiscvOrdering {
+impl Ordering {
     pub fn new(s: &str) -> Self {
-        use RiscvOrdering::*;
+        use Ordering::*;
 
         match s {
             s if s.trim().is_empty() => Empty,
@@ -425,7 +429,7 @@ define_instruction! {
 //     // `jal addr` is always disassembled to be `jal ra,addr`.
 //     Jr("jr", "{}", rs1),
 //     // `jalr rs1` is handled in `RiscvInstruction::new_irregular()`.
-//     Ret("ret", ""),
+    Ret("ret"),
 //     // Currently GCC emits errors like `relocation truncated to fit: R_RISCV_JAL against `.L22'`
 //     // when I try to use a far function call to test `call` and `tail` instructions. I will add
 //     // these two instructions if later I spot them in real code.

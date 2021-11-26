@@ -2,20 +2,23 @@ use crate::llvm_isa::{
     LlvmFpCondition, LlvmFunction, LlvmInstruction, LlvmIntCondition, LlvmOrdering, LlvmType,
     LlvmValue, Program,
 };
-use crate::riscv_isa::{BasicBlock, Cfg, RiscvFunction, RiscvProgram};
-use crate::riscv_isa::{RiscvAddress, RiscvImmediate, RiscvInstruction, RiscvRegister};
+use crate::riscv_isa::{
+    Address as RiscvAddress, Immediate as RiscvImmediate, Instruction as RiscvInstruction,
+    Register as RiscvRegister,
+};
+use crate::riscv_isa::{BasicBlock, Function as RiscvFunction, Program as RiscvProgram};
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::mem;
 
-pub struct LlvmTranslator {
-    cfg: Cfg,
+pub struct Translator {
+    // cfg: Cfg,
     statics: HashMap<String, (String, LlvmType)>,
     temp: usize,
 }
 
-impl LlvmTranslator {
+impl Translator {
     // pub fn new(cfg: Cfg, statics: HashMap<String, (String, LlvmType)>) -> Self {
     //     LlvmTranslator {
     //         cfg,

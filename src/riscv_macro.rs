@@ -1,10 +1,20 @@
 #[macro_export]
+macro_rules! addr {
+    ("uppercase") => {
+        ADDR
+    };
+    ("type") => {
+        Address
+    };
+}
+
+#[macro_export]
 macro_rules! ord {
     ("uppercase") => {
         ORD
     };
     ("type") => {
-        RiscvOrdering
+        Ordering
     };
 }
 
@@ -14,7 +24,7 @@ macro_rules! rd {
         RD
     };
     ("type") => {
-        RiscvRegister
+        Register
     };
 }
 
@@ -24,7 +34,7 @@ macro_rules! rs1 {
         RS1
     };
     ("type") => {
-        RiscvRegister
+        Register
     };
 }
 
@@ -34,7 +44,7 @@ macro_rules! rs2 {
         RS2
     };
     ("type") => {
-        RiscvRegister
+        Register
     };
 }
 
@@ -44,7 +54,7 @@ macro_rules! rs3 {
         RS3
     };
     ("type") => {
-        RiscvRegister
+        Register
     };
 }
 
@@ -54,17 +64,7 @@ macro_rules! imm {
         IMM
     };
     ("type") => {
-        RiscvImmediate
-    };
-}
-
-#[macro_export]
-macro_rules! addr {
-    ("uppercase") => {
-        ADDR
-    };
-    ("type") => {
-        RiscvAddress
+        Immediate
     };
 }
 
@@ -105,12 +105,12 @@ macro_rules! define_instruction {
             ]).unwrap();
         }
 
-        #[derive(Debug, PartialEq, Clone)]
-        pub enum RiscvInstruction {
+        #[derive(Debug, PartialEq)]
+        pub enum Instruction {
             $(
                 $inst {
                     label: Option<String>,
-                    address: RiscvAddress,
+                    address: Address,
                     $(
                         $field: $field!("type"),
                     )*
@@ -119,9 +119,9 @@ macro_rules! define_instruction {
             )*
         }
 
-        impl RiscvInstruction {
-            pub fn new(line: &str, label: Option<String>) -> RiscvInstruction {
-                use RiscvInstruction::*;
+        impl Instruction {
+            pub fn new(line: &str, label: Option<String>) -> Instruction {
+                use Instruction::*;
 
                 let matches: Vec<_> = REGEX_SET.matches(line).into_iter().collect();
                 if matches.is_empty() {
@@ -129,12 +129,13 @@ macro_rules! define_instruction {
                 }
                 let (inst, regex) = &REGEXES[matches[0]];
                 let caps = regex.captures(line).unwrap();
+
                 match *inst {
                     $(
                         stringify!($inst) => {
                             $inst {
                                 label,
-                                address: RiscvAddress::new(&caps["addr"]),
+                                address: Address::new(&caps["addr"]),
                                 $(
                                     $field: <$field!("type")>::new(&caps[stringify!($field)]),
                                 )*
@@ -147,7 +148,7 @@ macro_rules! define_instruction {
             }
 
             pub fn label(&self) -> &Option<String> {
-                use RiscvInstruction::*;
+                use Instruction::*;
 
                 match self {
                     $(
@@ -156,8 +157,8 @@ macro_rules! define_instruction {
                 }
             }
 
-            pub fn address(&self) -> &RiscvAddress {
-                use RiscvInstruction::*;
+            pub fn address(&self) -> &Address {
+                use Instruction::*;
 
                 match self {
                     $(
@@ -175,16 +176,42 @@ macro_rules! build_test {
         $(
             #[test]
             fn $func() {
-                let inst = RiscvInstruction::new(concat!("a1:	a1                	", $source), None);
-                let expected = $inst {
-                    address: 0xa1.into(),
-                    label: None,
-                    $(
-                        $field: $value,
-                    )*
-                    comment: None,
-                };
-                assert_eq!(inst, expected);
+                let source = concat!("
+                    main:
+                        ", $source, "
+                        ret
+                ");
+                let source = compile_and_dump(source);
+                let program = Parser::new(&source).run();
+                assert_eq!(
+                    program,
+                    Program {
+                        functions: vec![Function {
+                            name: String::from("main"),
+                            basic_blocks: vec![BasicBlock {
+                                instructions: vec![
+                                    Instruction::$inst {
+                                        label: Some(String::from("main")),
+                                        address: Address(0x0),
+                                        $(
+                                            $field: $value,
+                                        )*
+                                        comment: None,
+                                    },
+                                    Instruction::Ret {
+                                        label: None,
+                                        address: Address(0x4),
+                                        comment: None,
+                                    }
+                                ],
+                                continue_target: None,
+                                jump_target: None,
+                            }],
+                            indirect_targets: HashMap::new(),
+                        }],
+                        data: HashMap::new(),
+                    }
+                );
             }
         )*
     };

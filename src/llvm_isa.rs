@@ -1,4 +1,4 @@
-use crate::riscv_isa::{RiscvImmediate, RiscvRegister};
+use crate::riscv_isa::{Immediate as RiscvImmediate, Register as RiscvRegister};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
