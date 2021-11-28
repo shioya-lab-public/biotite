@@ -1,12 +1,13 @@
+use crate::{define_instruction, imm, ord, rd, rs1, rs2, rs3};
+use regex::{Regex, RegexSet};
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
+    pub abi: Abi,
     pub functions: Vec<Function>,
     pub data: HashMap<Address, u8>,
 }
-
-pub type Target = usize;
 
 #[derive(Debug, PartialEq)]
 pub struct Function {
@@ -22,12 +23,20 @@ pub struct BasicBlock {
     pub jump_target: Option<Target>,
 }
 
-use crate::{addr, define_instruction, imm, ord, rd, rs1, rs2, rs3};
-use regex::{Regex, RegexSet};
+#[derive(Debug, PartialEq)]
+pub enum Abi {
+    Ilp32,
+    Ilp32f,
+    Ilp32d,
+    Lp64,
+    Lp64f,
+    Lp64d,
+}
 
-#[derive(Debug, PartialEq, Clone)]
+pub type Target = usize;
+
+#[derive(Debug, PartialEq)]
 pub enum Register {
-    // Integer
     Zero,
     Ra,
     Sp,
@@ -60,8 +69,10 @@ pub enum Register {
     T4,
     T5,
     T6,
+}
 
-    // Floating-Point
+#[derive(Debug, PartialEq)]
+pub enum FPRegister {
     Ft0,
     Ft1,
     Ft2,
@@ -134,6 +145,16 @@ impl Register {
             "t5" => T5,
             "t6" => T6,
 
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl FPRegister {
+    fn new(s: &str) -> Self {
+        use FPRegister::*;
+
+        match s {
             "ft0" => Ft0,
             "ft1" => Ft1,
             "ft2" => Ft2,
@@ -172,26 +193,19 @@ impl Register {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct Immediate(pub i64);
 
 impl Immediate {
     pub fn new(s: &str) -> Self {
-        let imm = match s.strip_prefix("0x") {
+        Immediate(match s.strip_prefix("0x") {
             Some(s) => i64::from_str_radix(s, 16).unwrap(),
             None => s.parse().unwrap(),
-        };
-        Immediate(imm)
+        })
     }
 }
 
-impl From<i64> for Immediate {
-    fn from(imm: i64) -> Self {
-        Immediate::new(&imm.to_string())
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Address(pub usize);
 
 impl Address {
@@ -200,18 +214,12 @@ impl Address {
     }
 }
 
-impl From<usize> for Address {
-    fn from(imm: usize) -> Self {
-        Address(imm)
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub enum Ordering {
-    Empty,
+    None,
     Aq,
     Rl,
-    Aqrl,
+    AqRl,
 }
 
 impl Ordering {
@@ -219,10 +227,10 @@ impl Ordering {
         use Ordering::*;
 
         match s {
-            s if s.trim().is_empty() => Empty,
-            ".aq" => Aq,
-            ".rl" => Rl,
-            ".aqrl" => Aqrl,
+            _ if s.is_empty() => None,
+            "aq" => Aq,
+            "rl" => Rl,
+            "aqrl" => AqRl,
             s => panic!("Unknown ordering: {}", s),
         }
     }

@@ -182,10 +182,11 @@ macro_rules! build_test {
                         ret
                 ");
                 let source = compile_and_dump(source);
-                let program = Parser::new(&source).run();
+                let program = Parser::new(&source, &None).run();
                 assert_eq!(
                     program,
                     Program {
+                        abi: Abi::Lp64d,
                         functions: vec![Function {
                             name: String::from("main"),
                             basic_blocks: vec![BasicBlock {

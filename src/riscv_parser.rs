@@ -1,5 +1,5 @@
 use crate::llvm_isa::LlvmType;
-use crate::riscv_isa::{Address, BasicBlock, Function, Immediate, Instruction, Program, Register};
+use crate::riscv_isa::{Address, BasicBlock, Function, Immediate, Instruction, Program, Register, Abi};
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -12,12 +12,13 @@ use std::collections::HashMap;
 pub struct Parser {}
 
 impl Parser {
-    pub fn new(rv_source: &str) -> Self {
+    pub fn new(rv_source: &str, mabi: &Option<String>) -> Self {
         Parser {}
     }
 
     pub fn run(&self) -> Program {
         Program {
+            abi: Abi::Lp64d,
             functions: vec![Function {
                 name: String::from("main"),
                 basic_blocks: vec![BasicBlock {
@@ -158,7 +159,7 @@ mod tests {
     use super::Parser;
     use crate::build_test;
     use crate::riscv_isa::{
-        Address, BasicBlock, Function, Immediate, Instruction, Program, Register,
+        Address, BasicBlock, Function, Immediate, Instruction, Program, Register, Abi,
     };
     use std::collections::HashMap;
     use std::env;
