@@ -1,4 +1,6 @@
-use crate::{define_instruction, imm, ord, rd, rs1, rs2, rs3};
+use crate::{
+    addr, bits, csr, define_instruction, frd, frs1, frs2, frs3, imm, ord, rd, rm, rs1, rs2,
+};
 use regex::{Regex, RegexSet};
 use std::collections::HashMap;
 
@@ -215,6 +217,38 @@ impl Address {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum Csr {
+    Fflags,
+    Frm,
+    Fcsr,
+    Cycle,
+    Time,
+    Instret,
+    Cycleh,
+    Timeh,
+    Instreth,
+}
+
+impl Csr {
+    pub fn new(s: &str) -> Self {
+        use Csr::*;
+
+        match s {
+            "fflags" => Fflags,
+            "frm" => Frm,
+            "fcsr" => Fcsr,
+            "cycle" => Cycle,
+            "time" => Time,
+            "instret" => Instret,
+            "cycleh" => Cycleh,
+            "timeh" => Timeh,
+            "instreth" => Instreth,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Ordering {
     None,
     Aq,
@@ -227,218 +261,303 @@ impl Ordering {
         use Ordering::*;
 
         match s {
-            _ if s.is_empty() => None,
+            "" => None,
             "aq" => Aq,
             "rl" => Rl,
             "aqrl" => AqRl,
-            s => panic!("Unknown ordering: {}", s),
+            _ => unreachable!(),
         }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Rounding {
+    Rne,
+    Rtz,
+    Rdn,
+    Rup,
+    Rmm,
+    Dyn,
+}
+
+impl Rounding {
+    pub fn new(s: &str) -> Self {
+        use Rounding::*;
+
+        match s {
+            "rne" => Rne,
+            "rtz" => Rtz,
+            "rdn" => Rdn,
+            "rup" => Rup,
+            "rmm" => Rmm,
+            "" => Dyn,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Bits(pub String);
+
+impl Bits {
+    pub fn new(s: &str) -> Self {
+        Bits(s.to_string())
     }
 }
 
 define_instruction! {
     // RV32I
     Lui(r"lui\s+{},{}", rd, imm),
-//     Auipc("auipc", "{},{}", rd, imm),
-//     Jal("jal", "{},{}", rd, addr),
-//     Jalr("jalr", "{},{}\\({}\\)", rd, imm, rs1),
-//     Beq("beq", "{},{},{}", rs1, rs2, addr),
-//     Bne("bne", "{},{},{}", rs1, rs2, addr),
-//     Blt("blt", "{},{},{}", rs1, rs2, addr),
-//     Bge("bge", "{},{},{}", rs1, rs2, addr),
-//     Bltu("bltu", "{},{},{}", rs1, rs2, addr),
-//     Bgeu("bgeu", "{},{},{}", rs1, rs2, addr),
-//     Lb("lb", "{},{}\\({}\\)", rd, imm, rs1),
-//     Lh("lh", "{},{}\\({}\\)", rd, imm, rs1),
-//     Lw("lw", "{},{}\\({}\\)", rd, imm, rs1),
-//     Lbu("lbu", "{},{}\\({}\\)", rd, imm, rs1),
-//     Lhu("lhu", "{},{}\\({}\\)", rd, imm, rs1),
-//     Sb("sb", "{},{}\\({}\\)", rs2, imm, rs1),
-//     Sh("sh", "{},{}\\({}\\)", rs2, imm, rs1),
-//     Sw("sw", "{},{}\\({}\\)", rs2, imm, rs1),
-//     Addi("addi", "{},{},{}", rd, rs1, imm),
-//     Slti("slti", "{},{},{}", rd, rs1, imm),
-//     Sltiu("sltiu", "{},{},{}", rd, rs1, imm),
-//     Xori("xori", "{},{},{}", rd, rs1, imm),
-//     Ori("ori", "{},{},{}", rd, rs1, imm),
-//     Andi("andi", "{},{},{}", rd, rs1, imm),
-//     Slli("slli", "{},{},{}", rd, rs1, imm),
-//     Srli("srli", "{},{},{}", rd, rs1, imm),
-//     Srai("srai", "{},{},{}", rd, rs1, imm),
-//     Add("add", "{},{},{}", rd, rs1, rs2),
-//     Sub("sub", "{},{},{}", rd, rs1, rs2),
-//     Sll("sll", "{},{},{}", rd, rs1, rs2),
-//     Slt("slt", "{},{},{}", rd, rs1, rs2),
-//     Sltu("sltu", "{},{},{}", rd, rs1, rs2),
-//     Xor("xor", "{},{},{}", rd, rs1, rs2),
-//     Srl("srl", "{},{},{}", rd, rs1, rs2),
-//     Sra("sra", "{},{},{}", rd, rs1, rs2),
-//     Or("or", "{},{},{}", rd, rs1, rs2),
-//     And("and", "{},{},{}", rd, rs1, rs2),
-//     Fence("fence(\\.tso)?", "\\S*"), // LLVM only supports `fence` in its most basic form.
-//     Ecall("ecall", ""),
-//     Ebreak("ebreak", ""),
+    Auipc(r"auipc\s+{},{}", rd, imm),
+    Jal(r"jal\s+{},{}", rd, addr),
+    Jalr(r"jalr\s+{},{}\({}\)", rd, imm, rs1),
+    Beq(r"beq\s+{},{},{}", rs1, rs2, addr),
+    Bne(r"bne\s+{},{},{}", rs1, rs2, addr),
+    Blt(r"blt\s+{},{},{}", rs1, rs2, addr),
+    Bge(r"bge\s+{},{},{}", rs1, rs2, addr),
+    Bltu(r"bltu\s+{},{},{}", rs1, rs2, addr),
+    Bgeu(r"bgeu\s+{},{},{}", rs1, rs2, addr),
+    Lb(r"lb\s+{},{}\({}\)", rd, imm, rs1),
+    Lh(r"lh\s+{},{}\({}\)", rd, imm, rs1),
+    Lw(r"lw\s+{},{}\({}\)", rd, imm, rs1),
+    Lbu(r"lbu\s+{},{}\({}\)", rd, imm, rs1),
+    Lhu(r"lhu\s+{},{}\({}\)", rd, imm, rs1),
+    Sb(r"sb\s+{},{}\({}\)", rs2, imm, rs1),
+    Sh(r"sh\s+{},{}\({}\)", rs2, imm, rs1),
+    Sw(r"sw\s+{},{}\({}\)", rs2, imm, rs1),
+    Addi(r"addi\s+{},{},{}", rd, rs1, imm),
+    Slti(r"slti\s+{},{},{}", rd, rs1, imm),
+    Sltiu(r"sltiu\s+{},{},{}", rd, rs1, imm),
+    Xori(r"xori\s+{},{},{}", rd, rs1, imm),
+    Ori(r"ori\s+{},{},{}", rd, rs1, imm),
+    Andi(r"andi\s+{},{},{}", rd, rs1, imm),
+    Slli(r"slli\s+{},{},{}", rd, rs1, imm),
+    Srli(r"srli\s+{},{},{}", rd, rs1, imm),
+    Srai(r"srai\s+{},{},{}", rd, rs1, imm),
+    Add(r"add\s+{},{},{}", rd, rs1, rs2),
+    Sub(r"sub\s+{},{},{}", rd, rs1, rs2),
+    Sll(r"sll\s+{},{},{}", rd, rs1, rs2),
+    Slt(r"slt\s+{},{},{}", rd, rs1, rs2),
+    Sltu(r"sltu\s+{},{},{}", rd, rs1, rs2),
+    Xor(r"xor\s+{},{},{}", rd, rs1, rs2),
+    Srl(r"srl\s+{},{},{}", rd, rs1, rs2),
+    Sra(r"sra\s+{},{},{}", rd, rs1, rs2),
+    Or(r"or\s+{},{},{}", rd, rs1, rs2),
+    And(r"and\s+{},{},{}", rd, rs1, rs2),
+    Fence(r"fence{}", bits),
+    Ecall(r"ecall"),
+    Ebreak(r"ebreak"),
 
-//     // RV64I
-//     Lwu("lwu", "{},{}\\({}\\)", rd, imm, rs1),
-//     Ld("ld", "{},{}\\({}\\)", rd, imm, rs1),
-//     Sd("sd", "{},{}\\({}\\)", rs2, imm, rs1),
-//     Addiw("addiw", "{},{},{}", rd, rs1, imm),
-//     Slliw("slliw", "{},{},{}", rd, rs1, imm),
-//     Srliw("srliw", "{},{},{}", rd, rs1, imm),
-//     Sraiw("sraiw", "{},{},{}", rd, rs1, imm),
-//     Addw("addw", "{},{},{}", rd, rs1, rs2),
-//     Subw("subw", "{},{},{}", rd, rs1, rs2),
-//     Sllw("sllw", "{},{},{}", rd, rs1, rs2),
-//     Srlw("srlw", "{},{},{}", rd, rs1, rs2),
-//     Sraw("sraw", "{},{},{}", rd, rs1, rs2),
+    // RV64I
+    Lwu(r"lwu\s+{},{}\({}\)", rd, imm, rs1),
+    Ld(r"ld\s+{},{}\({}\)", rd, imm, rs1),
+    Sd(r"sd\s+{},{}\({}\)", rs2, imm, rs1),
+    // `slli` is the same as RV32I.
+    // `srli` is the same as RV32I.
+    // `srai` is the same as RV32I.
+    Addiw(r"addiw\s+{},{},{}", rd, rs1, imm),
+    Slliw(r"slliw\s+{},{},{}", rd, rs1, imm),
+    Srliw(r"srliw\s+{},{},{}", rd, rs1, imm),
+    Sraiw(r"sraiw\s+{},{},{}", rd, rs1, imm),
+    Addw(r"addw\s+{},{},{}", rd, rs1, rs2),
+    Subw(r"subw\s+{},{},{}", rd, rs1, rs2),
+    Sllw(r"sllw\s+{},{},{}", rd, rs1, rs2),
+    Srlw(r"srlw\s+{},{},{}", rd, rs1, rs2),
+    Sraw(r"sraw\s+{},{},{}", rd, rs1, rs2),
 
-//     // RV32M
-//     Mul("mul", "{},{},{}", rd, rs1, rs2),
-//     Mulh("mulh", "{},{},{}", rd, rs1, rs2),
-//     Mulhsu("mulhsu", "{},{},{}", rd, rs1, rs2),
-//     Mulhu("mulhu", "{},{},{}", rd, rs1, rs2),
-//     Div("div", "{},{},{}", rd, rs1, rs2),
-//     Divu("divu", "{},{},{}", rd, rs1, rs2),
-//     Rem("rem", "{},{},{}", rd, rs1, rs2),
-//     Remu("remu", "{},{},{}", rd, rs1, rs2),
+    // RV32/RV64 Zifencei
+    FenceI(r"fence\.i"),
 
-//     // RV64M
-//     Mulw("mulw", "{},{},{}", rd, rs1, rs2),
-//     Divw("divw", "{},{},{}", rd, rs1, rs2),
-//     Divuw("divuw", "{},{},{}", rd, rs1, rs2),
-//     Remw("remw", "{},{},{}", rd, rs1, rs2),
-//     Remuw("remuw", "{},{},{}", rd, rs1, rs2),
+    // RV32/RV64 Zicsr
+    Csrrw(r"csrrw\s+{},{},{}", rd, csr, rs1),
+    Csrrs(r"csrrs\s+{},{},{}", rd, csr, rs1),
+    Csrrc(r"csrrc\s+{},{},{}", rd, csr, rs1),
+    Csrrwi(r"csrrwi\s+{},{},{}", rd, csr, imm),
+    Csrrsi(r"csrrsi\s+{},{},{}", rd, csr, imm),
+    Csrrci(r"csrrci\s+{},{},{}", rd, csr, imm),
 
-//     // RV32A
-//     LrW("lr\\.w{}", "{},\\({}\\)", ord, rd, rs1),
-//     ScW("sc\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmoswapW("amoswap\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmoaddW("amoadd\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmoxorW("amoxor\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmoandW("amoand\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmoorW("amoor\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmominW("amomin\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmomaxW("amomax\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmominuW("amominu\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmomaxuW("amomaxu\\.w{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    // RV32M
+    Mul(r"mul\s+{},{},{}", rd, rs1, rs2),
+    Mulh(r"mulh\s+{},{},{}", rd, rs1, rs2),
+    Mulhsu(r"mulhsu\s+{},{},{}", rd, rs1, rs2),
+    Mulhu(r"mulhu\s+{},{},{}", rd, rs1, rs2),
+    Div(r"div\s+{},{},{}", rd, rs1, rs2),
+    Divu(r"divu\s+{},{},{}", rd, rs1, rs2),
+    Rem(r"rem\s+{},{},{}", rd, rs1, rs2),
+    Remu(r"remu\s+{},{},{}", rd, rs1, rs2),
 
-//     // RV64A
-//     LrD("lr\\.d{}", "{},\\({}\\)", ord, rd, rs1),
-//     ScD("sc\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmoswapD("amoswap\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmoaddD("amoadd\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmoxorD("amoxor\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmoandD("amoand\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmoorD("amoor\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmominD("amomin\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmomaxD("amomax\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmominuD("amominu\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
-//     AmomaxuD("amomaxu\\.d{}", "{},{},\\({}\\)", ord, rd, rs2, rs1),
+    // RV64M
+    Mulw(r"mulw\s+{},{},{}", rd, rs1, rs2),
+    Divw(r"divw\s+{},{},{}", rd, rs1, rs2),
+    Divuw(r"divuw\s+{},{},{}", rd, rs1, rs2),
+    Remw(r"remw\s+{},{},{}", rd, rs1, rs2),
+    Remuw(r"remuw\s+{},{},{}", rd, rs1, rs2),
 
-//     // RV32F (Rounding modes are ignored.)
-//     Flw("flw", "{},{}\\({}\\)", rd, imm, rs1),
-//     Fsw("fsw", "{},{}\\({}\\)", rs2, imm, rs1),
-//     FmaddS("fmadd\\.s", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
-//     FmsubS("fmsub\\.s", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
-//     FnmsubS("fnmsub\\.s", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
-//     FnmaddS("fnmadd\\.s", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
-//     FaddS("fadd\\.s", "{},{},{}\\S*", rd, rs1, rs2),
-//     FsubS("fsub\\.s", "{},{},{}\\S*", rd, rs1, rs2),
-//     FmulS("fmul\\.s", "{},{},{}\\S*", rd, rs1, rs2),
-//     FdivS("fdiv\\.s", "{},{},{}\\S*", rd, rs1, rs2),
-//     FsqrtS("fsqrt\\.s", "{},{}\\S*", rd, rs1),
-//     FsgnjS("fsgnj\\.s", "{},{},{}", rd, rs1, rs2),
-//     FsgnjnS("fsgnjn\\.s", "{},{},{}", rd, rs1, rs2),
-//     FsgnjxS("fsgnjx\\.s", "{},{},{}", rd, rs1, rs2),
-//     FminS("fmin\\.s", "{},{},{}", rd, rs1, rs2),
-//     FmaxS("fmax\\.s", "{},{},{}", rd, rs1, rs2),
-//     FcvtWS("fcvt\\.w\\.s", "{},{}\\S*", rd, rs1),
-//     FcvtWuS("fcvt\\.wu\\.s", "{},{}\\S*", rd, rs1),
-//     FmvXW("fmv\\.x\\.w", "{},{}", rd, rs1),
-//     FeqS("feq\\.s", "{},{},{}", rd, rs1, rs2),
-//     FltS("flt\\.s", "{},{},{}", rd, rs1, rs2),
-//     FleS("fle\\.s", "{},{},{}", rd, rs1, rs2),
-//     FclassS("fclass\\.s", "{},{}", rd, rs1),
-//     FcvtSW("fcvt\\.s\\.w", "{},{}\\S*", rd, rs1),
-//     FcvtSWu("fcvt\\.s\\.wu", "{},{}\\S*", rd, rs1),
-//     FmvWX("fmv\\.w\\.x", "{},{}", rd, rs1),
+    // RV32A
+    LrW(r"lr\.w{}\s+{},\({}\)", ord, rd, rs1),
+    ScW(r"sc\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmoswapW(r"amoswap\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmoaddW(r"amoadd\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmoxorW(r"amoxor\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmoandW(r"amoand\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmoorW(r"amoor\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmominW(r"amomin\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmomaxW(r"amomax\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmominuW(r"amominu\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmomaxuW(r"amomaxu\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
 
-//     // RV64F (Rounding modes are ignored.)
-//     FcvtLS("fcvt\\.l\\.s", "{},{}\\S*", rd, rs1),
-//     FcvtLuS("fcvt\\.lu\\.s", "{},{}\\S*", rd, rs1),
-//     FcvtSL("fcvt\\.s\\.l", "{},{}\\S*", rd, rs1),
-//     FcvtSLu("fcvt\\.s\\.lu", "{},{}\\S*", rd, rs1),
+    // RV64A
+    LrD(r"lr\.d{}\s+{},\({}\)", ord, rd, rs1),
+    ScD(r"sc\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmoswapD(r"amoswap\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmoaddD(r"amoadd\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmoxorD(r"amoxor\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmoandD(r"amoand\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmoorD(r"amoor\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmominD(r"amomin\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmomaxD(r"amomax\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmominuD(r"amominu\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    AmomaxuD(r"amomaxu\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
 
-//     // RV32D (Rounding modes are ignored.)
-//     Fld("fld", "{},{}\\({}\\)", rd, imm, rs1),
-//     Fsd("fsd", "{},{}\\({}\\)", rs2, imm, rs1),
-//     FmaddD("fmadd\\.d", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
-//     FmsubD("fmsub\\.d", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
-//     FnmsubD("fnmsub\\.d", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
-//     FnmaddD("fnmadd\\.d", "{},{},{},{}\\S*", rd, rs1, rs2, rs3),
-//     FaddD("fadd\\.d", "{},{},{}\\S*", rd, rs1, rs2),
-//     FsubD("fsub\\.d", "{},{},{}\\S*", rd, rs1, rs2),
-//     FmulD("fmul\\.d", "{},{},{}\\S*", rd, rs1, rs2),
-//     FdivD("fdiv\\.d", "{},{},{}\\S*", rd, rs1, rs2),
-//     FsqrtD("fsqrt\\.d", "{},{}\\S*", rd, rs1),
-//     FsgnjD("fsgnj\\.d", "{},{},{}", rd, rs1, rs2),
-//     FsgnjnD("fsgnjn\\.d", "{},{},{}", rd, rs1, rs2),
-//     FsgnjxD("fsgnjx\\.d", "{},{},{}", rd, rs1, rs2),
-//     FminD("fmin\\.d", "{},{},{}", rd, rs1, rs2),
-//     FmaxD("fmax\\.d", "{},{},{}", rd, rs1, rs2),
-//     FcvtSD("fcvt\\.s\\.d", "{},{}\\S*", rd, rs1),
-//     FcvtDS("fcvt\\.d\\.s", "{},{}\\S*", rd, rs1),
-//     FeqD("feq\\.d", "{},{},{}", rd, rs1, rs2),
-//     FltD("flt\\.d", "{},{},{}", rd, rs1, rs2),
-//     FleD("fle\\.d", "{},{},{}", rd, rs1, rs2),
-//     FclassD("fclass\\.d", "{},{}", rd, rs1),
-//     FcvtWD("fcvt\\.w\\.d", "{},{}\\S*", rd, rs1),
-//     FcvtWuD("fcvt\\.wu\\.d", "{},{}\\S*", rd, rs1),
-//     FcvtDW("fcvt\\.d\\.w", "{},{}\\S*", rd, rs1),
-//     FcvtDWu("fcvt\\.d\\.wu", "{},{}\\S*", rd, rs1),
+    // RV32F
+    Flw(r"flw\s+{},{}\({}\)", frd, imm, rs1),
+    Fsw(r"fsw\s+{},{}\({}\)", frs2, imm, rs1),
+    FmaddS(r"fmadd\.s\s+{},{},{},{}{}", frd, frs1, frs2, frs3, rm),
+    FmsubS(r"fmsub\.s\s+{},{},{},{}{}", frd, frs1, frs2, frs3, rm),
+    FnmsubS(r"fnmsub\.s\s+{},{},{},{}{}", frd, frs1, frs2, frs3, rm),
+    FnmaddS(r"fnmadd\.s\s+{},{},{},{}{}", frd, frs1, frs2, frs3, rm),
+    FaddS(r"fadd\.s\s+{},{},{}{}", frd, frs1, frs2, rm),
+    FsubS(r"fsub\.s\s+{},{},{}{}", frd, frs1, frs2, rm),
+    FmulS(r"fmul\.s\s+{},{},{}{}", frd, frs1, frs2, rm),
+    FdivS(r"fdiv\.s\s+{},{},{}{}", frd, frs1, frs2, rm),
+    FsqrtS(r"fsqrt\.s\s+{},{}{}", frd, frs1, rm),
+    FsgnjS(r"fsgnj\.s\s+{},{},{}", frd, frs1, frs2),
+    FsgnjnS(r"fsgnjn\.s\s+{},{},{}", frd, frs1, frs2),
+    FsgnjxS(r"fsgnjx\.s\s+{},{},{}", frd, frs1, frs2),
+    FminS(r"fmin\.s\s+{},{},{}", frd, frs1, frs2),
+    FmaxS(r"fmax\.s\s+{},{},{}", frd, frs1, frs2),
+    FcvtWS(r"fcvt\.w\.s\s+{},{}{}", rd, frs1, rm),
+    FcvtWuS(r"fcvt\.wu\.s\s+{},{}{}", rd, frs1, rm),
+    FmvXW(r"fmv\.x\.w\s+{},{}", rd, frs1),
+    FeqS(r"feq\.s\s+{},{},{}", rd, frs1, frs2),
+    FltS(r"flt\.s\s+{},{},{}", rd, frs1, frs2),
+    FleS(r"fle\.s\s+{},{},{}", rd, frs1, frs2),
+    FclassS(r"fclass\.s\s+{},{}", rd, frs1),
+    FcvtSW(r"fcvt\.s\.w\s+{},{}{}", frd, rs1, rm),
+    FcvtSWu(r"fcvt\.s\.wu\s+{},{}{}", frd, rs1, rm),
+    FmvWX(r"fmv\.w\.x\s+{},{}", frd, rs1),
 
-//     // RV64D (Rounding modes are ignored.)
-//     FcvtLD("fcvt\\.l\\.d", "{},{}\\S*", rd, rs1),
-//     FcvtLuD("fcvt\\.lu\\.d", "{},{}\\S*", rd, rs1),
-//     FmvXD("fmv\\.x\\.d", "{},{}", rd, rs1),
-//     FcvtDL("fcvt\\.d\\.l", "{},{}\\S*", rd, rs1),
-//     FcvtDLu("fcvt\\.d\\.lu", "{},{}\\S*", rd, rs1),
-//     FmvDX("fmv\\.d\\.x", "{},{}", rd, rs1),
+    // RV64F
+    FcvtLS(r"fcvt\.l\.s\s+{},{}{}", rd, frs1, rm),
+    FcvtLuS(r"fcvt\.lu\.s\s+{},{}{}", rd, frs1, rm),
+    FcvtSL(r"fcvt\.s\.l\s+{},{}{}", frd, rs1, rm),
+    FcvtSLu(r"fcvt\.s\.lu\s+{},{}{}", frd, rs1, rm),
 
-//     // Pseudoinstructions
-//     Nop("nop", ""),
-//     Li("li", "{},{}", rd, imm),
-//     Mv("mv", "{},{}", rd, rs1),
-//     Not("not", "{},{}", rd, rs1),
-//     Neg("neg", "{},{}", rd, rs1),
-//     Negw("negw", "{},{}", rd, rs1),
-//     SextW("sext\\.w", "{},{}", rd, rs1),
-//     Seqz("seqz", "{},{}", rd, rs1),
-//     Snez("snez", "{},{}", rd, rs1),
-//     Sltz("sltz", "{},{}", rd, rs1),
-//     Sgtz("sgtz", "{},{}", rd, rs1),
+    // RV32D
+    Fld(r"fld\s+{},{}\({}\)", frd, imm, rs1),
+    Fsd(r"fsd\s+{},{}\({}\)", frs2, imm, rs1),
+    FmaddD(r"fmadd\.d\s+{},{},{},{}{}", frd, frs1, frs2, frs3, rm),
+    FmsubD(r"fmsub\.d\s+{},{},{},{}{}", frd, frs1, frs2, frs3, rm),
+    FnmsubD(r"fnmsub\.d\s+{},{},{},{}{}", frd, frs1, frs2, frs3, rm),
+    FnmaddD(r"fnmadd\.d\s+{},{},{},{}{}", frd, frs1, frs2, frs3, rm),
+    FaddD(r"fadd\.d\s+{},{},{}{}", frd, frs1, frs2, rm),
+    FsubD(r"fsub\.d\s+{},{},{}{}", frd, frs1, frs2, rm),
+    FmulD(r"fmul\.d\s+{},{},{}{}", frd, frs1, frs2, rm),
+    FdivD(r"fdiv\.d\s+{},{},{}{}", frd, frs1, frs2, rm),
+    FsqrtD(r"fsqrt\.d\s+{},{}{}", frd, frs1, rm),
+    FsgnjD(r"fsgnj\.d\s+{},{},{}", frd, frs1, frs2),
+    FsgnjnD(r"fsgnjn\.d\s+{},{},{}", frd, frs1, frs2),
+    FsgnjxD(r"fsgnjx\.d\s+{},{},{}", frd, frs1, frs2),
+    FminD(r"fmin\.d\s+{},{},{}", frd, frs1, frs2),
+    FmaxD(r"fmax\.d\s+{},{},{}", frd, frs1, frs2),
+    FcvtSD(r"fcvt\.s\.d\s+{},{}{}", frd, rs1, rm),
+    FcvtDS(r"fcvt\.d\.s\s+{},{}{}", rd, frs1, rm),
+    FeqD(r"feq\.d\s+{},{},{}", rd, frs1, frs2),
+    FltD(r"flt\.d\s+{},{},{}", rd, frs1, frs2),
+    FleD(r"fle\.d\s+{},{},{}", rd, frs1, frs2),
+    FclassD(r"fclass\.d\s+{},{}", rd, frs1),
+    FcvtWD(r"fcvt\.w\.d\s+{},{}{}", rd, frs1, rm),
+    FcvtWuD(r"fcvt\.wu\.d\s+{},{}{}", rd, frs1, rm),
+    FcvtDW(r"fcvt\.d\.w\s+{},{}{}", frd, rs1, rm),
+    FcvtDWu(r"fcvt\.d\.wu\s+{},{}{}", frd, rs1, rm),
 
-//     FmvS("fmv\\.s", "{},{}", rd, rs1),
-//     FabsS("fabs\\.s", "{},{}", rd, rs1),
-//     FnegS("fneg\\.s", "{},{}", rd, rs1),
-//     FmvD("fmv\\.d", "{},{}", rd, rs1),
-//     FabsD("fabs\\.d", "{},{}", rd, rs1),
-//     FnegD("fneg\\.d", "{},{}", rd, rs1),
+    // RV64D
+    FcvtLD(r"fcvt\.l\.d\s+{},{}{}", rd, frs1, rm),
+    FcvtLuD(r"fcvt\.lu\.d\s+{},{}{}", rd, frs1, rm),
+    FmvXD(r"fmv\.x\.d\s+{},{}", rd, frs1),
+    FcvtDL(r"fcvt\.d\.l\s+{},{}{}", frd, rs1, rm),
+    FcvtDLu(r"fcvt\.d\.lu\s+{},{}{}", frd, rs1, rm),
+    FmvDX(r"fmv\.d\.x\s+{},{}", frd, rs1),
 
-//     Beqz("beqz", "{},{}", rs1, addr),
-//     Bnez("bnez", "{},{}", rs1, addr),
-//     Blez("blez", "{},{}", rs1, addr),
-//     Bgez("bgez", "{},{}", rs1, addr),
-//     Bltz("bltz", "{},{}", rs1, addr),
-//     Bgtz("bgtz", "{},{}", rs1, addr),
+    // Pseudoinstructions
+    // Pseudoinstructions using symbols are always disassembled to base instructions.
 
-//     J("j\\s", "{}", addr),
-//     // `jal addr` is always disassembled to be `jal ra,addr`.
-//     Jr("jr", "{}", rs1),
-//     // `jalr rs1` is handled in `RiscvInstruction::new_irregular()`.
-    Ret("ret"),
-//     // Currently GCC emits errors like `relocation truncated to fit: R_RISCV_JAL against `.L22'`
-//     // when I try to use a far function call to test `call` and `tail` instructions. I will add
-//     // these two instructions if later I spot them in real code.
+    Nop(r"nop"),
+    Li(r"li\s+{},{}", rd, imm),
+    Mv(r"mv\s+{},{}", rd, rs1),
+    Not(r"not\s+{},{}", rd, rs1),
+    Neg(r"neg\s+{},{}", rd, rs1),
+    Negw(r"negw\s+{},{}", rd, rs1),
+    SextW(r"sext\.w\s+{},{}", rd, rs1),
+    Seqz(r"seqz\s+{},{}", rd, rs1),
+    Snez(r"snez\s+{},{}", rd, rs1),
+    Sltz(r"sltz\s+{},{}", rd, rs1),
+    Sgtz(r"sgtz\s+{},{}", rd, rs1),
+
+    FmvS(r"fmv\.s\s+{},{}", frd, frs1),
+    FabsS(r"fabs\.s\s+{},{}", frd, frs1),
+    FnegS(r"fneg\.s\s+{},{}", frd, frs1),
+    FmvD(r"fmv\.d\s+{},{}", frd, frs1),
+    FabsD(r"fabs\.d\s+{},{}", frd, frs1),
+    FnegD(r"fneg\.d\s+{},{}", frd, frs1),
+
+    Beqz(r"beqz\s+{},{}", rs1, addr),
+    Bnez(r"bnez\s+{},{}", rs1, addr),
+    Blez(r"blez\s+{},{}", rs1, addr),
+    Bgez(r"bgez\s+{},{}", rs1, addr),
+    Bltz(r"bltz\s+{},{}", rs1, addr),
+    Bgtz(r"bgtz\s+{},{}", rs1, addr),
+
+    Bgt(r"bgt\s+{},{},{}", rs1, rs2, addr),
+    Ble(r"ble\s+{},{},{}", rs1, rs2, addr),
+    Bgtu(r"bgtu\s+{},{},{}", rs1, rs2, addr),
+    Bleu(r"bleu\s+{},{},{}", rs1, rs2, addr),
+
+    J(r"j\s+{}", addr),
+    // `jal offset` is always disassembled to `jal ra,addr`.
+    Jr(r"jr\s+{}", rs1),
+    PseudoJalr(r"jalr\s+{}", rs1),
+    Ret(r"ret"),
+    // `call offset` is always disassembled to the base instruction.
+    // `tail offset` is always disassembled to the base instruction.
+
+    PseudoFence(r"fence"),
+
+    Rdinstret(r"rdinstret\s+{}", rd),
+    Rdinstreth(r"rdinstreth\s+{}", rd),
+    Rdcycle(r"rdcycle\s+{}", rd),
+    Rdcycleh(r"rdcycleh\s+{}", rd),
+    Rdtime(r"rdtime\s+{}", rd),
+    Rdtimeh(r"rdtimeh\s+{}", rd),
+
+    Csrr(r"csrr\s+{},{}", rd, csr),
+    Csrw(r"csrw\s+{},{}", csr, rs1),
+    Csrs(r"csrs\s+{},{}", csr, rs1),
+    Csrc(r"csrc\s+{},{}", csr, rs1),
+
+    Csrwi(r"csrwi\s+{},{}", csr, imm),
+    Csrsi(r"csrsi\s+{},{}", csr, imm),
+    Csrci(r"csrci\s+{},{}", csr, imm),
+
+    Frcsr(r"frcsr\s+{}", rd),
+    Fscsr(r"fscsr\s+{},{}", rd, rs1),
+    Fwcsr(r"fscsr\s+{}", rs1), // `fscsr rs` is renamed to `fwcsr` to avoid conflicts.
+
+    Frrm(r"frrm\s+{}", rd),
+    Fsrm(r"fsrm\s+{},{}", rd, rs1),
+    Fwrm(r"fsrm\s+{}", rs1), // `fsrm rs` is renamed to `fwrm` to avoid conflicts.
+
+    Frflags(r"frflags\s+{}", rd),
+    Fsflags(r"fsflags\s+{},{}", rd, rs1),
+    Fwflags(r"fsflags\s+{}", rs1), // `fsflags rs` is renamed to `fwflags` to avoid conflicts.
 }

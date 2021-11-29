@@ -1,5 +1,7 @@
 use crate::llvm_isa::LlvmType;
-use crate::riscv_isa::{Address, BasicBlock, Function, Immediate, Instruction, Program, Register, Abi};
+use crate::riscv_isa::{
+    Abi, Address, BasicBlock, Function, Immediate, Instruction, Program, Register,
+};
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -159,7 +161,7 @@ mod tests {
     use super::Parser;
     use crate::build_test;
     use crate::riscv_isa::{
-        Address, BasicBlock, Function, Immediate, Instruction, Program, Register, Abi,
+        Abi, Address, BasicBlock, Function, Immediate, Instruction, Program, Register,
     };
     use std::collections::HashMap;
     use std::env;
@@ -184,7 +186,12 @@ mod tests {
             .stdin(Stdio::piped())
             .spawn()
             .expect("Unable to invoke `$gcc`");
-        gcc_proc.stdin.as_mut().unwrap().write_all(source.as_bytes()).unwrap();
+        gcc_proc
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(source.as_bytes())
+            .unwrap();
         gcc_proc.wait().unwrap();
 
         let objdump_proc = Command::new(objdump_var)
@@ -405,7 +412,7 @@ mod tests {
     //     remuw("remuw	t0,t1,t2", Remuw { rd: T0, rs1: T1, rs2: T2 }),
 
     //     // RV32A (44 tests)
-    //     lr_w("lr.w	t0,(a0)", LrW { ord: Empty, rd: T0, rs1: A0 }),
+        // lr_w("lr.w	t0,(a0)", LrW { ord: Ordering::None, rd: Register::T0, rs1: A0 }),
     //     lr_w_aq("lr.w.aq	t0,(a0)", LrW { ord: Aq, rd: T0, rs1: A0 }),
     //     lr_w_rl("lr.w.rl	t0,(a0)", LrW { ord: Rl, rd: T0, rs1: A0 }),
     //     lr_w_aqrl("lr.w.aqrl	t0,(a0)", LrW { ord: Aqrl, rd: T0, rs1: A0 }),

@@ -49,12 +49,42 @@ macro_rules! rs2 {
 }
 
 #[macro_export]
-macro_rules! rs3 {
+macro_rules! frd {
     ("uppercase") => {
-        RS3
+        FRD
     };
     ("type") => {
-        Register
+        FPRegister
+    };
+}
+
+#[macro_export]
+macro_rules! frs1 {
+    ("uppercase") => {
+        FRS1
+    };
+    ("type") => {
+        FPRegister
+    };
+}
+
+#[macro_export]
+macro_rules! frs2 {
+    ("uppercase") => {
+        FRS2
+    };
+    ("type") => {
+        FPRegister
+    };
+}
+
+#[macro_export]
+macro_rules! frs3 {
+    ("uppercase") => {
+        FRS3
+    };
+    ("type") => {
+        FPRegister
     };
 }
 
@@ -69,16 +99,53 @@ macro_rules! imm {
 }
 
 #[macro_export]
+macro_rules! csr {
+    ("uppercase") => {
+        CSR
+    };
+    ("type") => {
+        Csr
+    };
+}
+
+#[macro_export]
+macro_rules! rm {
+    ("uppercase") => {
+        RM
+    };
+    ("type") => {
+        Rounding
+    };
+}
+
+#[macro_export]
+macro_rules! bits {
+    ("uppercase") => {
+        BITS
+    };
+    ("type") => {
+        Bits
+    };
+}
+
+#[macro_export]
 macro_rules! define_instruction {
     ( $( $inst:ident ( $regex:literal $(, $field:ident )* ), )* ) => {
-        const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
-        const ORD: &str = r"(?P<ord>[[:alpha:]]+)";
+        const ADDRESS: &str = r"(?P<address>[[:xdigit:]]+)";
+        const ORD: &str = r"(\.(?P<ord>[[:alpha:]]+))?";
         const RD: &str = r"(?P<rd>[[:alnum:]]+)";
         const RS1: &str = r"(?P<rs1>[[:alnum:]]+)";
         const RS2: &str = r"(?P<rs2>[[:alnum:]]+)";
-        const RS3: &str = r"(?P<rs3>[[:alnum:]]+)";
+        const FRD: &str = r"(?P<frd>[[:alnum:]]+)";
+        const FRS1: &str = r"(?P<frs1>[[:alnum:]]+)";
+        const FRS2: &str = r"(?P<frs2>[[:alnum:]]+)";
+        const FRS3: &str = r"(?P<frs3>[[:alnum:]]+)";
         const IMM: &str = r"(?P<imm>-?[[:xdigit:]]+)";
-        const CMT: &str = r"(?P<cmt>.+)";
+        const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
+        const RM: &str = r"(\.(?P<rm>[[:alpha:]]+))?";
+        const CSR: &str = r"(?P<csr>[[:alpha:]]+)";
+        const BITS: &str = r"((\.|\s+)(?P<bits>((tso)|([iorw]+,[iorw]+))))?";
+        const CMT: &str = r"(\s+(?P<cmt>.+))?";
 
         lazy_static! {
             static ref REGEXES: Vec<(&'static str, Regex)> = vec![
@@ -86,8 +153,8 @@ macro_rules! define_instruction {
                     (
                         stringify!($inst),
                         Regex::new(&format!(
-                            concat!(r"{}:\s+\S+\s+", $regex, r"(\s+{})?"),
-                            ADDR, $( $field!("uppercase"), )* CMT
+                            concat!(r"{}:\s+\S+\s+", $regex, r"{}"),
+                            ADDRESS, $( $field!("uppercase"), )* CMT
                         )).unwrap()
                     ),
                 )*
@@ -99,7 +166,7 @@ macro_rules! define_instruction {
                 $(
                     format!(
                         concat!(r"{}:\s+\S+\s+", $regex, r"(\s+{})?"),
-                        ADDR, $( $field!("uppercase"), )* CMT
+                        ADDRESS, $( $field!("uppercase"), )* CMT
                     ),
                 )*
             ]).unwrap();
@@ -132,16 +199,18 @@ macro_rules! define_instruction {
 
                 match *inst {
                     $(
-                        stringify!($inst) => {
-                            $inst {
-                                label,
-                                address: Address::new(&caps["addr"]),
-                                $(
-                                    $field: <$field!("type")>::new(&caps[stringify!($field)]),
-                                )*
-                                comment: Some(caps["cmt"].to_string()),
-                            }
-                        }
+                        stringify!($inst) => $inst {
+                            label,
+                            address: Address::new(&caps["address"]),
+                            $(
+                                $field: <$field!("type")>::new(
+                                    caps.name(stringify!($field))
+                                        .map(|m| m.as_str())
+                                        .unwrap_or_default(),
+                                ),
+                            )*
+                            comment: caps.name("cmt").map(|m| m.as_str().to_string()),
+                        },
                     )*
                     _ => unreachable!(),
                 }
