@@ -4,9 +4,9 @@ use crate::llvm_isa::{
 };
 use crate::riscv_isa::{
     Address as RiscvAddress, Immediate as RiscvImmediate, Instruction as RiscvInstruction,
-    Register as RiscvRegister,
+    Program as RiscvProgram, Register as RiscvRegister,
 };
-use crate::riscv_isa::{BasicBlock, Function as RiscvFunction, Program as RiscvProgram};
+// use crate::riscv_isa::{BasicBlock, Function as RiscvFunction, Program as RiscvProgram};
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryInto;

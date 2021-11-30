@@ -283,13 +283,14 @@ Counter
 ### Testing Commands
 
 ``` Bash
-clang -emit-llvm examples/test.c -S -o examples/reference.ll
+clang -S -emit-llvm test.c -o reference.ll
 
 riscv64-unknown-linux-gnu-gcc -static test.c -o test
-riscv64-unknown-linux-gnu-objdump -D -j.text -j.rodata -j.data -j.bss -j.sdata -j.sbss -wz test > test.dump
+riscv64-unknown-linux-gnu-strip -g test -o test.stripped
+riscv64-unknown-linux-gnu-objdump -D -z test.stripped > test.dump
 
-cargo run -- examples/test.dump -o examples/test.ll
-lli examples/test.ll
+cargo run -- test.dump -o test.ll
+lli test.ll
 echo $?
 ```
 

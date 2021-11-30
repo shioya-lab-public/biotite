@@ -1,14 +1,4 @@
 #[macro_export]
-macro_rules! addr {
-    ("uppercase") => {
-        ADDR
-    };
-    ("type") => {
-        Address
-    };
-}
-
-#[macro_export]
 macro_rules! ord {
     ("uppercase") => {
         ORD
@@ -99,6 +89,16 @@ macro_rules! imm {
 }
 
 #[macro_export]
+macro_rules! addr {
+    ("uppercase") => {
+        ADDR
+    };
+    ("type") => {
+        Address
+    };
+}
+
+#[macro_export]
 macro_rules! csr {
     ("uppercase") => {
         CSR
@@ -119,12 +119,12 @@ macro_rules! rm {
 }
 
 #[macro_export]
-macro_rules! bits {
+macro_rules! iorw {
     ("uppercase") => {
-        BITS
+        IORW
     };
     ("type") => {
-        Bits
+        Iorw
     };
 }
 
@@ -140,11 +140,11 @@ macro_rules! define_instruction {
         const FRS1: &str = r"(?P<frs1>[[:alnum:]]+)";
         const FRS2: &str = r"(?P<frs2>[[:alnum:]]+)";
         const FRS3: &str = r"(?P<frs3>[[:alnum:]]+)";
-        const IMM: &str = r"(?P<imm>-?[[:xdigit:]]+)";
+        const IMM: &str = r"(?P<imm>(-|(0x))?[[:xdigit:]]+)";
         const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
-        const RM: &str = r"(\.(?P<rm>[[:alpha:]]+))?";
         const CSR: &str = r"(?P<csr>[[:alpha:]]+)";
-        const BITS: &str = r"((\.|\s+)(?P<bits>((tso)|([iorw]+,[iorw]+))))?";
+        const RM: &str = r"(\.(?P<rm>[[:alpha:]]+))?";
+        const IORW: &str = r"((\.|\s+)(?P<iorw>((tso)|([iorw]+,[iorw]+))))?";
         const CMT: &str = r"(\s+(?P<cmt>.+))?";
 
         lazy_static! {
@@ -162,21 +162,15 @@ macro_rules! define_instruction {
         }
 
         lazy_static! {
-            static ref REGEX_SET: RegexSet = RegexSet::new(vec![
-                $(
-                    format!(
-                        concat!(r"{}:\s+\S+\s+", $regex, r"(\s+{})?"),
-                        ADDRESS, $( $field!("uppercase"), )* CMT
-                    ),
-                )*
-            ]).unwrap();
+            static ref REGEX_SET: RegexSet = RegexSet::new(
+                REGEXES.iter().map(|(_, r)| r.as_str())
+            ).unwrap();
         }
 
         #[derive(Debug, PartialEq)]
         pub enum Instruction {
             $(
                 $inst {
-                    label: Option<String>,
                     address: Address,
                     $(
                         $field: $field!("type"),
@@ -187,7 +181,7 @@ macro_rules! define_instruction {
         }
 
         impl Instruction {
-            pub fn new(line: &str, label: Option<String>) -> Instruction {
+            pub fn new(line: &str) -> Instruction {
                 use Instruction::*;
 
                 let matches: Vec<_> = REGEX_SET.matches(line).into_iter().collect();
@@ -200,7 +194,6 @@ macro_rules! define_instruction {
                 match *inst {
                     $(
                         stringify!($inst) => $inst {
-                            label,
                             address: Address::new(&caps["address"]),
                             $(
                                 $field: <$field!("type")>::new(
@@ -213,16 +206,6 @@ macro_rules! define_instruction {
                         },
                     )*
                     _ => unreachable!(),
-                }
-            }
-
-            pub fn label(&self) -> &Option<String> {
-                use Instruction::*;
-
-                match self {
-                    $(
-                        $inst { label, .. } => label,
-                    )*
                 }
             }
 
@@ -241,45 +224,23 @@ macro_rules! define_instruction {
 
 #[macro_export]
 macro_rules! build_test {
-    ( $( $func:ident ( $source:literal, $inst:ident { $( $field:ident: $value:expr ),* } ), )* ) => {
+    ( $( $func:ident ( $source:literal,
+        $inst:ident { $( $field:ident: $value:expr ),* }
+        $(, [$march:literal, $mabi:literal] )?
+    ), )* ) => {
         $(
             #[test]
             fn $func() {
-                let source = concat!("
-                    main:
-                        ", $source, "
-                        ret
-                ");
-                let source = compile_and_dump(source);
-                let program = Parser::new(&source, &None).run();
+                let source = compile_and_dump(concat!($source, "\n"), &vec![$($march, $mabi)?]);
+                let inst = Instruction::new(source.lines().last().unwrap());
                 assert_eq!(
-                    program,
-                    Program {
-                        abi: Abi::Lp64d,
-                        functions: vec![Function {
-                            name: String::from("main"),
-                            basic_blocks: vec![BasicBlock {
-                                instructions: vec![
-                                    Instruction::$inst {
-                                        label: Some(String::from("main")),
-                                        address: Address(0x0),
-                                        $(
-                                            $field: $value,
-                                        )*
-                                        comment: None,
-                                    },
-                                    Instruction::Ret {
-                                        label: None,
-                                        address: Address(0x4),
-                                        comment: None,
-                                    }
-                                ],
-                                continue_target: None,
-                                jump_target: None,
-                            }],
-                            indirect_targets: HashMap::new(),
-                        }],
-                        data: HashMap::new(),
+                    inst,
+                    $inst {
+                        address: Address(0),
+                        $(
+                            $field: $value,
+                        )*
+                        comment: None,
                     }
                 );
             }

@@ -1,9 +1,9 @@
 use crate::llvm_isa::LlvmType;
-use crate::riscv_isa::{
-    Abi, Address, BasicBlock, Function, Immediate, Instruction, Program, Register,
-};
+use crate::riscv_isa::{Abi, Address, Immediate, Instruction, Program, Register};
 use regex::Regex;
 use std::collections::HashMap;
+
+// Only treat Symbol and jump table as llvm labels , all other instructions are wrapped in a single functions without spliting BBs.
 
 // let indirect_targets = riscv_parser::parse_rodata(source);
 // let mut statics = riscv_parser::parse_sdata(source);
@@ -19,32 +19,31 @@ impl Parser {
     }
 
     pub fn run(&self) -> Program {
-        Program {
-            abi: Abi::Lp64d,
-            functions: vec![Function {
-                name: String::from("main"),
-                basic_blocks: vec![BasicBlock {
-                    instructions: vec![
-                        Instruction::Lui {
-                            label: Some(String::from("main")),
-                            address: Address(0x0),
-                            rd: Register::Zero,
-                            imm: Immediate(0),
-                            comment: None,
-                        },
-                        Instruction::Ret {
-                            label: None,
-                            address: Address(0x4),
-                            comment: None,
-                        },
-                    ],
-                    continue_target: None,
-                    jump_target: None,
-                }],
-                indirect_targets: HashMap::new(),
-            }],
-            data: HashMap::new(),
-        }
+        todo!()
+        // Program {
+        //     abi: Abi::Lp64d,
+        //     functions: vec![Function {
+        //         name: String::from("main"),
+        //         basic_blocks: vec![BasicBlock {
+        //             instructions: vec![
+        //                 Instruction::Lui {
+        //                     address: Address(0x0),
+        //                     rd: Register::Zero,
+        //                     imm: Immediate(0),
+        //                     comment: None,
+        //                 },
+        //                 Instruction::Ret {
+        //                     address: Address(0x4),
+        //                     comment: None,
+        //                 },
+        //             ],
+        //             continue_target: None,
+        //             jump_target: None,
+        //         }],
+        //         indirect_targets: HashMap::new(),
+        //     }],
+        //     data: HashMap::new(),
+        // }
     }
 }
 
@@ -161,7 +160,9 @@ mod tests {
     use super::Parser;
     use crate::build_test;
     use crate::riscv_isa::{
-        Abi, Address, BasicBlock, Function, Immediate, Instruction, Program, Register,
+        Abi, Address, Immediate,
+        Instruction::{self, *},
+        Program, Register,
     };
     use std::collections::HashMap;
     use std::env;
@@ -169,12 +170,13 @@ mod tests {
     use std::process::{Command, Stdio};
     use tempfile::NamedTempFile;
 
-    fn compile_and_dump(source: &str) -> String {
+    fn compile_and_dump(source: &str, args: &[&str]) -> String {
         let temp_file = NamedTempFile::new().expect("Unable to create temp files");
         let gcc_var = env::var("gcc").expect("`$gcc` is not set");
         let objdump_var = env::var("objdump").expect("`$objdump` is not set");
 
         let mut gcc_proc = Command::new(gcc_var)
+            .args(args)
             .args([
                 "-c",
                 "-x",
@@ -334,7 +336,7 @@ mod tests {
     //     reg_32("flw	ft11,-20(t6)", Flw { rd: Ft11, imm: (-20).into(), rs1: T6 }),
 
     //     // RV32I (45 tests)
-        lui("lui	zero,0", Lui { rd: Register::Zero, imm: Immediate(0) }),
+        lui("lui	zero,0", Lui { rd: Register::Zero, imm: Immediate(0) }, ["1", "2"]),
     //     auipc("auipc	a0,0x0", Auipc { rd: A0, imm: 0x0.into() }),
     //     jal("jal	ra,103de", Jal { rd: Ra, addr: 0x103de.into() }),
     //     jalr("jalr	t1,1(t0)", Jalr { rd: T1, imm: 1.into(), rs1: T0 }),

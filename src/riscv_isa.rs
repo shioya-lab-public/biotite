@@ -1,28 +1,13 @@
 use crate::{
-    addr, bits, csr, define_instruction, frd, frs1, frs2, frs3, imm, ord, rd, rm, rs1, rs2,
+    addr, csr, define_instruction, frd, frs1, frs2, frs3, imm, iorw, ord, rd, rm, rs1, rs2,
 };
 use regex::{Regex, RegexSet};
-use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
     pub abi: Abi,
-    pub functions: Vec<Function>,
-    pub data: HashMap<Address, u8>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Function {
-    pub name: String,
-    pub basic_blocks: Vec<BasicBlock>,
-    pub indirect_targets: HashMap<Address, Target>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct BasicBlock {
-    pub instructions: Vec<Instruction>,
-    pub continue_target: Option<Target>,
-    pub jump_target: Option<Target>,
+    pub code: Vec<Code>,
+    pub data: Vec<Data>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -35,7 +20,59 @@ pub enum Abi {
     Lp64d,
 }
 
-pub type Target = usize;
+impl Abi {
+    pub fn new(s: &Option<String>) -> Self {
+        use Abi::*;
+
+        match s.as_ref().map(|s| s.as_str()) {
+            Some("ilp32") => Ilp32,
+            Some("ilp32f") => Ilp32f,
+            Some("ilp32d") => Ilp32d,
+            Some("lp64") => Lp64,
+            Some("lp64f") => Lp64f,
+            Some("lp64d") | None => Lp64d,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Code {
+    section: String,
+    symbol: String,
+    address: Address,
+    instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Data {
+    section: String,
+    symbol: String,
+    address: Address,
+    bytes: Vec<u8>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Ordering {
+    None,
+    Aq,
+    Rl,
+    AqRl,
+}
+
+impl Ordering {
+    pub fn new(s: &str) -> Self {
+        use Ordering::*;
+
+        match s {
+            "" => None,
+            "aq" => Aq,
+            "rl" => Rl,
+            "aqrl" => AqRl,
+            _ => unreachable!(),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Register {
@@ -71,42 +108,6 @@ pub enum Register {
     T4,
     T5,
     T6,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum FPRegister {
-    Ft0,
-    Ft1,
-    Ft2,
-    Ft3,
-    Ft4,
-    Ft5,
-    Ft6,
-    Ft7,
-    Fs0,
-    Fs1,
-    Fa0,
-    Fa1,
-    Fa2,
-    Fa3,
-    Fa4,
-    Fa5,
-    Fa6,
-    Fa7,
-    Fs2,
-    Fs3,
-    Fs4,
-    Fs5,
-    Fs6,
-    Fs7,
-    Fs8,
-    Fs9,
-    Fs10,
-    Fs11,
-    Ft8,
-    Ft9,
-    Ft10,
-    Ft11,
 }
 
 impl Register {
@@ -146,10 +147,45 @@ impl Register {
             "t4" => T4,
             "t5" => T5,
             "t6" => T6,
-
             _ => unreachable!(),
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum FPRegister {
+    Ft0,
+    Ft1,
+    Ft2,
+    Ft3,
+    Ft4,
+    Ft5,
+    Ft6,
+    Ft7,
+    Fs0,
+    Fs1,
+    Fa0,
+    Fa1,
+    Fa2,
+    Fa3,
+    Fa4,
+    Fa5,
+    Fa6,
+    Fa7,
+    Fs2,
+    Fs3,
+    Fs4,
+    Fs5,
+    Fs6,
+    Fs7,
+    Fs8,
+    Fs9,
+    Fs10,
+    Fs11,
+    Ft8,
+    Ft9,
+    Ft10,
+    Ft11,
 }
 
 impl FPRegister {
@@ -189,7 +225,6 @@ impl FPRegister {
             "ft9" => Ft9,
             "ft10" => Ft10,
             "ft11" => Ft11,
-
             _ => unreachable!(),
         }
     }
@@ -207,7 +242,7 @@ impl Immediate {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq)]
 pub struct Address(pub usize);
 
 impl Address {
@@ -249,28 +284,6 @@ impl Csr {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Ordering {
-    None,
-    Aq,
-    Rl,
-    AqRl,
-}
-
-impl Ordering {
-    pub fn new(s: &str) -> Self {
-        use Ordering::*;
-
-        match s {
-            "" => None,
-            "aq" => Aq,
-            "rl" => Rl,
-            "aqrl" => AqRl,
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
 pub enum Rounding {
     Rne,
     Rtz,
@@ -297,11 +310,11 @@ impl Rounding {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Bits(pub String);
+pub struct Iorw(pub String);
 
-impl Bits {
+impl Iorw {
     pub fn new(s: &str) -> Self {
-        Bits(s.to_string())
+        Iorw(s.to_string())
     }
 }
 
@@ -344,7 +357,7 @@ define_instruction! {
     Sra(r"sra\s+{},{},{}", rd, rs1, rs2),
     Or(r"or\s+{},{},{}", rd, rs1, rs2),
     And(r"and\s+{},{},{}", rd, rs1, rs2),
-    Fence(r"fence{}", bits),
+    Fence(r"fence{}", iorw),
     Ecall(r"ecall"),
     Ebreak(r"ebreak"),
 
