@@ -1,159 +1,219 @@
-use crate::llvm_isa::LlvmType;
-use crate::riscv_isa::{Abi, Address, Immediate, Instruction, Program, Register};
+use crate::riscv_isa::{Abi, Address, CodeBlock, DataBlock, Instruction, Program};
 use regex::Regex;
-use std::collections::HashMap;
+use std::mem;
 
-// Only treat Symbol and jump table as llvm labels , all other instructions are wrapped in a single functions without spliting BBs.
-
-// let indirect_targets = riscv_parser::parse_rodata(source);
-// let mut statics = riscv_parser::parse_sdata(source);
-// statics.extend(riscv_parser::parse_sbss(source));
-// let rv_insts = riscv_parser::parse_text(source);
-// let cfg = CfgBuilder::new(rv_insts, indirect_targets).run();
-
-pub struct Parser {}
-
-impl Parser {
-    pub fn new(rv_source: &str, mabi: &Option<String>) -> Self {
-        Parser {}
-    }
-
-    pub fn run(&self) -> Program {
-        todo!()
-        // Program {
-        //     abi: Abi::Lp64d,
-        //     functions: vec![Function {
-        //         name: String::from("main"),
-        //         basic_blocks: vec![BasicBlock {
-        //             instructions: vec![
-        //                 Instruction::Lui {
-        //                     address: Address(0x0),
-        //                     rd: Register::Zero,
-        //                     imm: Immediate(0),
-        //                     comment: None,
-        //                 },
-        //                 Instruction::Ret {
-        //                     address: Address(0x4),
-        //                     comment: None,
-        //                 },
-        //             ],
-        //             continue_target: None,
-        //             jump_target: None,
-        //         }],
-        //         indirect_targets: HashMap::new(),
-        //     }],
-        //     data: HashMap::new(),
-        // }
-    }
+lazy_static! {
+    static ref RODATA_SECTION: Regex = Regex::new(r"Disassembly of section (\.rodata):").unwrap();
+    static ref CODE_SECTION: Regex = Regex::new(r"Disassembly of section (\.text.*):").unwrap();
+    static ref NOT_DATA_SECTION: Regex =
+        Regex::new(r"Disassembly of section (\.comment)|(\.debug.*):").unwrap();
+    static ref SECTION: Regex = Regex::new(r"Disassembly of section (.*):").unwrap();
+    static ref SYMBOL: Regex = Regex::new(r"([[:xdigit:]]+) <(.*)>:").unwrap();
+    static ref BYTES: Regex = Regex::new(r"[[:xdigit:]]+:\s+([[:xdigit:]]+)").unwrap();
 }
 
-// pub fn parse_rodata(source: &str) -> HashMap<RiscvAddress, RiscvAddress> {
-//     let addrs: Vec<_> = source
-//         .lines()
-//         .skip_while(|line| !line.contains(".rodata"))
-//         .skip(3)
-//         .map(|line| line.trim())
-//         .take_while(|line| !line.is_empty())
-//         .map(|line| {
-//             lazy_static! {
-//                 static ref TARGET: Regex = Regex::new(r"(.+):\s+(.+?)\s+").unwrap();
-//             }
-//             let caps = TARGET.captures(line).unwrap();
-//             (caps[1].to_string(), caps[2].to_string())
-//         })
-//         .collect();
-//     let mut addrs_iter = addrs.iter();
-//     let mut indirect_targets = HashMap::new();
-//     while let (Some(lh), Some(hh)) = (addrs_iter.next(), addrs_iter.next()) {
-//         let addr = RiscvAddress::new(&lh.0);
-//         let target = RiscvAddress::new(&(hh.1.clone() + &lh.1));
-//         indirect_targets.insert(addr, target);
-//     }
-//     indirect_targets
-// }
+pub struct Parser<'a> {
+    lines: Vec<&'a str>,
+    symbol_addresses: Vec<Address>,
+    abi: Abi,
+    code_blocks: Vec<CodeBlock>,
+    data_blocks: Vec<DataBlock>,
+}
 
-// pub fn parse_sdata(source: &str) -> HashMap<String, (String, LlvmType)> {
-//     let lines: Vec<_> = source
-//         .lines()
-//         .skip_while(|line| !line.contains(".sdata"))
-//         .skip(2)
-//         .map(|line| line.trim())
-//         .filter(|line| !line.is_empty())
-//         .take_while(|line| !line.starts_with("Disassembly of section"))
-//         .collect();
-//     let mut lines_iter = lines.iter();
-//     let mut statics = HashMap::new();
-//     while let (Some(name_line), Some(value_line)) = (lines_iter.next(), lines_iter.next()) {
-//         lazy_static! {
-//             static ref NAME: Regex = Regex::new(r"<(.+)>").unwrap();
-//             static ref VALUE: Regex = Regex::new(r":\s+(([[:xdigit:]]+\s)+)").unwrap();
-//         }
-//         let caps = NAME.captures(name_line).unwrap();
-//         let name = caps[1].to_string();
-//         let value = match VALUE.captures(value_line) {
-//             Some(value) => value[1].split(' ').rev().collect::<Vec<_>>().join(""),
-//             None => String::new(),
-//         };
-//         statics.insert(name, (value, LlvmType::I8));
-//     }
-//     statics
-// }
+impl<'a> Parser<'a> {
+    pub fn new(source: &'a str, abi: &Option<String>) -> Self {
+        let lines: Vec<_> = source
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| l.is_empty())
+            .skip_while(|l| !SECTION.is_match(l))
+            .collect();
+        assert!(!lines.is_empty(), "Empty disassembly");
+        Parser {
+            lines,
+            symbol_addresses: Vec::new(),
+            abi: Abi::new(abi),
+            code_blocks: Vec::new(),
+            data_blocks: Vec::new(),
+        }
+    }
 
-// pub fn parse_sbss(source: &str) -> HashMap<String, (String, LlvmType)> {
-//     lazy_static! {
-//         static ref NAME: Regex = Regex::new(r"<(.+)>").unwrap();
-//     }
-//     source
-//         .lines()
-//         .skip_while(|line| !line.contains(".sbss"))
-//         .skip(2)
-//         .take_while(|line| !line.starts_with("Disassembly of section"))
-//         .filter_map(|line| {
-//             NAME.captures(line)
-//                 .map(|caps| (caps[1].to_string(), (String::new(), LlvmType::I8)))
-//         })
-//         .collect()
-// }
+    pub fn run(&mut self) -> Program {
+        let rodata: Vec<_> = self
+            .lines
+            .iter()
+            .cloned()
+            .skip_while(|l| RODATA_SECTION.is_match(l))
+            .take_while(|l| !SECTION.is_match(l))
+            .collect();
+        let data_blocks = self.parse_rodata_section(&rodata);
+        self.data_blocks.extend(data_blocks);
 
-// pub fn parse_text(source: &str) -> Vec<RiscvInstruction> {
-//     let lines: Vec<_> = source
-//         .lines()
-//         .skip_while(|line| !line.contains(".text"))
-//         .skip(1)
-//         .map(|line| line.trim())
-//         .take_while(|line| !line.starts_with("Disassembly"))
-//         .collect();
-//     let mut label = None;
-//     let mut insts = Vec::new();
-//     for line in lines {
-//         if let Some(inst) = parse_line(line, &mut label) {
-//             insts.push(inst);
-//         }
-//     }
-//     insts
-// }
+        let mut section_start = 0;
+        let mut section_end = self.lines[1..]
+            .iter()
+            .position(|l| SECTION.is_match(l))
+            .unwrap_or(self.lines.len());
 
-// fn parse_line(line: &str, label: &mut Option<String>) -> Option<RiscvInstruction> {
-//     lazy_static! {
-//         static ref LABEL: Regex = Regex::new(r"[[:xdigit:]]+ <(\S+)>:").unwrap();
-//     }
-//     match line {
-//         "" | "..." => {
-//             *label = None;
-//             None
-//         }
-//         line if LABEL.is_match(line) => {
-//             let caps = LABEL.captures(line).unwrap();
-//             *label = Some(caps[1].to_string());
-//             None
-//         }
-//         line => {
-//             let lb = label.take();
-//             let inst = RiscvInstruction::new(line, lb);
-//             Some(inst)
-//         }
-//     }
-// }
+        while section_end < self.lines.len() {
+            let section = &self.lines[section_start..section_end];
+            if CODE_SECTION.is_match(section[0]) {
+                let code_blocks = self.parse_code_section(section);
+                self.code_blocks.extend(code_blocks);
+            } else if !NOT_DATA_SECTION.is_match(section[0]) {
+                let data_blocks = self.parse_data_section(section);
+                self.data_blocks.extend(data_blocks);
+            }
+            section_start = section_end;
+            section_end = self.lines[section_end..]
+                .iter()
+                .position(|l| SECTION.is_match(l))
+                .unwrap_or(self.lines.len());
+        }
+
+        Program {
+            abi: mem::take(&mut Abi::Lp64d),
+            code: mem::take(&mut self.code_blocks),
+            data: mem::take(&mut self.data_blocks),
+        }
+    }
+
+    fn parse_rodata_section(&mut self, lines: &[&str]) -> Vec<DataBlock> {
+        use Abi::*;
+
+        let data_blocks = self.parse_data_section(lines);
+        let step = match self.abi {
+            Ilp32 | Ilp32f | Ilp32d => 4,
+            Lp64 | Lp64f | Lp64d => 8,
+        };
+
+        for data_block in data_blocks.iter() {
+            assert!(
+                data_block.bytes.len() % step == 0,
+                "`.rodata` contains something more than the jump table"
+            );
+            let mut i = 0;
+            while i < data_block.bytes.len() {
+                let bytes = &data_block.bytes[i..i + step];
+                let addr = Address(usize::from_be_bytes(bytes.try_into().unwrap()));
+                self.symbol_addresses.push(addr);
+                i += step;
+            }
+        }
+
+        data_blocks
+    }
+
+    fn parse_data_section(&self, lines: &[&str]) -> Vec<DataBlock> {
+        let mut lines = lines.iter();
+        let section = SECTION.captures(lines.next().unwrap()).unwrap()[1].to_string();
+        let caps = SYMBOL.captures(lines.next().unwrap()).unwrap();
+        let mut data = Vec::new();
+        let mut symbol = caps[1].to_string();
+        let mut address = Address::new(&caps[0]);
+        let mut bytes = Vec::new();
+
+        for line in lines {
+            if let Some(caps) = SYMBOL.captures(line) {
+                let symbol = mem::replace(&mut symbol, caps[1].to_string());
+                let address = mem::replace(&mut address, Address::new(&caps[0]));
+                let bytes = mem::take(&mut bytes);
+                data.push(DataBlock {
+                    section: section.clone(),
+                    symbol,
+                    address,
+                    bytes,
+                });
+            } else {
+                let bytes_str = &BYTES.captures(line).unwrap()[1];
+                bytes.extend(u32::from_str_radix(bytes_str, 16).unwrap().to_be_bytes());
+            }
+        }
+
+        data.push(DataBlock {
+            section,
+            symbol,
+            address,
+            bytes,
+        });
+
+        data
+    }
+
+    fn parse_code_section(&self, lines: &[&str]) -> Vec<CodeBlock> {
+        use Instruction::*;
+
+        let mut lines = lines.iter();
+        let section = SECTION.captures(lines.next().unwrap()).unwrap()[1].to_string();
+        let caps = SYMBOL.captures(lines.next().unwrap()).unwrap();
+        let mut code_blocks = Vec::new();
+        let mut symbol = caps[1].to_string();
+        let mut address = Address::new(&caps[0]);
+        let mut instructions = Vec::new();
+        let mut split = false;
+
+        for line in lines {
+            if let Some(caps) = SYMBOL.captures(line) {
+                let symbol = mem::replace(&mut symbol, caps[1].to_string());
+                let address = mem::replace(&mut address, Address::new(&caps[0]));
+                let instructions = mem::take(&mut instructions);
+                code_blocks.push(CodeBlock {
+                    section: section.clone(),
+                    symbol,
+                    address,
+                    instructions,
+                });
+            } else {
+                let inst = Instruction::new(line);
+
+                if split {
+                    split = false;
+                    let Address(addr) = inst.address();
+                    let symbol = mem::replace(&mut symbol, addr.to_string());
+                    let address = mem::replace(&mut address, Address(*addr));
+                    let instructions = mem::take(&mut instructions);
+                    code_blocks.push(CodeBlock {
+                        section: section.clone(),
+                        symbol,
+                        address,
+                        instructions,
+                    });
+                }
+
+                if let Jal { .. }
+                | Jalr { .. }
+                | Beq { .. }
+                | Bne { .. }
+                | Blt { .. }
+                | Bge { .. }
+                | Bltu { .. }
+                | Bgeu { .. }
+                | Beqz { .. }
+                | Bnez { .. }
+                | Blez { .. }
+                | Bgez { .. }
+                | Bltz { .. }
+                | Bgtz { .. }
+                | J { .. }
+                | Jr { .. }
+                | Ret { .. } = inst
+                {
+                    instructions.push(inst);
+                    split = true;
+                }
+            }
+        }
+
+        code_blocks.push(CodeBlock {
+            section,
+            symbol,
+            address,
+            instructions,
+        });
+
+        code_blocks
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -643,184 +703,6 @@ mod tests {
     //     ret("ret", Ret {}),
     }
 }
-
-// use crate::cfg::{BasicBlock, Cfg, RiscvFunction};
-// use crate::riscv_isa::{RiscvAddress, RiscvInstruction};
-// use regex::Regex;
-// use std::collections::{HashMap, HashSet};
-// use std::mem;
-
-// pub struct CfgBuilder {
-//     instructions: Vec<RiscvInstruction>,
-//     indirect_targets: HashMap<RiscvAddress, RiscvAddress>,
-//     functions: HashSet<String>,
-//     cfg: Cfg,
-// }
-
-// impl CfgBuilder {
-//     pub fn new(
-//         instructions: Vec<RiscvInstruction>,
-//         indirect_targets: HashMap<RiscvAddress, RiscvAddress>,
-//     ) -> Self {
-//         CfgBuilder {
-//             instructions,
-//             indirect_targets,
-//             functions: HashSet::new(),
-//             cfg: Cfg::new(),
-//         }
-//     }
-
-//     pub fn run(&mut self) -> Cfg {
-//         self.build_function("main");
-//         mem::take(&mut self.cfg)
-//     }
-
-//     fn build_function(&mut self, name: &str) {
-//         self.functions.insert(name.to_string());
-//         let index = self
-//             .instructions
-//             .iter()
-//             .position(|inst| inst.label() == &Some(name.to_string()))
-//             .unwrap();
-//         let (basic_blocks, indirect_targets) = self.build_basic_blocks(index);
-//         let func = RiscvFunction {
-//             name: name.to_string(),
-//             basic_blocks,
-//             indirect_targets,
-//         };
-//         self.cfg.push(func);
-//     }
-
-//     fn build_basic_blocks(
-//         &mut self,
-//         index: usize,
-//     ) -> (Vec<BasicBlock>, HashMap<RiscvAddress, usize>) {
-//         use RiscvInstruction::*;
-
-//         // Start indexes for basic blocks.
-//         let mut starts = vec![index];
-
-//         // Find basic blocks that are delimited by various jump instructions
-//         // and store their continue and jump targets.
-//         let mut targets = HashMap::new();
-//         let mut idx = index;
-//         while let Some(inst) = self.instructions.get(idx) {
-//             // Stop when we enter the next function.
-//             if idx != index && inst.label().is_some() {
-//                 break;
-//             }
-
-//             match inst {
-//                 Jal { comment, .. } | Jalr { comment, .. } => {
-//                     lazy_static! {
-//                         static ref FUNCTION: Regex = Regex::new(r"<(.+)>").unwrap();
-//                     }
-//                     let caps = FUNCTION.captures(comment.as_ref().unwrap()).unwrap();
-//                     let name = caps[1].to_string();
-//                     if !self.functions.contains(&name) {
-//                         self.build_function(&name);
-//                     }
-//                 }
-//                 Beq { addr, .. }
-//                 | Bne { addr, .. }
-//                 | Blt { addr, .. }
-//                 | Bge { addr, .. }
-//                 | Bltu { addr, .. }
-//                 | Bgeu { addr, .. }
-//                 | Beqz { addr, .. }
-//                 | Bnez { addr, .. }
-//                 | Blez { addr, .. }
-//                 | Bgez { addr, .. }
-//                 | Bltz { addr, .. }
-//                 | Bgtz { addr, .. } => {
-//                     let index = self.address_to_index(addr);
-//                     targets.insert(idx + 1, (Some(idx + 1), Some(index)));
-//                     starts.extend(vec![idx + 1, index]);
-//                 }
-//                 J { addr, .. } => {
-//                     let index = self.address_to_index(addr);
-//                     targets.insert(idx + 1, (None, Some(index)));
-//                     starts.extend(vec![idx + 1, index]);
-//                 }
-//                 Jr { .. } | Ret { .. } => {
-//                     targets.insert(idx + 1, (None, None));
-//                     starts.push(idx + 1);
-//                 }
-//                 _ => {}
-//             }
-//             idx += 1;
-//         }
-
-//         // Find basic blocks that are delimited by indirect jump targets.
-//         let indirect_targets: HashMap<_, _> = self
-//             .indirect_targets
-//             .iter()
-//             .map(|(addr, target)| (addr.clone(), self.address_to_index(target)))
-//             .filter(|(_, i)| &index <= i && i < &idx)
-//             .collect();
-//         starts.extend(indirect_targets.values());
-//         starts.sort_unstable();
-//         starts.dedup();
-//         let indirect_targets: HashMap<_, _> = indirect_targets
-//             .into_iter()
-//             .map(|(addr, index)| (addr, self.find_basic_block_index(&starts, &index)))
-//             .collect();
-
-//         // Build basic blocks.
-//         let mut blocks = Vec::new();
-//         let mut start_iter = starts.iter();
-//         let mut start = *start_iter.next().unwrap();
-//         let mut end = start;
-//         for (i, s) in start_iter.enumerate() {
-//             start = end;
-//             end = *s;
-//             let mut block = match targets.get(&end) {
-//                 Some((continue_target, jump_target)) => BasicBlock {
-//                     instructions: self.instructions[start..end].to_vec(),
-//                     continue_target: continue_target
-//                         .map(|i| self.find_basic_block_index(&starts, &i)),
-//                     jump_target: jump_target.map(|i| self.find_basic_block_index(&starts, &i)),
-//                 },
-//                 None => BasicBlock {
-//                     instructions: self.instructions[start..end].to_vec(),
-//                     continue_target: Some(self.find_basic_block_index(&starts, &end)),
-//                     jump_target: None,
-//                 },
-//             };
-
-//             if block.jump_target.is_none()
-//                 && !matches!(
-//                     block.instructions.last(),
-//                     Some(Jr { .. }) | Some(Ret { .. })
-//                 )
-//             {
-//                 block.instructions.push(J {
-//                     label: None,
-//                     address: 0.into(),
-//                     addr: 0.into(),
-//                     comment: None,
-//                 });
-//                 block.continue_target = None;
-//                 block.jump_target = Some(i + 1);
-//             }
-
-//             blocks.push(block);
-//         }
-
-//         (blocks, indirect_targets)
-//     }
-
-//     fn address_to_index(&self, address: &RiscvAddress) -> usize {
-//         self.instructions
-//             .iter()
-//             .position(|inst| inst.address() == address)
-//             .unwrap()
-//     }
-
-//     fn find_basic_block_index(&self, starts: &[usize], start: &usize) -> usize {
-//         starts.iter().position(|s| s == start).unwrap()
-//     }
-// }
 
 // #[cfg(test)]
 // mod tests {

@@ -6,8 +6,8 @@ use regex::{Regex, RegexSet};
 #[derive(Debug, PartialEq)]
 pub struct Program {
     pub abi: Abi,
-    pub code: Vec<Code>,
-    pub data: Vec<Data>,
+    pub code: Vec<CodeBlock>,
+    pub data: Vec<DataBlock>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -36,20 +36,26 @@ impl Abi {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Code {
-    section: String,
-    symbol: String,
-    address: Address,
-    instructions: Vec<Instruction>,
+impl Default for Abi {
+    fn default() -> Self {
+        Abi::Lp64d
+    }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Data {
-    section: String,
-    symbol: String,
-    address: Address,
-    bytes: Vec<u8>,
+pub struct CodeBlock {
+    pub section: String,
+    pub symbol: String,
+    pub address: Address,
+    pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct DataBlock {
+    pub section: String,
+    pub symbol: String,
+    pub address: Address,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, PartialEq)]
