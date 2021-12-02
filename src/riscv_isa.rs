@@ -6,8 +6,8 @@ use regex::{Regex, RegexSet};
 #[derive(Debug, PartialEq)]
 pub struct Program {
     pub abi: Abi,
-    pub code: Vec<CodeBlock>,
-    pub data: Vec<DataBlock>,
+    pub code_blocks: Vec<CodeBlock>,
+    pub data_blocks: Vec<DataBlock>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -25,13 +25,14 @@ impl Abi {
         use Abi::*;
 
         match s.as_ref().map(|s| s.as_str()) {
+            None => Abi::default(),
             Some("ilp32") => Ilp32,
             Some("ilp32f") => Ilp32f,
             Some("ilp32d") => Ilp32d,
             Some("lp64") => Lp64,
             Some("lp64f") => Lp64f,
-            Some("lp64d") | None => Lp64d,
-            _ => unreachable!(),
+            Some("lp64d") => Lp64d,
+            Some(abi) => panic!("Unknown ABI: `{}`", abi),
         }
     }
 }
@@ -509,7 +510,7 @@ define_instruction! {
     FmvDX(r"fmv\.d\.x\s+{},{}", frd, rs1),
 
     // Pseudoinstructions
-    // Pseudoinstructions using symbols are always disassembled to base instructions.
+    // Pseudoinstructions using symbols are always converted to base instructions.
 
     Nop(r"nop"),
     Li(r"li\s+{},{}", rd, imm),
@@ -537,18 +538,18 @@ define_instruction! {
     Bltz(r"bltz\s+{},{}", rs1, addr),
     Bgtz(r"bgtz\s+{},{}", rs1, addr),
 
-    Bgt(r"bgt\s+{},{},{}", rs1, rs2, addr),
-    Ble(r"ble\s+{},{},{}", rs1, rs2, addr),
-    Bgtu(r"bgtu\s+{},{},{}", rs1, rs2, addr),
-    Bleu(r"bleu\s+{},{},{}", rs1, rs2, addr),
+    // `bgt` is always converted to `blt`.
+    // `ble` is always converted to `bge`.
+    // `bgtu` is always converted to `bltu`.
+    // `bleu` is always converted to `bgeu`.
 
     J(r"j\s+{}", addr),
-    // `jal offset` is always disassembled to `jal ra,addr`.
+    // `jal offset` is always converted to `jal ra,addr`.
     Jr(r"jr\s+{}", rs1),
     PseudoJalr(r"jalr\s+{}", rs1),
     Ret(r"ret"),
-    // `call offset` is always disassembled to the base instruction.
-    // `tail offset` is always disassembled to the base instruction.
+    // `call offset` is always converted to the base instruction.
+    // `tail offset` is always converted to the base instruction.
 
     PseudoFence(r"fence"),
 

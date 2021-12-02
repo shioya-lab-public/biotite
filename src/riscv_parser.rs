@@ -3,18 +3,18 @@ use regex::Regex;
 use std::mem;
 
 lazy_static! {
-    static ref RODATA_SECTION: Regex = Regex::new(r"Disassembly of section (\.rodata):").unwrap();
+    static ref RODATA_SECTION: Regex = Regex::new(r"Disassembly of section \.rodata:").unwrap();
     static ref CODE_SECTION: Regex = Regex::new(r"Disassembly of section (\.text.*):").unwrap();
     static ref NOT_DATA_SECTION: Regex =
         Regex::new(r"Disassembly of section (\.comment)|(\.debug.*):").unwrap();
-    static ref SECTION: Regex = Regex::new(r"Disassembly of section (.*):").unwrap();
+    static ref SECTION: Regex = Regex::new(r"Disassembly of section (.+):").unwrap();
     static ref SYMBOL: Regex = Regex::new(r"([[:xdigit:]]+) <(.*)>:").unwrap();
     static ref BYTES: Regex = Regex::new(r"[[:xdigit:]]+:\s+([[:xdigit:]]+)").unwrap();
 }
 
 pub struct Parser<'a> {
     lines: Vec<&'a str>,
-    symbol_addresses: Vec<Address>,
+    jump_table: Vec<Address>,
     abi: Abi,
     code_blocks: Vec<CodeBlock>,
     data_blocks: Vec<DataBlock>,
@@ -31,7 +31,7 @@ impl<'a> Parser<'a> {
         assert!(!lines.is_empty(), "Empty disassembly");
         Parser {
             lines,
-            symbol_addresses: Vec::new(),
+            jump_table: Vec::new(),
             abi: Abi::new(abi),
             code_blocks: Vec::new(),
             data_blocks: Vec::new(),
@@ -49,14 +49,13 @@ impl<'a> Parser<'a> {
         let data_blocks = self.parse_rodata_section(&rodata);
         self.data_blocks.extend(data_blocks);
 
-        let mut section_start = 0;
-        let mut section_end = self.lines[1..]
+        let mut start = 0;
+        let mut end = self.lines[1..]
             .iter()
             .position(|l| SECTION.is_match(l))
             .unwrap_or(self.lines.len());
-
-        while section_end < self.lines.len() {
-            let section = &self.lines[section_start..section_end];
+        while end <= self.lines.len() {
+            let section = &self.lines[start..end];
             if CODE_SECTION.is_match(section[0]) {
                 let code_blocks = self.parse_code_section(section);
                 self.code_blocks.extend(code_blocks);
@@ -64,61 +63,61 @@ impl<'a> Parser<'a> {
                 let data_blocks = self.parse_data_section(section);
                 self.data_blocks.extend(data_blocks);
             }
-            section_start = section_end;
-            section_end = self.lines[section_end..]
-                .iter()
-                .position(|l| SECTION.is_match(l))
-                .unwrap_or(self.lines.len());
+
+            if end == self.lines.len() {
+                break;
+            } else {
+                start = end;
+                end = self.lines[end + 1..]
+                    .iter()
+                    .position(|l| SECTION.is_match(l))
+                    .unwrap_or(self.lines.len());
+            }
         }
 
         Program {
-            abi: mem::take(&mut Abi::Lp64d),
-            code: mem::take(&mut self.code_blocks),
-            data: mem::take(&mut self.data_blocks),
+            abi: mem::take(&mut self.abi),
+            code_blocks: mem::take(&mut self.code_blocks),
+            data_blocks: mem::take(&mut self.data_blocks),
         }
     }
 
     fn parse_rodata_section(&mut self, lines: &[&str]) -> Vec<DataBlock> {
-        use Abi::*;
-
         let data_blocks = self.parse_data_section(lines);
         let step = match self.abi {
-            Ilp32 | Ilp32f | Ilp32d => 4,
-            Lp64 | Lp64f | Lp64d => 8,
+            Abi::Ilp32 | Abi::Ilp32f | Abi::Ilp32d => 4,
+            Abi::Lp64 | Abi::Lp64f | Abi::Lp64d => 8,
         };
-
         for data_block in data_blocks.iter() {
             assert!(
                 data_block.bytes.len() % step == 0,
-                "`.rodata` contains something more than the jump table"
+                "`.rodata` contains something other than the jump table"
             );
             let mut i = 0;
             while i < data_block.bytes.len() {
                 let bytes = &data_block.bytes[i..i + step];
-                let addr = Address(usize::from_be_bytes(bytes.try_into().unwrap()));
-                self.symbol_addresses.push(addr);
+                let address = Address(usize::from_be_bytes(bytes.try_into().unwrap()));
+                self.jump_table.push(address);
                 i += step;
             }
         }
-
         data_blocks
     }
 
     fn parse_data_section(&self, lines: &[&str]) -> Vec<DataBlock> {
-        let mut lines = lines.iter();
-        let section = SECTION.captures(lines.next().unwrap()).unwrap()[1].to_string();
-        let caps = SYMBOL.captures(lines.next().unwrap()).unwrap();
-        let mut data = Vec::new();
+        let mut data_blocks = Vec::new();
+        let section = SECTION.captures(lines[0]).unwrap()[1].to_string();
+        let caps = SYMBOL.captures(lines[1]).unwrap();
         let mut symbol = caps[1].to_string();
         let mut address = Address::new(&caps[0]);
         let mut bytes = Vec::new();
 
-        for line in lines {
+        for line in &lines[2..] {
             if let Some(caps) = SYMBOL.captures(line) {
                 let symbol = mem::replace(&mut symbol, caps[1].to_string());
                 let address = mem::replace(&mut address, Address::new(&caps[0]));
                 let bytes = mem::take(&mut bytes);
-                data.push(DataBlock {
+                data_blocks.push(DataBlock {
                     section: section.clone(),
                     symbol,
                     address,
@@ -126,33 +125,42 @@ impl<'a> Parser<'a> {
                 });
             } else {
                 let bytes_str = &BYTES.captures(line).unwrap()[1];
-                bytes.extend(u32::from_str_radix(bytes_str, 16).unwrap().to_be_bytes());
+                bytes.extend(match bytes_str.len() {
+                    4 => u16::from_str_radix(bytes_str, 16)
+                        .unwrap()
+                        .to_be_bytes()
+                        .to_vec(),
+                    8 => u32::from_str_radix(bytes_str, 16)
+                        .unwrap()
+                        .to_be_bytes()
+                        .to_vec(),
+                    _ => unreachable!(),
+                });
             }
         }
 
-        data.push(DataBlock {
+        data_blocks.push(DataBlock {
             section,
             symbol,
             address,
             bytes,
         });
 
-        data
+        data_blocks
     }
 
     fn parse_code_section(&self, lines: &[&str]) -> Vec<CodeBlock> {
         use Instruction::*;
 
-        let mut lines = lines.iter();
-        let section = SECTION.captures(lines.next().unwrap()).unwrap()[1].to_string();
-        let caps = SYMBOL.captures(lines.next().unwrap()).unwrap();
         let mut code_blocks = Vec::new();
+        let section = SECTION.captures(lines[0]).unwrap()[1].to_string();
+        let caps = SYMBOL.captures(lines[1]).unwrap();
         let mut symbol = caps[1].to_string();
         let mut address = Address::new(&caps[0]);
         let mut instructions = Vec::new();
         let mut split = false;
 
-        for line in lines {
+        for line in &lines[2..] {
             if let Some(caps) = SYMBOL.captures(line) {
                 let symbol = mem::replace(&mut symbol, caps[1].to_string());
                 let address = mem::replace(&mut address, Address::new(&caps[0]));
@@ -165,10 +173,11 @@ impl<'a> Parser<'a> {
                 });
             } else {
                 let inst = Instruction::new(line);
+                let addr = inst.address();
 
-                if split {
+                if split || self.jump_table.iter().any(|a| a == addr) {
                     split = false;
-                    let Address(addr) = inst.address();
+                    let Address(addr) = addr;
                     let symbol = mem::replace(&mut symbol, addr.to_string());
                     let address = mem::replace(&mut address, Address(*addr));
                     let instructions = mem::take(&mut instructions);
@@ -196,11 +205,13 @@ impl<'a> Parser<'a> {
                 | Bgtz { .. }
                 | J { .. }
                 | Jr { .. }
+                | PseudoJalr { .. }
                 | Ret { .. } = inst
                 {
-                    instructions.push(inst);
                     split = true;
                 }
+
+                instructions.push(inst);
             }
         }
 
