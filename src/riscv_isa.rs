@@ -250,11 +250,11 @@ impl Immediate {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Address(pub usize);
+pub struct Address(pub u64);
 
 impl Address {
     pub fn new(s: &str) -> Self {
-        Address(usize::from_str_radix(s, 16).unwrap())
+        Address(u64::from_str_radix(s, 16).unwrap())
     }
 }
 
@@ -331,6 +331,7 @@ define_instruction! {
     Auipc(r"auipc\s+{},{}", rd, imm),
     Jal(r"jal\s+{},{}", rd, addr),
     Jalr(r"jalr\s+{},{}\({}\)", rd, imm, rs1),
+    ImplicitJalr(r"jalr\s+{}\({}\)", imm, rs1), // `rd` is omitted if it is `ra`.
     Beq(r"beq\s+{},{},{}", rs1, rs2, addr),
     Bne(r"bne\s+{},{},{}", rs1, rs2, addr),
     Blt(r"blt\s+{},{},{}", rs1, rs2, addr),

@@ -133,13 +133,13 @@ macro_rules! define_instruction {
     ( $( $inst:ident ( $regex:literal $(, $field:ident )* ), )* ) => {
         const ADDRESS: &str = r"(?P<address>[[:xdigit:]]+)";
         const ORD: &str = r"(\.(?P<ord>[[:alpha:]]+))?";
-        const RD: &str = r"(?P<rd>[[:alnum:]]+)";
-        const RS1: &str = r"(?P<rs1>[[:alnum:]]+)";
-        const RS2: &str = r"(?P<rs2>[[:alnum:]]+)";
-        const FRD: &str = r"(?P<frd>[[:alnum:]]+)";
-        const FRS1: &str = r"(?P<frs1>[[:alnum:]]+)";
-        const FRS2: &str = r"(?P<frs2>[[:alnum:]]+)";
-        const FRS3: &str = r"(?P<frs3>[[:alnum:]]+)";
+        const RD: &str = r"(?P<rd>[[:alpha:]][[:alnum:]]+)";
+        const RS1: &str = r"(?P<rs1>[[:alpha:]][[:alnum:]]+)";
+        const RS2: &str = r"(?P<rs2>[[:alpha:]][[:alnum:]]+)";
+        const FRD: &str = r"(?P<frd>[[:alpha:]][[:alnum:]]+)";
+        const FRS1: &str = r"(?P<frs1>[[:alpha:]][[:alnum:]]+)";
+        const FRS2: &str = r"(?P<frs2>[[:alpha:]][[:alnum:]]+)";
+        const FRS3: &str = r"(?P<frs3>[[:alpha:]][[:alnum:]]+)";
         const IMM: &str = r"(?P<imm>(-|(0x))?[[:xdigit:]]+)";
         const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
         const CSR: &str = r"(?P<csr>[[:alpha:]]+)";
@@ -231,8 +231,8 @@ macro_rules! build_test {
         $(
             #[test]
             fn $func() {
-                let source = compile_and_dump(concat!($source, "\n"), &vec![$($march, $mabi)?]);
-                let inst = Instruction::new(source.lines().last().unwrap());
+                let disasm = compile_and_dump(concat!($source, "\n"), &vec![$($march, $mabi)?]);
+                let inst = Instruction::new(disasm.lines().last().unwrap());
                 assert_eq!(
                     inst,
                     $inst {
