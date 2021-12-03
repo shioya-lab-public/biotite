@@ -142,9 +142,9 @@ macro_rules! define_instruction {
         const FRS3: &str = r"(?P<frs3>[[:alpha:]][[:alnum:]]+)";
         const IMM: &str = r"(?P<imm>(-|(0x))?[[:xdigit:]]+)";
         const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
-        const CSR: &str = r"(?P<csr>[[:alpha:]]+)";
-        const RM: &str = r"(\.(?P<rm>[[:alpha:]]+))?";
-        const IORW: &str = r"((\.|\s+)(?P<iorw>((tso)|([iorw]+,[iorw]+))))?";
+        const CSR: &str = r"(?P<csr>[[:alpha:]]+|(0x[[:xdigit:]]+))";
+        const RM: &str = r"(,(?P<rm>[[:alpha:]]+))?";
+        const IORW: &str = r"(?P<iorw>((\.tso)|(\s+[iorw]+,[iorw]+)))";
         const CMT: &str = r"(\s+(?P<cmt>.+))?";
 
         lazy_static! {
@@ -218,6 +218,16 @@ macro_rules! define_instruction {
                     )*
                 }
             }
+
+            pub fn comment(&self) -> &Option<String> {
+                use Instruction::*;
+
+                match self {
+                    $(
+                        $inst { comment, .. } => comment,
+                    )*
+                }
+            }
         }
     };
 }
@@ -231,7 +241,11 @@ macro_rules! build_test {
         $(
             #[test]
             fn $func() {
-                let disasm = compile_and_dump(concat!($source, "\n"), &vec![$($march, $mabi)?]);
+                let source = concat!("
+                    main:
+                        ", $source,"
+                ");
+                let disasm = compile_and_dump(source, &vec![$($march, $mabi)?]);
                 let inst = Instruction::new(disasm.lines().last().unwrap());
                 assert_eq!(
                     inst,
@@ -240,7 +254,7 @@ macro_rules! build_test {
                         $(
                             $field: $value,
                         )*
-                        comment: None,
+                        comment: inst.comment().clone(),
                     }
                 );
             }

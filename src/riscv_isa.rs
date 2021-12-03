@@ -61,7 +61,7 @@ pub struct DataBlock {
 
 #[derive(Debug, PartialEq)]
 pub enum Ordering {
-    None,
+    No,
     Aq,
     Rl,
     AqRl,
@@ -72,7 +72,7 @@ impl Ordering {
         use Ordering::*;
 
         match s {
-            "" => None,
+            "" => No,
             "aq" => Aq,
             "rl" => Rl,
             "aqrl" => AqRl,
@@ -269,6 +269,7 @@ pub enum Csr {
     Cycleh,
     Timeh,
     Instreth,
+    Unknown(u16),
 }
 
 impl Csr {
@@ -285,7 +286,10 @@ impl Csr {
             "cycleh" => Cycleh,
             "timeh" => Timeh,
             "instreth" => Instreth,
-            _ => unreachable!(),
+            s => match s.strip_prefix("0x") {
+                Some(s) => Unknown(u16::from_str_radix(s, 16).unwrap()),
+                None => panic!("Unknown CSR: `{}`", s),
+            },
         }
     }
 }
@@ -321,7 +325,10 @@ pub struct Iorw(pub String);
 
 impl Iorw {
     pub fn new(s: &str) -> Self {
-        Iorw(s.to_string())
+        match s.strip_prefix(".") {
+            Some(s) => Iorw(s.to_string()),
+            None => Iorw(s.trim().to_string()),
+        }
     }
 }
 
@@ -491,8 +498,8 @@ define_instruction! {
     FsgnjxD(r"fsgnjx\.d\s+{},{},{}", frd, frs1, frs2),
     FminD(r"fmin\.d\s+{},{},{}", frd, frs1, frs2),
     FmaxD(r"fmax\.d\s+{},{},{}", frd, frs1, frs2),
-    FcvtSD(r"fcvt\.s\.d\s+{},{}{}", frd, rs1, rm),
-    FcvtDS(r"fcvt\.d\.s\s+{},{}{}", rd, frs1, rm),
+    FcvtSD(r"fcvt\.s\.d\s+{},{}{}", frd, frs1, rm),
+    FcvtDS(r"fcvt\.d\.s\s+{},{}{}", frd, frs1, rm),
     FeqD(r"feq\.d\s+{},{},{}", rd, frs1, frs2),
     FltD(r"flt\.d\s+{},{},{}", rd, frs1, frs2),
     FleD(r"fle\.d\s+{},{},{}", rd, frs1, frs2),
