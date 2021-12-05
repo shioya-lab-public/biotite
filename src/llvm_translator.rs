@@ -1,20 +1,8 @@
-use crate::llvm_isa::{
-    LlvmFpCondition, LlvmFunction, LlvmInstruction, LlvmIntCondition, LlvmOrdering, LlvmType,
-    LlvmValue, Program,
-};
-use crate::riscv_isa::{
-    Address as RiscvAddress, Immediate as RiscvImmediate, Instruction as RiscvInstruction,
-    Program as RiscvProgram, Register as RiscvRegister,
-};
-// use crate::riscv_isa::{BasicBlock, Function as RiscvFunction, Program as RiscvProgram};
-use regex::Regex;
-use std::collections::HashMap;
-use std::convert::TryInto;
-use std::mem;
+use crate::riscv_isa::Program as RvProgram;
+use crate::llvm_isa::Program as LlProgram;
 
 pub struct Translator {
     // cfg: Cfg,
-    statics: HashMap<String, (String, LlvmType)>,
     temp: usize,
 }
 
@@ -42,6 +30,21 @@ impl Translator {
         // }
         todo!()
     }
+}
+
+// single main func (start from `_start`)
+// preload stack reg, opt with mem2reg
+// 1 rv inst -> many llvm inst, use a compound struct
+// use a default dummy type in translating, and lower to 32/64 accd to mabi in a postpass.
+
+// static data section
+// local stack alloc with a compile-time allocator, require equal store and load
+// llvm inst def do not use macro.
+// `build_llvm![ Load { result: t0!, ty: I64!, pointer: A7! } ]`, use a local temp var allocator (assoc const)
+// Use a postpass to enfoce `x0` to be 0
+
+
+
 
     // fn get_temps(&mut self, n: usize) -> Vec<LlvmValue> {
     //     let temps = (self.temp..self.temp + n).map(|t| t.into()).collect();
@@ -2995,7 +2998,6 @@ impl Translator {
 
     //     insts
     // }
-}
 
 // // 162 tests
 // #[cfg(test)]
