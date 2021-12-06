@@ -16,8 +16,8 @@ pub struct Parser<'a> {
     lines: Vec<&'a str>,
     jump_table: Vec<Address>,
     abi: Abi,
-    code_blocks: Vec<CodeBlock>,
     data_blocks: Vec<DataBlock>,
+    code_blocks: Vec<CodeBlock>,
 }
 
 impl<'a> Parser<'a> {
@@ -33,8 +33,8 @@ impl<'a> Parser<'a> {
             lines,
             jump_table: Vec::new(),
             abi: Abi::new(abi),
-            code_blocks: Vec::new(),
             data_blocks: Vec::new(),
+            code_blocks: Vec::new(),
         }
     }
 
@@ -81,8 +81,8 @@ impl<'a> Parser<'a> {
 
         Program {
             abi: mem::take(&mut self.abi),
-            code_blocks: mem::take(&mut self.code_blocks),
             data_blocks: mem::take(&mut self.data_blocks),
+            code_blocks: mem::take(&mut self.code_blocks),
         }
     }
 
