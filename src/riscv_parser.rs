@@ -21,24 +21,28 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(source: &'a str, abi: &Option<String>) -> Self {
-        let lines: Vec<_> = source
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| !l.is_empty())
-            .skip_while(|l| !SECTION.is_match(l))
-            .collect();
-        assert!(!lines.is_empty(), "No disassembly");
+    pub fn new() -> Self {
         Parser {
-            lines,
+            lines: Vec::new(),
             jump_table: Vec::new(),
-            abi: Abi::new(abi),
+            abi: Abi::default(),
             data_blocks: Vec::new(),
             code_blocks: Vec::new(),
         }
     }
 
-    pub fn run(&mut self) -> Program {
+    pub fn run(&mut self, source: &'a str, abi: &Option<String>) -> Program {
+        self.lines = source
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .skip_while(|l| !SECTION.is_match(l))
+            .collect();
+        self.jump_table.clear();
+        self.abi = Abi::new(abi);
+
+        assert!(!self.lines.is_empty(), "No disassembly");
+
         let rodata: Vec<_> = self
             .lines
             .iter()
@@ -236,7 +240,6 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::Parser;
-    use crate::build_test;
     use crate::riscv_isa::{
         Abi::{self, *},
         Address, CodeBlock,
@@ -255,6 +258,35 @@ mod tests {
     use std::io::Write;
     use std::process::{Command, Stdio};
     use tempfile::NamedTempFile;
+
+    macro_rules! build_test {
+        ( $( $func:ident ( $source:literal,
+            $inst:ident { $( $field:ident: $value:expr ),* }
+            $(, [$march:literal, $mabi:literal] )?
+        ), )* ) => {
+            $(
+                #[test]
+                fn $func() {
+                    let source = concat!("
+                        main:
+                            ", $source,"
+                    ");
+                    let disasm = compile_and_dump(source, &vec![$($march, $mabi)?]);
+                    let inst = Instruction::new(disasm.lines().last().unwrap());
+                    assert_eq!(
+                        inst,
+                        $inst {
+                            address: Address(0),
+                            $(
+                                $field: $value,
+                            )*
+                            comment: inst.comment().clone(),
+                        }
+                    );
+                }
+            )*
+        };
+    }
 
     fn compile_and_dump(source: &str, args: &[&str]) -> String {
         let temp_file = NamedTempFile::new().expect("Unable to create temp files");
@@ -295,25 +327,26 @@ mod tests {
     #[should_panic]
     fn empty_disassembly() {
         let source = compile_and_dump("", &[]);
-        Parser::new(&source, &None);
+        Parser::new().run(&source, &None);
     }
 
     #[test]
     fn abi() {
         let source = compile_and_dump("nop\n", &[]);
-        let program = Parser::new(&source, &None).run();
+        let mut parser = Parser::new();
+        let program = parser.run(&source, &None);
         assert_eq!(program.abi, Abi::default());
-        let program = Parser::new(&source, &Some("ilp32".to_string())).run();
+        let program = parser.run(&source, &Some("ilp32".to_string()));
         assert_eq!(program.abi, Ilp32);
-        let program = Parser::new(&source, &Some("ilp32f".to_string())).run();
+        let program = parser.run(&source, &Some("ilp32f".to_string()));
         assert_eq!(program.abi, Ilp32f);
-        let program = Parser::new(&source, &Some("ilp32d".to_string())).run();
+        let program = parser.run(&source, &Some("ilp32d".to_string()));
         assert_eq!(program.abi, Ilp32d);
-        let program = Parser::new(&source, &Some("lp64".to_string())).run();
+        let program = parser.run(&source, &Some("lp64".to_string()));
         assert_eq!(program.abi, Lp64);
-        let program = Parser::new(&source, &Some("lp64f".to_string())).run();
+        let program = parser.run(&source, &Some("lp64f".to_string()));
         assert_eq!(program.abi, Lp64f);
-        let program = Parser::new(&source, &Some("lp64d".to_string())).run();
+        let program = parser.run(&source, &Some("lp64d".to_string()));
         assert_eq!(program.abi, Lp64d);
     }
 
@@ -321,7 +354,7 @@ mod tests {
     #[should_panic]
     fn invalid_abi() {
         let source = compile_and_dump("nop\n", &[]);
-        Parser::new(&source, &Some("invalid".to_string()));
+        Parser::new().run(&source, &Some("invalid".to_string()));
     }
 
     #[test]
@@ -342,8 +375,8 @@ mod tests {
         ";
         let source = compile_and_dump(source, &[]);
 
-        let mut parser = Parser::new(&source, &Some("ilp32d".to_string()));
-        parser.run();
+        let mut parser = Parser::new();
+        parser.run(&source, &Some("ilp32d".to_string()));
         assert_eq!(
             parser.jump_table,
             vec![
@@ -358,8 +391,8 @@ mod tests {
             ]
         );
 
-        let mut parser = Parser::new(&source, &Some("lp64d".to_string()));
-        parser.run();
+        let mut parser = Parser::new();
+        parser.run(&source, &Some("lp64d".to_string()));
         assert_eq!(
             parser.jump_table,
             vec![
@@ -397,7 +430,7 @@ mod tests {
                 .word 1
         ";
         let source = compile_and_dump(source, &[]);
-        let program = Parser::new(&source, &None).run();
+        let program = Parser::new().run(&source, &None);
         assert_eq!(
             program,
             Program {
@@ -459,7 +492,7 @@ mod tests {
                 ret
         ";
         let source = compile_and_dump(source, &[]);
-        let program = Parser::new(&source, &None).run();
+        let program = Parser::new().run(&source, &None);
         assert_eq!(
             program,
             Program {

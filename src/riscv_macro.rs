@@ -1,4 +1,3 @@
-#[macro_export]
 macro_rules! ord {
     ("uppercase") => {
         ORD
@@ -8,7 +7,6 @@ macro_rules! ord {
     };
 }
 
-#[macro_export]
 macro_rules! rd {
     ("uppercase") => {
         RD
@@ -18,7 +16,6 @@ macro_rules! rd {
     };
 }
 
-#[macro_export]
 macro_rules! rs1 {
     ("uppercase") => {
         RS1
@@ -28,7 +25,6 @@ macro_rules! rs1 {
     };
 }
 
-#[macro_export]
 macro_rules! rs2 {
     ("uppercase") => {
         RS2
@@ -38,7 +34,6 @@ macro_rules! rs2 {
     };
 }
 
-#[macro_export]
 macro_rules! frd {
     ("uppercase") => {
         FRD
@@ -48,7 +43,6 @@ macro_rules! frd {
     };
 }
 
-#[macro_export]
 macro_rules! frs1 {
     ("uppercase") => {
         FRS1
@@ -58,7 +52,6 @@ macro_rules! frs1 {
     };
 }
 
-#[macro_export]
 macro_rules! frs2 {
     ("uppercase") => {
         FRS2
@@ -68,7 +61,6 @@ macro_rules! frs2 {
     };
 }
 
-#[macro_export]
 macro_rules! frs3 {
     ("uppercase") => {
         FRS3
@@ -78,7 +70,6 @@ macro_rules! frs3 {
     };
 }
 
-#[macro_export]
 macro_rules! imm {
     ("uppercase") => {
         IMM
@@ -88,7 +79,6 @@ macro_rules! imm {
     };
 }
 
-#[macro_export]
 macro_rules! addr {
     ("uppercase") => {
         ADDR
@@ -98,7 +88,6 @@ macro_rules! addr {
     };
 }
 
-#[macro_export]
 macro_rules! csr {
     ("uppercase") => {
         CSR
@@ -108,7 +97,6 @@ macro_rules! csr {
     };
 }
 
-#[macro_export]
 macro_rules! rm {
     ("uppercase") => {
         RM
@@ -118,7 +106,6 @@ macro_rules! rm {
     };
 }
 
-#[macro_export]
 macro_rules! iorw {
     ("uppercase") => {
         IORW
@@ -128,7 +115,6 @@ macro_rules! iorw {
     };
 }
 
-#[macro_export]
 macro_rules! define_instruction {
     ( $( $inst:ident ( $regex:literal $(, $field:ident )* ), )* ) => {
         const ADDRESS: &str = r"(?P<address>[[:xdigit:]]+)";
@@ -232,32 +218,6 @@ macro_rules! define_instruction {
     };
 }
 
-#[macro_export]
-macro_rules! build_test {
-    ( $( $func:ident ( $source:literal,
-        $inst:ident { $( $field:ident: $value:expr ),* }
-        $(, [$march:literal, $mabi:literal] )?
-    ), )* ) => {
-        $(
-            #[test]
-            fn $func() {
-                let source = concat!("
-                    main:
-                        ", $source,"
-                ");
-                let disasm = compile_and_dump(source, &vec![$($march, $mabi)?]);
-                let inst = Instruction::new(disasm.lines().last().unwrap());
-                assert_eq!(
-                    inst,
-                    $inst {
-                        address: Address(0),
-                        $(
-                            $field: $value,
-                        )*
-                        comment: inst.comment().clone(),
-                    }
-                );
-            }
-        )*
-    };
-}
+pub(crate) use {
+    addr, csr, define_instruction, frd, frs1, frs2, frs3, imm, iorw, ord, rd, rm, rs1, rs2,
+};

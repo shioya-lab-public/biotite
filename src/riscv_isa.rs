@@ -1,7 +1,6 @@
-use crate::{
-    addr, csr, define_instruction, frd, frs1, frs2, frs3, imm, iorw, ord, rd, rm, rs1, rs2,
-};
+use crate::riscv_macro::*;
 use regex::{Regex, RegexSet};
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
@@ -51,6 +50,22 @@ pub struct DataBlock {
     pub bytes: Vec<u8>,
 }
 
+impl Display for DataBlock {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let mut data_block = format!("; {} {} {}\n", self.address, self.section, self.symbol);
+        data_block += &format!(
+            "@data_{} = global [{} x i8] [",
+            self.address,
+            self.bytes.len()
+        );
+        for byte in self.bytes.iter() {
+            data_block += &format!("i8 {}, ", byte);
+        }
+        data_block += "]\n";
+        write!(f, "{}", data_block)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct CodeBlock {
     pub section: String,
@@ -81,7 +96,7 @@ impl Ordering {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Register {
     Zero,
     Ra,
@@ -159,7 +174,48 @@ impl Register {
     }
 }
 
-#[derive(Debug, PartialEq)]
+impl Display for Register {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        use Register::*;
+
+        match self {
+            Zero => write!(f, "zero"),
+            Ra => write!(f, "ra"),
+            Sp => write!(f, "sp"),
+            Gp => write!(f, "gp"),
+            Tp => write!(f, "tp"),
+            T0 => write!(f, "t0"),
+            T1 => write!(f, "t1"),
+            T2 => write!(f, "t2"),
+            S0 => write!(f, "s0"),
+            S1 => write!(f, "s1"),
+            A0 => write!(f, "a0"),
+            A1 => write!(f, "a1"),
+            A2 => write!(f, "a2"),
+            A3 => write!(f, "a3"),
+            A4 => write!(f, "a4"),
+            A5 => write!(f, "a5"),
+            A6 => write!(f, "a6"),
+            A7 => write!(f, "a7"),
+            S2 => write!(f, "s2"),
+            S3 => write!(f, "s3"),
+            S4 => write!(f, "s4"),
+            S5 => write!(f, "s5"),
+            S6 => write!(f, "s6"),
+            S7 => write!(f, "s7"),
+            S8 => write!(f, "s8"),
+            S9 => write!(f, "s9"),
+            S10 => write!(f, "s10"),
+            S11 => write!(f, "s11"),
+            T3 => write!(f, "t3"),
+            T4 => write!(f, "t4"),
+            T5 => write!(f, "t5"),
+            T6 => write!(f, "t6"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FPRegister {
     Ft0,
     Ft1,
@@ -237,7 +293,48 @@ impl FPRegister {
     }
 }
 
-#[derive(Debug, PartialEq)]
+impl Display for FPRegister {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        use FPRegister::*;
+
+        match self {
+            Ft0 => write!(f, "ft0"),
+            Ft1 => write!(f, "ft1"),
+            Ft2 => write!(f, "ft2"),
+            Ft3 => write!(f, "ft3"),
+            Ft4 => write!(f, "ft4"),
+            Ft5 => write!(f, "ft5"),
+            Ft6 => write!(f, "ft6"),
+            Ft7 => write!(f, "ft7"),
+            Fs0 => write!(f, "fs0"),
+            Fs1 => write!(f, "fs1"),
+            Fa0 => write!(f, "fa0"),
+            Fa1 => write!(f, "fa1"),
+            Fa2 => write!(f, "fa2"),
+            Fa3 => write!(f, "fa3"),
+            Fa4 => write!(f, "fa4"),
+            Fa5 => write!(f, "fa5"),
+            Fa6 => write!(f, "fa6"),
+            Fa7 => write!(f, "fa7"),
+            Fs2 => write!(f, "fs2"),
+            Fs3 => write!(f, "fs3"),
+            Fs4 => write!(f, "fs4"),
+            Fs5 => write!(f, "fs5"),
+            Fs6 => write!(f, "fs6"),
+            Fs7 => write!(f, "fs7"),
+            Fs8 => write!(f, "fs8"),
+            Fs9 => write!(f, "fs9"),
+            Fs10 => write!(f, "fs10"),
+            Fs11 => write!(f, "fs11"),
+            Ft8 => write!(f, "ft8"),
+            Ft9 => write!(f, "ft9"),
+            Ft10 => write!(f, "ft10"),
+            Ft11 => write!(f, "ft11"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Immediate(pub i64);
 
 impl Immediate {
@@ -249,12 +346,26 @@ impl Immediate {
     }
 }
 
-#[derive(Debug, PartialEq)]
+impl Display for Immediate {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let Immediate(imm) = self;
+        write!(f, "{}", imm)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Address(pub u64);
 
 impl Address {
     pub fn new(s: &str) -> Self {
         Address(u64::from_str_radix(s, 16).unwrap())
+    }
+}
+
+impl Display for Address {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let Address(addr) = self;
+        write!(f, "{}", addr)
     }
 }
 

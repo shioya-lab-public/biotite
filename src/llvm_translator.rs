@@ -1,81 +1,123 @@
-use crate::llvm_isa::Program as LlvmProgram;
-use crate::riscv_isa::Program as RiscvProgram;
+use crate::llvm_isa::{CodeBlock, Instruction, InstructionBlock, Program, Type, Value};
+use crate::llvm_macro::*;
+use crate::riscv_isa::{
+    Abi, Address, CodeBlock as RiscvCodeBlock, DataBlock, Immediate,
+    Instruction as RiscvInstruction, Program as RiscvProgram, Register,
+};
+use std::mem;
 
 pub struct Translator {
-    // cfg: Cfg,
-    temp: usize,
+    abi: Abi,
+    entry: Address,
 }
 
 impl Translator {
-    pub fn new(rv_program: RiscvProgram) -> Self {
-        todo!()
+    pub fn new() -> Self {
+        Translator {
+            abi: Abi::default(),
+            entry: Address(0x0),
+        }
     }
 
-    pub fn run(&mut self) -> LlvmProgram {
-        // let functions = mem::take(&mut self.cfg)
-        //     .into_iter()
-        //     .map(|f| self.translate_function(f))
-        //     .collect();
-        // Program {
-        //     statics: mem::take(&mut self.statics),
-        //     functions,
+    pub fn run(&mut self, riscv_program: RiscvProgram) -> Program {
+        self.abi = riscv_program.abi;
+        self.entry = Address(0x0);
+        // let riscv_code_blocks = mem::take(&mut self.riscv_code_blocks);
+        // for rv_code_block in riscv_program.code_blocks {
+        //     let code_block = self.translate_code_block(rv_code_block);
+        //     self.code_blocks.push(code_block);
         // }
-        todo!()
-    }
-}
 
-// single main func (start from `_start`) -> swap that code block to the first
-// preload stack reg, opt with mem2reg
-// 1 rv inst -> many llvm inst, use a compound struct
-// use a default dummy type in translating, and lower to 32/64 accd to mabi in a postpass.
+        let code_blocks = riscv_program
+            .code_blocks
+            .into_iter()
+            .map(|b| self.translate_code_block(b))
+            .collect();
+
+        Program {
+            abi: mem::take(&mut self.abi),
+            entry: self.entry,
+            data_blocks: riscv_program.data_blocks,
+            code_blocks: code_blocks,
+        }
+    }
+
+    fn translate_code_block(
+        &mut self,
+        RiscvCodeBlock {
+            section,
+            symbol,
+            address,
+            instructions,
+        }: RiscvCodeBlock,
+    ) -> CodeBlock {
+        if let "_start" = symbol.as_str() {
+            self.entry = address;
+        }
+        let instruction_blocks = instructions
+            .into_iter()
+            .map(|i| self.translate_instruction(i))
+            .collect();
+        CodeBlock {
+            section,
+            symbol,
+            address,
+            instruction_blocks,
+        }
+    }
+
+    fn translate_instruction(&mut self, rv_insturction: RiscvInstruction) -> InstructionBlock {
+        use Instruction::*;
+        use RiscvInstruction as RI;
+
+        let insts = match &rv_insturction {
+            // RV32I
+            RI::Lui {
+                address, rd, imm, ..
+            } => {
+                let imm_12 = &Immediate(12);
+                build_instructions! { address, self.abi,
+                    Shl { rslt: _0, ty: _i, op1: imm, op2: imm_12 },
+                    // Store { ty: _i, val: _0, ptr: rd },
+                }
+            }
+
+            _ => todo!(),
+        };
+
+        let insts = insts
+            .into_iter()
+            .filter_map(|inst| match inst {
+                Load {
+                    rslt,
+                    ty,
+                    ptr: Value::Register(Register::Zero),
+                } => Some(Add {
+                    rslt,
+                    ty,
+                    op1: Value::Immediate(Immediate(0)),
+                    op2: Value::Immediate(Immediate(0)),
+                }),
+                Store {
+                    ty,
+                    val,
+                    ptr: Value::Register(Register::Zero),
+                } => None,
+                inst => Some(inst),
+            })
+            .collect();
+
+        InstructionBlock {
+            riscv_instruction: rv_insturction,
+            instructions: insts,
+        }
+    }
+
+    fn _0(&self) {}
+}
 
 // static data section, argv is trapped for access to addr 0.
 // local stack alloc with a compile-time allocator, require equal store and load
-// llvm inst def do not use macro.
-// `build_llvm![ Load { result: t0!, ty: I64!, pointer: A7! } ]`, use a local temp var allocator (assoc const)
-// Use a postpass to enfoce `x0` to be 0
-
-// fn get_temps(&mut self, n: usize) -> Vec<LlvmValue> {
-//     let temps = (self.temp..self.temp + n).map(|t| t.into()).collect();
-//     self.temp += n;
-//     temps
-// }
-
-// fn translate_function(
-//     &mut self,
-//     RiscvFunction {
-//         name,
-//         basic_blocks,
-//         indirect_targets,
-//     }: RiscvFunction,
-// ) -> LlvmFunction {
-//     self.temp = 0;
-//     let mut body: Vec<_> = basic_blocks
-//         .into_iter()
-//         .enumerate()
-//         .map(|(i, mut block)| {
-//             let jr_indexes: Vec<_> = block
-//                 .instructions
-//                 .iter()
-//                 .enumerate()
-//                 .filter(|(_, inst)| matches!(inst, RiscvInstruction::Jr { .. }))
-//                 .map(|(i, _)| i)
-//                 .rev()
-//                 .collect();
-//             for i in jr_indexes {
-//                 block.instructions.remove(i - 1);
-//             }
-
-//             let mut insts = vec![LlvmInstruction::Label(format!("L{}", i))];
-//             insts.extend(self.translate_basic_block(block, &indirect_targets));
-//             insts
-//         })
-//         .flatten()
-//         .collect();
-//     body.insert(0, LlvmInstruction::UnconBr(String::from("L0")));
-//     body.insert(0, LlvmInstruction::Label(String::from("Entry")));
-//     LlvmFunction { name, body }
-// }
 
 // fn translate_basic_block(
 //     &mut self,

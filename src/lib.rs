@@ -12,7 +12,7 @@ use llvm_translator::Translator;
 use riscv_parser::Parser;
 
 pub fn run(rv_source: &str, abi: &Option<String>) -> String {
-    let rv_program = Parser::new(rv_source, abi).run();
-    let ll_program = Translator::new(rv_program).run();
+    let rv_program = Parser::new().run(rv_source, abi);
+    let ll_program = Translator::new().run(rv_program);
     format!("{}", ll_program)
 }
