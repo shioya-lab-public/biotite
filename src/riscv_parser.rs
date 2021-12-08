@@ -281,7 +281,6 @@ mod tests {
                             $(
                                 $field: $value,
                             )*
-                            comment: inst.comment().clone(),
                         }
                     );
                 }
@@ -507,7 +506,6 @@ mod tests {
                             address: Address(0x0),
                             rd: T0,
                             imm: Immediate(0),
-                            comment: None
                         }],
                     },
                     CodeBlock {
@@ -518,7 +516,6 @@ mod tests {
                             address: Address(0x4),
                             rd: T0,
                             imm: Immediate(128),
-                            comment: None
                         }],
                     },
                     CodeBlock {
@@ -529,7 +526,6 @@ mod tests {
                             address: Address(0x0),
                             rd: Ra,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -541,7 +537,6 @@ mod tests {
                             rd: T0,
                             imm: Immediate(4),
                             rs1: T0,
-                            comment: Some("# 80004 <sym_2+0x80000>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -552,7 +547,6 @@ mod tests {
                             address: Address(0x8),
                             imm: Immediate(4),
                             rs1: T0,
-                            comment: None,
                         }],
                     },
                     CodeBlock {
@@ -564,7 +558,6 @@ mod tests {
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -576,7 +569,6 @@ mod tests {
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -588,7 +580,6 @@ mod tests {
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -600,7 +591,6 @@ mod tests {
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -612,7 +602,6 @@ mod tests {
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -624,7 +613,6 @@ mod tests {
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -635,7 +623,6 @@ mod tests {
                             address: Address(0x24),
                             rs1: T0,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -646,7 +633,6 @@ mod tests {
                             address: Address(0x28),
                             rs1: T0,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -657,7 +643,6 @@ mod tests {
                             address: Address(0x2c),
                             rs1: T0,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -668,7 +653,6 @@ mod tests {
                             address: Address(0x30),
                             rs1: T0,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -679,7 +663,6 @@ mod tests {
                             address: Address(0x34),
                             rs1: T0,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -690,7 +673,6 @@ mod tests {
                             address: Address(0x38),
                             rs1: T0,
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -700,7 +682,6 @@ mod tests {
                         instructions: vec![J {
                             address: Address(0x3c),
                             addr: Address(0x0),
-                            comment: Some("<main>".to_string()),
                         }],
                     },
                     CodeBlock {
@@ -710,7 +691,6 @@ mod tests {
                         instructions: vec![Jr {
                             address: Address(0x3e),
                             rs1: T0,
-                            comment: None,
                         }],
                     },
                     CodeBlock {
@@ -720,7 +700,6 @@ mod tests {
                         instructions: vec![PseudoJalr {
                             address: Address(0x40),
                             rs1: T0,
-                            comment: None,
                         }],
                     },
                     CodeBlock {
@@ -729,7 +708,6 @@ mod tests {
                         address: Address(0x42),
                         instructions: vec![Ret {
                             address: Address(0x42),
-                            comment: None,
                         }],
                     },
                 ],

@@ -133,7 +133,6 @@ macro_rules! define_instruction {
         const CSR: &str = r"(?P<csr>[[:alpha:]]+|(0x[[:xdigit:]]+))";
         const RM: &str = r"(,(?P<rm>[[:alpha:]]+))?";
         const IORW: &str = r"(?P<iorw>((\.tso)|(\s+[iorw]+,[iorw]+)))";
-        const CMT: &str = r"(\s+(?P<cmt>.+))?";
 
         lazy_static! {
             static ref REGEXES: Vec<(&'static str, Regex)> = vec![
@@ -141,8 +140,8 @@ macro_rules! define_instruction {
                     (
                         stringify!($inst),
                         Regex::new(&format!(
-                            concat!(r"{}:\s+\S+\s+", $regex, r"{}"),
-                            ADDRESS, $( $field!("uppercase"), )* CMT
+                            concat!(r"{}:\s+\S+\s+", $regex),
+                            ADDRESS, $( $field!("uppercase"), )*
                         )).unwrap()
                     ),
                 )*
@@ -163,7 +162,6 @@ macro_rules! define_instruction {
                     $(
                         $field: $field!("type"),
                     )*
-                    comment: Option<String>,
                 },
             )*
         }
@@ -190,7 +188,6 @@ macro_rules! define_instruction {
                                         .unwrap_or_default(),
                                 ),
                             )*
-                            comment: caps.name("cmt").map(|m| m.as_str().to_string()),
                         },
                     )*
                     _ => unreachable!(),
@@ -203,16 +200,6 @@ macro_rules! define_instruction {
                 match self {
                     $(
                         $inst { address, .. } => address,
-                    )*
-                }
-            }
-
-            pub fn comment(&self) -> &Option<String> {
-                use Instruction::*;
-
-                match self {
-                    $(
-                        $inst { comment, .. } => comment,
                     )*
                 }
             }

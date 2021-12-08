@@ -60,15 +60,11 @@ impl Translator {
 
         let insts = match &rv_inst {
             // RV32I
-            RI::Lui {
-                address, rd, imm, ..
-            } => build_instructions! { address, self.abi,
+            RI::Lui { address, rd, imm } => build_instructions! { address, self.abi,
                 Shl { rslt: _0, ty: _i, op1: imm, op2: imm_12 },
                 Store { ty: _i, val: _0, ptr: rd },
             },
-            RI::Auipc {
-                address, rd, imm, ..
-            } => build_instructions! { address, self.abi,
+            RI::Auipc { address, rd, imm } => build_instructions! { address, self.abi,
                 Shl { rslt: _0, ty: _i, op1: imm, op2: imm_12 },
                 Add { rslt: _1, ty: _i, op1: _0, op2: address },
                 Store { ty: _i, val: _1, ptr: rd },
