@@ -213,7 +213,7 @@ pub struct CodeBlock {
 
 impl Display for CodeBlock {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let mut code_block = format!("; {} {} <{}>\n", self.address, self.section, self.symbol);
+        let mut code_block = format!("; {}: {} <{}>\n", self.address, self.section, self.symbol);
         code_block += &format!("label_{}:\n", self.address);
         for inst_block in self.instruction_blocks.iter() {
             code_block += &format!("{}", inst_block);

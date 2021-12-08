@@ -117,6 +117,8 @@ macro_rules! iorw {
 
 macro_rules! define_instruction {
     ( $( $inst:ident ( $regex:literal $(, $field:ident )* ), )* ) => {
+        use lazy_static::lazy_static;
+
         const ADDRESS: &str = r"(?P<address>[[:xdigit:]]+)";
         const ORD: &str = r"(\.(?P<ord>[[:alpha:]]+))?";
         const RD: &str = r"(?P<rd>[[:alpha:]][[:alnum:]]+)";

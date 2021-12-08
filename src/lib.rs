@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate lazy_static;
-
 mod llvm_isa;
 mod llvm_macro;
 mod llvm_translator;

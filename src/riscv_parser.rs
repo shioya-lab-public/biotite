@@ -1,4 +1,5 @@
 use crate::riscv_isa::{Abi, Address, CodeBlock, DataBlock, Instruction, Program};
+use lazy_static::lazy_static;
 use regex::Regex;
 use std::mem;
 

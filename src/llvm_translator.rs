@@ -1,8 +1,8 @@
 use crate::llvm_isa::{CodeBlock, Instruction, InstructionBlock, Program, Type, Value};
 use crate::llvm_macro::*;
 use crate::riscv_isa::{
-    Abi, Address, CodeBlock as RiscvCodeBlock, DataBlock, Immediate,
-    Instruction as RiscvInstruction, Program as RiscvProgram, Register,
+    Abi, Address, CodeBlock as RiscvCodeBlock, Immediate, Instruction as RiscvInstruction,
+    Program as RiscvProgram, Register,
 };
 use std::mem;
 
@@ -19,16 +19,11 @@ impl Translator {
         }
     }
 
-    pub fn run(&mut self, riscv_program: RiscvProgram) -> Program {
-        self.abi = riscv_program.abi;
+    pub fn run(&mut self, rv_program: RiscvProgram) -> Program {
+        self.abi = rv_program.abi;
         self.entry = Address(0x0);
-        // let riscv_code_blocks = mem::take(&mut self.riscv_code_blocks);
-        // for rv_code_block in riscv_program.code_blocks {
-        //     let code_block = self.translate_code_block(rv_code_block);
-        //     self.code_blocks.push(code_block);
-        // }
 
-        let code_blocks = riscv_program
+        let code_blocks = rv_program
             .code_blocks
             .into_iter()
             .map(|b| self.translate_code_block(b))
@@ -37,50 +32,47 @@ impl Translator {
         Program {
             abi: mem::take(&mut self.abi),
             entry: self.entry,
-            data_blocks: riscv_program.data_blocks,
-            code_blocks: code_blocks,
+            data_blocks: rv_program.data_blocks,
+            code_blocks,
         }
     }
 
-    fn translate_code_block(
-        &mut self,
-        RiscvCodeBlock {
-            section,
-            symbol,
-            address,
-            instructions,
-        }: RiscvCodeBlock,
-    ) -> CodeBlock {
-        if let "_start" = symbol.as_str() {
-            self.entry = address;
+    fn translate_code_block(&mut self, rv_code_block: RiscvCodeBlock) -> CodeBlock {
+        if let "_start" = rv_code_block.symbol.as_str() {
+            self.entry = rv_code_block.address;
         }
-        let instruction_blocks = instructions
+        let instruction_blocks = rv_code_block
+            .instructions
             .into_iter()
             .map(|i| self.translate_instruction(i))
             .collect();
         CodeBlock {
-            section,
-            symbol,
-            address,
+            section: rv_code_block.section,
+            symbol: rv_code_block.symbol,
+            address: rv_code_block.address,
             instruction_blocks,
         }
     }
 
-    fn translate_instruction(&mut self, rv_insturction: RiscvInstruction) -> InstructionBlock {
+    fn translate_instruction(&mut self, rv_inst: RiscvInstruction) -> InstructionBlock {
         use Instruction::*;
         use RiscvInstruction as RI;
 
-        let insts = match &rv_insturction {
+        let insts = match &rv_inst {
             // RV32I
             RI::Lui {
                 address, rd, imm, ..
-            } => {
-                let imm_12 = &Immediate(12);
-                build_instructions! { address, self.abi,
-                    Shl { rslt: _0, ty: _i, op1: imm, op2: imm_12 },
-                    // Store { ty: _i, val: _0, ptr: rd },
-                }
-            }
+            } => build_instructions! { address, self.abi,
+                Shl { rslt: _0, ty: _i, op1: imm, op2: imm_12 },
+                Store { ty: _i, val: _0, ptr: rd },
+            },
+            RI::Auipc {
+                address, rd, imm, ..
+            } => build_instructions! { address, self.abi,
+                Shl { rslt: _0, ty: _i, op1: imm, op2: imm_12 },
+                Add { rslt: _1, ty: _i, op1: _0, op2: address },
+                Store { ty: _i, val: _1, ptr: rd },
+            },
 
             _ => todo!(),
         };
@@ -99,21 +91,18 @@ impl Translator {
                     op2: Value::Immediate(Immediate(0)),
                 }),
                 Store {
-                    ty,
-                    val,
                     ptr: Value::Register(Register::Zero),
+                    ..
                 } => None,
                 inst => Some(inst),
             })
             .collect();
 
         InstructionBlock {
-            riscv_instruction: rv_insturction,
+            riscv_instruction: rv_inst,
             instructions: insts,
         }
     }
-
-    fn _0(&self) {}
 }
 
 // static data section, argv is trapped for access to addr 0.
