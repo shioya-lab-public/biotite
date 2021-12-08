@@ -168,10 +168,16 @@ impl<'a> Parser<'a> {
         let mut symbol = caps[2].to_string();
         let mut address = Address::new(&caps[1]);
         let mut instructions = Vec::new();
-        let mut split = false;
+        let mut branch_split = false;
 
         for line in &lines[2..] {
             if let Some(caps) = SYMBOL.captures(line) {
+                if !branch_split {
+                    instructions.push(Instruction::J {
+                        address: Address(0x0),
+                        addr: Address::new(&caps[1]),
+                    });
+                }
                 let symbol = mem::replace(&mut symbol, caps[2].to_string());
                 let address = mem::replace(&mut address, Address::new(&caps[1]));
                 let instructions = mem::take(&mut instructions);
@@ -185,11 +191,16 @@ impl<'a> Parser<'a> {
                 let inst = Instruction::new(line);
                 let addr = inst.address();
 
-                if split || self.jump_table.iter().any(|a| a == addr) {
-                    split = false;
-                    let Address(addr) = addr;
+                if branch_split || self.jump_table.iter().any(|a| *a == addr) {
+                    if !branch_split {
+                        instructions.push(Instruction::J {
+                            address: Address(0x0),
+                            addr,
+                        });
+                    }
+                    branch_split = false;
                     let symbol = mem::replace(&mut symbol, String::new());
-                    let address = mem::replace(&mut address, Address(*addr));
+                    let address = mem::replace(&mut address, addr);
                     let instructions = mem::take(&mut instructions);
                     code_blocks.push(CodeBlock {
                         section: section.clone(),
@@ -219,7 +230,7 @@ impl<'a> Parser<'a> {
                 | PseudoJalr { .. }
                 | Ret { .. } = inst
                 {
-                    split = true;
+                    branch_split = true;
                 }
 
                 instructions.push(inst);
@@ -435,7 +446,6 @@ mod tests {
             program,
             Program {
                 abi: Abi::default(),
-                code_blocks: Vec::new(),
                 data_blocks: vec![
                     DataBlock {
                         section: String::from(".sdata"),
@@ -456,6 +466,7 @@ mod tests {
                         bytes: vec![0xb7, 0x02, 0x08, 0x0],
                     }
                 ],
+                code_blocks: Vec::new(),
             }
         );
     }
@@ -463,11 +474,15 @@ mod tests {
     #[test]
     fn code_section() {
         let source = "
+            .section .rodata
+                .word 8
+
             .section .text
             sym_1:
-                lui t0,0
+                lui t0,128
             sym_2:
                 lui t0,128
+                j sym_2
 
             .section .text.startup
             main:
@@ -497,25 +512,52 @@ mod tests {
             program,
             Program {
                 abi: Abi::default(),
+                data_blocks: vec![DataBlock {
+                    section: String::from(".rodata"),
+                    symbol: String::from(".rodata"),
+                    address: Address(0x0),
+                    bytes: vec![0x8, 0x0, 0x0, 0x0],
+                }],
                 code_blocks: vec![
                     CodeBlock {
                         section: String::from(".text"),
                         symbol: String::from("sym_1"),
                         address: Address(0x0),
-                        instructions: vec![Lui {
-                            address: Address(0x0),
-                            rd: T0,
-                            imm: Immediate(0),
-                        }],
+                        instructions: vec![
+                            Lui {
+                                address: Address(0x0),
+                                rd: T0,
+                                imm: Immediate(128),
+                            },
+                            J {
+                                address: Address(0x0),
+                                addr: Address(0x4),
+                            }
+                        ],
                     },
                     CodeBlock {
                         section: String::from(".text"),
                         symbol: String::from("sym_2"),
                         address: Address(0x4),
-                        instructions: vec![Lui {
-                            address: Address(0x4),
-                            rd: T0,
-                            imm: Immediate(128),
+                        instructions: vec![
+                            Lui {
+                                address: Address(0x4),
+                                rd: T0,
+                                imm: Immediate(128),
+                            },
+                            J {
+                                address: Address(0x0),
+                                addr: Address(0x8),
+                            }
+                        ],
+                    },
+                    CodeBlock {
+                        section: String::from(".text"),
+                        symbol: String::from(String::new()),
+                        address: Address(0x8),
+                        instructions: vec![J {
+                            address: Address(0x8),
+                            addr: Address(0x4),
                         }],
                     },
                     CodeBlock {
@@ -711,7 +753,6 @@ mod tests {
                         }],
                     },
                 ],
-                data_blocks: Vec::new(),
             }
         );
     }

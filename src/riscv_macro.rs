@@ -194,12 +194,12 @@ macro_rules! define_instruction {
                 }
             }
 
-            pub fn address(&self) -> &Address {
+            pub fn address(&self) -> Address {
                 use Instruction::*;
 
                 match self {
                     $(
-                        $inst { address, .. } => address,
+                        $inst { address, .. } => *address,
                     )*
                 }
             }
