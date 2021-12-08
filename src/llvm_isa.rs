@@ -46,38 +46,38 @@ const REGISTERS: &str = "  %zero = alloca i{xlen}
   %t5 = alloca i{xlen}
   %t6 = alloca i{xlen}
 
-  store i{xlen} 0, i{xlen}* %zero
-  store i{xlen} 0, i{xlen}* %ra
-  store i{xlen} 0, i{xlen}* %sp
-  store i{xlen} 0, i{xlen}* %gp
-  store i{xlen} 0, i{xlen}* %tp
-  store i{xlen} 0, i{xlen}* %t0
-  store i{xlen} 0, i{xlen}* %t1
-  store i{xlen} 0, i{xlen}* %t2
-  store i{xlen} 0, i{xlen}* %s0
-  store i{xlen} 0, i{xlen}* %s1
-  store i{xlen} 0, i{xlen}* %a0
-  store i{xlen} 0, i{xlen}* %a1
-  store i{xlen} 0, i{xlen}* %a2
-  store i{xlen} 0, i{xlen}* %a3
-  store i{xlen} 0, i{xlen}* %a4
-  store i{xlen} 0, i{xlen}* %a5
-  store i{xlen} 0, i{xlen}* %a6
-  store i{xlen} 0, i{xlen}* %a7
-  store i{xlen} 0, i{xlen}* %s2
-  store i{xlen} 0, i{xlen}* %s3
-  store i{xlen} 0, i{xlen}* %s4
-  store i{xlen} 0, i{xlen}* %s5
-  store i{xlen} 0, i{xlen}* %s6
-  store i{xlen} 0, i{xlen}* %s7
-  store i{xlen} 0, i{xlen}* %s8
-  store i{xlen} 0, i{xlen}* %s9
-  store i{xlen} 0, i{xlen}* %s10
-  store i{xlen} 0, i{xlen}* %s11
-  store i{xlen} 0, i{xlen}* %t3
-  store i{xlen} 0, i{xlen}* %t4
-  store i{xlen} 0, i{xlen}* %t5
-  store i{xlen} 0, i{xlen}* %t6
+  store i{xlen} zeroinitializer, i{xlen}* %zero
+  store i{xlen} zeroinitializer, i{xlen}* %ra
+  store i{xlen} zeroinitializer, i{xlen}* %sp
+  store i{xlen} zeroinitializer, i{xlen}* %gp
+  store i{xlen} zeroinitializer, i{xlen}* %tp
+  store i{xlen} zeroinitializer, i{xlen}* %t0
+  store i{xlen} zeroinitializer, i{xlen}* %t1
+  store i{xlen} zeroinitializer, i{xlen}* %t2
+  store i{xlen} zeroinitializer, i{xlen}* %s0
+  store i{xlen} zeroinitializer, i{xlen}* %s1
+  store i{xlen} zeroinitializer, i{xlen}* %a0
+  store i{xlen} zeroinitializer, i{xlen}* %a1
+  store i{xlen} zeroinitializer, i{xlen}* %a2
+  store i{xlen} zeroinitializer, i{xlen}* %a3
+  store i{xlen} zeroinitializer, i{xlen}* %a4
+  store i{xlen} zeroinitializer, i{xlen}* %a5
+  store i{xlen} zeroinitializer, i{xlen}* %a6
+  store i{xlen} zeroinitializer, i{xlen}* %a7
+  store i{xlen} zeroinitializer, i{xlen}* %s2
+  store i{xlen} zeroinitializer, i{xlen}* %s3
+  store i{xlen} zeroinitializer, i{xlen}* %s4
+  store i{xlen} zeroinitializer, i{xlen}* %s5
+  store i{xlen} zeroinitializer, i{xlen}* %s6
+  store i{xlen} zeroinitializer, i{xlen}* %s7
+  store i{xlen} zeroinitializer, i{xlen}* %s8
+  store i{xlen} zeroinitializer, i{xlen}* %s9
+  store i{xlen} zeroinitializer, i{xlen}* %s10
+  store i{xlen} zeroinitializer, i{xlen}* %s11
+  store i{xlen} zeroinitializer, i{xlen}* %t3
+  store i{xlen} zeroinitializer, i{xlen}* %t4
+  store i{xlen} zeroinitializer, i{xlen}* %t5
+  store i{xlen} zeroinitializer, i{xlen}* %t6
 ";
 
 const FPREGISTERS: &str = "  %ft0 = alloca {ftype}
@@ -113,38 +113,38 @@ const FPREGISTERS: &str = "  %ft0 = alloca {ftype}
   %ft10 = alloca {ftype}
   %ft11 = alloca {ftype}
 
-  store {ftype} 0, {ftype}* %ft0
-  store {ftype} 0, {ftype}* %ft1
-  store {ftype} 0, {ftype}* %ft2
-  store {ftype} 0, {ftype}* %ft3
-  store {ftype} 0, {ftype}* %ft4
-  store {ftype} 0, {ftype}* %ft5
-  store {ftype} 0, {ftype}* %ft6
-  store {ftype} 0, {ftype}* %ft7
-  store {ftype} 0, {ftype}* %fs0
-  store {ftype} 0, {ftype}* %fs1
-  store {ftype} 0, {ftype}* %fa0
-  store {ftype} 0, {ftype}* %fa1
-  store {ftype} 0, {ftype}* %fa2
-  store {ftype} 0, {ftype}* %fa3
-  store {ftype} 0, {ftype}* %fa4
-  store {ftype} 0, {ftype}* %fa5
-  store {ftype} 0, {ftype}* %fa6
-  store {ftype} 0, {ftype}* %fa7
-  store {ftype} 0, {ftype}* %fs2
-  store {ftype} 0, {ftype}* %fs3
-  store {ftype} 0, {ftype}* %fs4
-  store {ftype} 0, {ftype}* %fs5
-  store {ftype} 0, {ftype}* %fs6
-  store {ftype} 0, {ftype}* %fs7
-  store {ftype} 0, {ftype}* %fs8
-  store {ftype} 0, {ftype}* %fs9
-  store {ftype} 0, {ftype}* %fs10
-  store {ftype} 0, {ftype}* %fs11
-  store {ftype} 0, {ftype}* %ft8
-  store {ftype} 0, {ftype}* %ft9
-  store {ftype} 0, {ftype}* %ft10
-  store {ftype} 0, {ftype}* %ft11
+  store {ftype} zeroinitializer, {ftype}* %ft0
+  store {ftype} zeroinitializer, {ftype}* %ft1
+  store {ftype} zeroinitializer, {ftype}* %ft2
+  store {ftype} zeroinitializer, {ftype}* %ft3
+  store {ftype} zeroinitializer, {ftype}* %ft4
+  store {ftype} zeroinitializer, {ftype}* %ft5
+  store {ftype} zeroinitializer, {ftype}* %ft6
+  store {ftype} zeroinitializer, {ftype}* %ft7
+  store {ftype} zeroinitializer, {ftype}* %fs0
+  store {ftype} zeroinitializer, {ftype}* %fs1
+  store {ftype} zeroinitializer, {ftype}* %fa0
+  store {ftype} zeroinitializer, {ftype}* %fa1
+  store {ftype} zeroinitializer, {ftype}* %fa2
+  store {ftype} zeroinitializer, {ftype}* %fa3
+  store {ftype} zeroinitializer, {ftype}* %fa4
+  store {ftype} zeroinitializer, {ftype}* %fa5
+  store {ftype} zeroinitializer, {ftype}* %fa6
+  store {ftype} zeroinitializer, {ftype}* %fa7
+  store {ftype} zeroinitializer, {ftype}* %fs2
+  store {ftype} zeroinitializer, {ftype}* %fs3
+  store {ftype} zeroinitializer, {ftype}* %fs4
+  store {ftype} zeroinitializer, {ftype}* %fs5
+  store {ftype} zeroinitializer, {ftype}* %fs6
+  store {ftype} zeroinitializer, {ftype}* %fs7
+  store {ftype} zeroinitializer, {ftype}* %fs8
+  store {ftype} zeroinitializer, {ftype}* %fs9
+  store {ftype} zeroinitializer, {ftype}* %fs10
+  store {ftype} zeroinitializer, {ftype}* %fs11
+  store {ftype} zeroinitializer, {ftype}* %ft8
+  store {ftype} zeroinitializer, {ftype}* %ft9
+  store {ftype} zeroinitializer, {ftype}* %ft10
+  store {ftype} zeroinitializer, {ftype}* %ft11
 ";
 
 #[derive(Debug, PartialEq)]
@@ -157,7 +157,7 @@ pub struct Program {
 
 impl Display for Program {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let mut program = String::new();
+        let mut program = format!("; ABI: {}\n", self.abi);
 
         let (xlen, flen, ftype) = match self.abi {
             Abi::Ilp32 => ("32", None, None),
@@ -168,7 +168,7 @@ impl Display for Program {
             Abi::Lp64d => ("64", Some("64"), Some("double")),
         };
 
-        program += &SYSCALL.replace("{xlen}", xlen);
+        program += &format!("\n{}", &SYSCALL.replace("{xlen}", xlen));
         if let (Some(flen), Some(ftype)) = (flen, ftype) {
             program += &format!(
                 "\n{}",
@@ -419,15 +419,17 @@ pub enum Instruction {
     // Terminator Instructions
     ConBr {
         cond: Value,
-        iftrue: Address,
-        iffalse: Address,
+        iftrue: Value,
+        iffalse: Value,
     },
-    UnconBr(Address),
+    UnconBr {
+        addr: Value,
+    },
     Switch {
         ty: Type,
         val: Value,
-        default: Address,
-        targets: Vec<(Value, Address)>,
+        default: Value,
+        targets: Vec<(Value, Value)>,
     },
 
     // Unary Operations
@@ -749,7 +751,7 @@ impl Display for Instruction {
                 "br i1 {}, label %label_{}, label %label_{}",
                 cond, iftrue, iffalse
             ),
-            UnconBr(addr) => write!(f, "br label %label_{}", addr),
+            UnconBr { addr } => write!(f, "br label %label_{}", addr),
             Switch {
                 ty,
                 val,

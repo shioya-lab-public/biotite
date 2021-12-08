@@ -9,7 +9,7 @@ pub struct Program {
     pub code_blocks: Vec<CodeBlock>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Abi {
     Ilp32,
     Ilp32f,
@@ -42,6 +42,21 @@ impl Default for Abi {
     }
 }
 
+impl Display for Abi {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        use Abi::*;
+
+        match self {
+            Ilp32 => write!(f, "ilp32"),
+            Ilp32f => write!(f, "ilp32f"),
+            Ilp32d => write!(f, "ilp32d"),
+            Lp64 => write!(f, "lp64"),
+            Lp64f => write!(f, "lp64f"),
+            Lp64d => write!(f, "lp64d"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct DataBlock {
     pub section: String,
@@ -52,7 +67,7 @@ pub struct DataBlock {
 
 impl Display for DataBlock {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let mut data_block = format!("; {} {} {}\n", self.address, self.section, self.symbol);
+        let mut data_block = format!("; {}: {} <{}>\n", self.address, self.section, self.symbol);
         data_block += &format!(
             "@data_{} = global [{} x i8] [",
             self.address,
@@ -61,6 +76,8 @@ impl Display for DataBlock {
         for byte in self.bytes.iter() {
             data_block += &format!("i8 {}, ", byte);
         }
+        data_block.pop();
+        data_block.pop();
         data_block += "]\n";
         write!(f, "{}", data_block)
     }

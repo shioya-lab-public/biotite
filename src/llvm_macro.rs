@@ -41,6 +41,12 @@ macro_rules! rd {
     };
 }
 
+macro_rules! rs1 {
+    ( $addr:expr, $abi:expr, $value:ident ) => {
+        Value::Register(*$value)
+    };
+}
+
 macro_rules! imm {
     ( $addr:expr, $abi:expr, $value:ident ) => {
         Value::Immediate(*$value)
@@ -50,6 +56,12 @@ macro_rules! imm {
 macro_rules! imm_12 {
     ( $addr:expr, $abi:expr, $value:ident ) => {
         Value::Immediate(Immediate(12))
+    };
+}
+
+macro_rules! addr {
+    ( $addr:expr, $abi:expr, $value:ident ) => {
+        Value::Address(*$value)
     };
 }
 
@@ -67,4 +79,4 @@ macro_rules! build_instructions {
     };
 }
 
-pub(crate) use {_f, _i, address, build_instructions, imm, imm_12, rd, _0, _1};
+pub(crate) use {_f, _i, addr, address, build_instructions, imm, imm_12, rd, rs1, _0, _1};

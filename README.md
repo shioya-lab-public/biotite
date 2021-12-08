@@ -280,6 +280,9 @@ Counter
 ```
 - Break static stack into stack space of seperate functions.
 
+- argv is trapped for access to addr 0.
+- local stack alloc with a compile-time allocator, require equal store and load
+
 ### Testing Commands
 
 ``` Bash

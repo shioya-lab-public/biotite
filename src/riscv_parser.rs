@@ -260,7 +260,7 @@ mod tests {
     use std::process::{Command, Stdio};
     use tempfile::NamedTempFile;
 
-    macro_rules! build_test {
+    macro_rules! build_tests {
         ( $( $func:ident ( $source:literal,
             $inst:ident { $( $field:ident: $value:expr ),* }
             $(, [$march:literal, $mabi:literal] )?
@@ -716,7 +716,7 @@ mod tests {
         );
     }
 
-    build_test! {
+    build_tests! {
         // Registers (32 tests)
         reg_1("flw ft0,-4(zero)", Flw { frd: Ft0, imm: Immediate(-4), rs1: Zero }),
         reg_2("flw ft1,-4(ra)", Flw { frd: Ft1, imm: Immediate(-4), rs1: Ra }),
