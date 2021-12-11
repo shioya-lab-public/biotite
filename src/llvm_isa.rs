@@ -1,6 +1,7 @@
 use crate::riscv_isa::{
     Abi, Address, DataBlock, FPRegister, Immediate, Instruction as RiscvInstruction, Register,
 };
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 const SYSCALL: &str = "declare i{xlen} @syscall(i{xlen}, ...)\n";
@@ -153,6 +154,8 @@ pub struct Program {
     pub entry: Address,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
+    pub stack: HashMap<Address, Vec<Type>>,
+    pub fpstack: HashMap<Address, Vec<FPType>>,
 }
 
 impl Display for Program {
@@ -429,7 +432,7 @@ pub enum Instruction {
         ty: Type,
         val: Value,
         default: Value,
-        targets: Vec<(Value, Value)>,
+        targets: Vec<Value>,
     },
 
     // Unary Operations
@@ -554,14 +557,6 @@ pub enum Instruction {
     },
 
     // Memory Access and Addressing Operations
-    Alloca {
-        rslt: Value,
-        ty: Type,
-    },
-    Falloca {
-        rslt: Value,
-        fty: FPType,
-    },
     Load {
         rslt: Value,
         ty: Type,
@@ -599,12 +594,6 @@ pub enum Instruction {
         ptr: Value,
         val: Value,
         ord: Ordering,
-    },
-    Getelementptr {
-        rslt: Value,
-        len: Value,
-        ptr: Value,
-        idx: Value,
     },
 
     // Conversion Operations
@@ -734,6 +723,38 @@ pub enum Instruction {
         arg5: Value,
         arg6: Value,
     },
+
+    // Misc
+    Loadstack {
+        rslt: Value,
+        ty: Type,
+        stk: Value,
+        ver: Value,
+    },
+    Floadstack {
+        rslt: Value,
+        fty: FPType,
+        stk: Value,
+        ver: Value,
+    },
+    Storestack {
+        ty: Type,
+        val: Value,
+        stk: Value,
+        ver: Value,
+    },
+    Fstorestack {
+        fty: FPType,
+        val: Value,
+        stk: Value,
+        ver: Value,
+    },
+
+    Getdataptr {
+        rslt: Value,
+        ty: Type,
+        addr: Value,
+    },
 }
 
 impl Display for Instruction {
@@ -759,8 +780,8 @@ impl Display for Instruction {
                 targets,
             } => {
                 let mut s = format!("switch {} {}, label %label_{} [", ty, val, default);
-                for (val, target) in targets {
-                    s += &format!("{} {}, label %label_{} ", ty, val, target);
+                for target in targets {
+                    s += &format!("{} {}, label %label_{} ", ty, target, target);
                 }
                 s += "]";
                 write!(f, "{}", s)
@@ -818,8 +839,6 @@ impl Display for Instruction {
             ),
 
             // Memory Access and Addressing Operations
-            Alloca { rslt, ty } => write!(f, "{} = alloca {}*", rslt, ty),
-            Falloca { rslt, fty } => write!(f, "{} = alloca {}*", rslt, fty),
             Load { rslt, ty, ptr } => write!(f, "{} = load {}, {}* {}", rslt, ty, ty, ptr),
             Fload { rslt, fty, ptr } => write!(f, "{} = load {}, {}* {}", rslt, fty, fty, ptr),
             Store { ty, val, ptr } => write!(f, "store {} {}, {}* {}", ty, val, ty, ptr),
@@ -850,33 +869,38 @@ impl Display for Instruction {
                 "{} = atomicrmw {} {}* {}, {} {} {}",
                 rslt, op, ty, ptr, ty, val, ord
             ),
-            Getelementptr {
-                rslt,
-                len,
-                ptr,
-                idx,
-            } => write!(
-                f,
-                "{} = getelementptr [{} x i8], [{} x i8]* {}, i8 0, i128 {}",
-                rslt, len, len, ptr, idx
-            ),
 
             // Conversion Operations
-            Trunc { rslt, ty, val, ty2 } => write!(f, "{} = trunc {} {} to {}", rslt, ty, val, ty2),
-            Zext { rslt, ty, val, ty2 } => write!(f, "{} = zext {} {} to {}", rslt, ty, val, ty2),
-            Sext { rslt, ty, val, ty2 } => write!(f, "{} = sext {} {} to {}", rslt, ty, val, ty2),
+            Trunc { rslt, ty, val, ty2 } => match ty == ty2 {
+                true => write!(f, "{} = add {} {}, {}", rslt, ty, val, 0),
+                false => write!(f, "{} = trunc {} {} to {}", rslt, ty, val, ty2),
+            },
+            Zext { rslt, ty, val, ty2 } => match ty == ty2 {
+                true => write!(f, "{} = add {} {}, {}", rslt, ty, val, 0),
+                false => write!(f, "{} = zext {} {} to {}", rslt, ty, val, ty2),
+            },
+            Sext { rslt, ty, val, ty2 } => match ty == ty2 {
+                true => write!(f, "{} = add {} {}, {}", rslt, ty, val, 0),
+                false => write!(f, "{} = sext {} {} to {}", rslt, ty, val, ty2),
+            },
             Fptrunc {
                 rslt,
                 fty,
                 val,
                 fty2,
-            } => write!(f, "{} = fptrunc {} {} to {}", rslt, fty, val, fty2),
+            } => match fty == fty2 {
+                true => write!(f, "{} = fadd {} {}, {}", rslt, fty, val, 0),
+                false => write!(f, "{} = fptrunc {} {} to {}", rslt, fty, val, fty2),
+            },
             Fpext {
                 rslt,
                 fty,
                 val,
                 fty2,
-            } => write!(f, "{} = fpext {} {} to {}", rslt, fty, val, fty2),
+            } => match fty == fty2 {
+                true => write!(f, "{} = fadd {} {}, {}", rslt, fty, val, 0),
+                false => write!(f, "{} = fpext {} {} to {}", rslt, fty, val, fty2),
+            },
             Fptoui { rslt, fty, val, ty } => {
                 write!(f, "{} = fptoui {} {} to {}", rslt, fty, val, ty)
             }
@@ -1012,6 +1036,31 @@ impl Display for Instruction {
                 "{} = call {} @syscall({} {}, {} {}, {} {}, {} {}, {} {}, {} {}, {} {})",
                 rslt, ty, ty, nr, ty, arg1, ty, arg2, ty, arg3, ty, arg4, ty, arg5, ty, arg6
             ),
+
+            // Misc
+            Loadstack { rslt, ty, stk, ver } => {
+                write!(f, "{} = load {}, {}* %stack_{}_{}", rslt, ty, ty, stk, ver)
+            }
+            Floadstack {
+                rslt,
+                fty,
+                stk,
+                ver,
+            } => write!(
+                f,
+                "{} = load {}, {}* %fpstack_{}_{}",
+                rslt, fty, fty, stk, ver
+            ),
+            Storestack { ty, val, stk, ver } => {
+                write!(f, "store {} {}, {}* %stack_{}_{}", ty, val, ty, stk, ver)
+            }
+            Fstorestack { fty, val, stk, ver } => {
+                write!(f, "store {} {}, {}* %stack_{}_{}", fty, val, fty, stk, ver)
+            }
+
+            Getdataptr { rslt, ty, addr } => {
+                write!(f, "{} = call i8 @get_data_ptr({} {})", rslt, ty, addr)
+            }
         }
     }
 }

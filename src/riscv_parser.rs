@@ -1,4 +1,4 @@
-use crate::riscv_isa::{Abi, Address, CodeBlock, DataBlock, Instruction, Program};
+use crate::riscv_isa::{Abi, Address, CodeBlock, DataBlock, Instruction, Program, Raw};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::mem;
@@ -175,6 +175,7 @@ impl<'a> Parser<'a> {
                 if !branch_split {
                     instructions.push(Instruction::J {
                         address: Address(0x0),
+                        raw: Raw::new(""),
                         addr: Address::new(&caps[1]),
                     });
                 }
@@ -195,6 +196,7 @@ impl<'a> Parser<'a> {
                     if !branch_split {
                         instructions.push(Instruction::J {
                             address: Address(0x0),
+                            raw: Raw::new(""),
                             addr,
                         });
                     }
@@ -262,7 +264,7 @@ mod tests {
         Instruction::{self, *},
         Iorw,
         Ordering::*,
-        Program,
+        Program, Raw,
         Register::*,
         Rounding::*,
     };
@@ -273,7 +275,7 @@ mod tests {
 
     macro_rules! build_tests {
         ( $( $func:ident ( $source:literal,
-            $inst:ident { $( $field:ident: $value:expr ),* }
+            $inst:tt { $( $field:ident: $value:expr ),* }
             $(, [$march:literal, $mabi:literal] )?
         ), )* ) => {
             $(
@@ -289,6 +291,7 @@ mod tests {
                         inst,
                         $inst {
                             address: Address(0),
+                            raw: Raw::new(""),
                             $(
                                 $field: $value,
                             )*
@@ -526,11 +529,13 @@ mod tests {
                         instructions: vec![
                             Lui {
                                 address: Address(0x0),
+                                raw: Raw::new(""),
                                 rd: T0,
                                 imm: Immediate(128),
                             },
                             J {
                                 address: Address(0x0),
+                                raw: Raw::new(""),
                                 addr: Address(0x4),
                             }
                         ],
@@ -542,11 +547,13 @@ mod tests {
                         instructions: vec![
                             Lui {
                                 address: Address(0x4),
+                                raw: Raw::new(""),
                                 rd: T0,
                                 imm: Immediate(128),
                             },
                             J {
                                 address: Address(0x0),
+                                raw: Raw::new(""),
                                 addr: Address(0x8),
                             }
                         ],
@@ -557,6 +564,7 @@ mod tests {
                         address: Address(0x8),
                         instructions: vec![J {
                             address: Address(0x8),
+                            raw: Raw::new(""),
                             addr: Address(0x4),
                         }],
                     },
@@ -566,6 +574,7 @@ mod tests {
                         address: Address(0x0),
                         instructions: vec![Jal {
                             address: Address(0x0),
+                            raw: Raw::new(""),
                             rd: Ra,
                             addr: Address(0x0),
                         }],
@@ -576,6 +585,7 @@ mod tests {
                         address: Address(0x4),
                         instructions: vec![Jalr {
                             address: Address(0x4),
+                            raw: Raw::new(""),
                             rd: T0,
                             imm: Immediate(4),
                             rs1: T0,
@@ -587,6 +597,7 @@ mod tests {
                         address: Address(0x8),
                         instructions: vec![ImplicitJalr {
                             address: Address(0x8),
+                            raw: Raw::new(""),
                             imm: Immediate(4),
                             rs1: T0,
                         }],
@@ -597,6 +608,7 @@ mod tests {
                         address: Address(0xc),
                         instructions: vec![Beq {
                             address: Address(0xc),
+                            raw: Raw::new(""),
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
@@ -608,6 +620,7 @@ mod tests {
                         address: Address(0x10),
                         instructions: vec![Bne {
                             address: Address(0x10),
+                            raw: Raw::new(""),
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
@@ -619,6 +632,7 @@ mod tests {
                         address: Address(0x14),
                         instructions: vec![Blt {
                             address: Address(0x14),
+                            raw: Raw::new(""),
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
@@ -630,6 +644,7 @@ mod tests {
                         address: Address(0x18),
                         instructions: vec![Bge {
                             address: Address(0x18),
+                            raw: Raw::new(""),
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
@@ -641,6 +656,7 @@ mod tests {
                         address: Address(0x1c),
                         instructions: vec![Bltu {
                             address: Address(0x1c),
+                            raw: Raw::new(""),
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
@@ -652,6 +668,7 @@ mod tests {
                         address: Address(0x20),
                         instructions: vec![Bgeu {
                             address: Address(0x20),
+                            raw: Raw::new(""),
                             rs1: T0,
                             rs2: T1,
                             addr: Address(0x0),
@@ -663,6 +680,7 @@ mod tests {
                         address: Address(0x24),
                         instructions: vec![Beqz {
                             address: Address(0x24),
+                            raw: Raw::new(""),
                             rs1: T0,
                             addr: Address(0x0),
                         }],
@@ -673,6 +691,7 @@ mod tests {
                         address: Address(0x28),
                         instructions: vec![Bnez {
                             address: Address(0x28),
+                            raw: Raw::new(""),
                             rs1: T0,
                             addr: Address(0x0),
                         }],
@@ -683,6 +702,7 @@ mod tests {
                         address: Address(0x2c),
                         instructions: vec![Blez {
                             address: Address(0x2c),
+                            raw: Raw::new(""),
                             rs1: T0,
                             addr: Address(0x0),
                         }],
@@ -693,6 +713,7 @@ mod tests {
                         address: Address(0x30),
                         instructions: vec![Bgez {
                             address: Address(0x30),
+                            raw: Raw::new(""),
                             rs1: T0,
                             addr: Address(0x0),
                         }],
@@ -703,6 +724,7 @@ mod tests {
                         address: Address(0x34),
                         instructions: vec![Bltz {
                             address: Address(0x34),
+                            raw: Raw::new(""),
                             rs1: T0,
                             addr: Address(0x0),
                         }],
@@ -713,6 +735,7 @@ mod tests {
                         address: Address(0x38),
                         instructions: vec![Bgtz {
                             address: Address(0x38),
+                            raw: Raw::new(""),
                             rs1: T0,
                             addr: Address(0x0),
                         }],
@@ -723,6 +746,7 @@ mod tests {
                         address: Address(0x3c),
                         instructions: vec![J {
                             address: Address(0x3c),
+                            raw: Raw::new(""),
                             addr: Address(0x0),
                         }],
                     },
@@ -732,6 +756,7 @@ mod tests {
                         address: Address(0x3e),
                         instructions: vec![Jr {
                             address: Address(0x3e),
+                            raw: Raw::new(""),
                             rs1: T0,
                         }],
                     },
@@ -741,6 +766,7 @@ mod tests {
                         address: Address(0x40),
                         instructions: vec![PseudoJalr {
                             address: Address(0x40),
+                            raw: Raw::new(""),
                             rs1: T0,
                         }],
                     },
@@ -750,6 +776,7 @@ mod tests {
                         address: Address(0x42),
                         instructions: vec![Ret {
                             address: Address(0x42),
+                            raw: Raw::new(""),
                         }],
                     },
                 ],

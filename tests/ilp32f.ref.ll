@@ -152,6 +152,6 @@ entry:
 
 ; 0: .text <_start>
 label_0:
-  ; J { address: Address(0), addr: Address(0) }
+  ; J { address: Address(0), raw: Raw(""), addr: Address(0) }
   br label %label_0
 }

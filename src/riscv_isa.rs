@@ -91,6 +91,21 @@ pub struct CodeBlock {
     pub instructions: Vec<Instruction>,
 }
 
+#[derive(Debug)]
+pub struct Raw(pub String);
+
+impl Raw {
+    pub fn new(s: &str) -> Self {
+        Raw(s.to_string())
+    }
+}
+
+impl PartialEq for Raw {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Ordering {
     No,
@@ -370,7 +385,7 @@ impl Display for Immediate {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
 pub struct Address(pub u64);
 
 impl Address {

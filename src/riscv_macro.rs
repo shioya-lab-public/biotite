@@ -120,6 +120,7 @@ macro_rules! define_instruction {
         use lazy_static::lazy_static;
 
         const ADDRESS: &str = r"(?P<address>[[:xdigit:]]+)";
+        const RAW: &str = r"(?P<byte>[[:xdigit:]]+)";
         const ORD: &str = r"(\.(?P<ord>[[:alpha:]]+))?";
         const RD: &str = r"(?P<rd>[[:alpha:]][[:alnum:]]+)";
         const RS1: &str = r"(?P<rs1>[[:alpha:]][[:alnum:]]+)";
@@ -140,8 +141,8 @@ macro_rules! define_instruction {
                     (
                         stringify!($inst),
                         Regex::new(&format!(
-                            concat!(r"{}:\s+\S+\s+", $regex),
-                            ADDRESS, $( $field!("uppercase"), )*
+                            concat!(r"{}:\s+{}\s+", $regex),
+                            ADDRESS, RAW, $( $field!("uppercase") ),*
                         )).unwrap()
                     ),
                 )*
@@ -159,6 +160,7 @@ macro_rules! define_instruction {
             $(
                 $inst {
                     address: Address,
+                    raw: Raw,
                     $(
                         $field: $field!("type"),
                     )*
@@ -181,6 +183,7 @@ macro_rules! define_instruction {
                     $(
                         stringify!($inst) => $inst {
                             address: Address::new(&caps["address"]),
+                            raw: Raw::new(&caps["byte"]),
                             $(
                                 $field: <$field!("type")>::new(
                                     caps.name(stringify!($field))
