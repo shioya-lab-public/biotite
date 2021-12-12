@@ -111,6 +111,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        self.jump_table.push(Address(66826)); // fix me: direct target for `j`
         data_blocks
     }
 
@@ -179,6 +180,7 @@ impl<'a> Parser<'a> {
                         addr: Address::new(&caps[1]),
                     });
                 }
+                branch_split = false;
                 let symbol = mem::replace(&mut symbol, caps[2].to_string());
                 let address = mem::replace(&mut address, Address::new(&caps[1]));
                 let instructions = mem::take(&mut instructions);

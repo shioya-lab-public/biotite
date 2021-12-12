@@ -159,6 +159,12 @@ macro_rules! uge {
     };
 }
 
+macro_rules! ult {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Condition::Ult
+    };
+}
+
 macro_rules! sge {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Condition::Sge
@@ -181,5 +187,5 @@ macro_rules! build_instructions {
 
 pub(crate) use {
     _i, _i32, _i64, _i8, addr, address, build_instructions, default, f, imm, imm_12, next_pc, ra,
-    rd, rs1, rs2, sge, stk, targets, uge, ver, _0, _1, _2, _3, _4, _5,
+    rd, rs1, rs2, sge, stk, targets, uge, ver, _0, _1, _2, _3, _4, _5,ult
 };

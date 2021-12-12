@@ -4,7 +4,15 @@ use crate::riscv_isa::{
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-const SYSCALL: &str = "declare i{xlen} @syscall(i{xlen}, ...)\n";
+const SYSCALL: &str = "; declare dso_local void @exit(i32)
+; declare dso_local i32 @printf(i8*, ...)
+; @.str = private unnamed_addr constant [13 x i8] c\"#value: %d#\\0A\\00\", align 1
+; %val = load i64, i64* %zero
+; %code = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str, i64 0, i64 0), i64 %val)
+; call void @exit(i32 0)
+
+declare i{xlen} @syscall(i{xlen}, ...)
+";
 
 const FPFUNCTIONS: &str = "declare {ftype} @llvm.sqrt.f{flen}({ftype} %op1)
 declare {ftype} @llvm.fma.f{flen}({ftype} %op1, {ftype} %op2, {ftype} %op3)
@@ -12,6 +20,13 @@ declare {ftype} @llvm.fabs.f{flen}({ftype} %op1)
 declare {ftype} @llvm.minimum.f{flen}({ftype} %op1, {ftype} %op2)
 declare {ftype} @llvm.maximum.f{flen}({ftype} %op1, {ftype} %op2)
 declare {ftype} @llvm.copysign.f{flen}({ftype} %mag, {ftype} %sgn)
+";
+
+const GETDATAPTR: &str = "define i8* @get_data_ptr(i64 %addr) {
+  %rel_addr = add i64 %addr, -66912
+  %ptr = getelementptr [24 x i8], [24 x i8]* @data_66912, i64 0, i64 %rel_addr
+  ret i8* %ptr
+}
 ";
 
 const REGISTERS: &str = "  %zero = alloca i{xlen}
@@ -183,6 +198,7 @@ impl Display for Program {
         for data_block in self.data_blocks.iter() {
             program += &format!("\n{}", data_block);
         }
+        program += &format!("\n{}", GETDATAPTR);
 
         program += "\ndefine void @main(i32 %argc, i8** %argv) {\n";
         program += "entry:\n";
@@ -196,7 +212,19 @@ impl Display for Program {
         if let Some(ftype) = ftype {
             program += &format!("\n{}", FPREGISTERS.replace("{ftype}", ftype));
         }
+        program += "\n";
+        for (addr, tys) in self.stack.iter() {
+            // for (i, ty) in tys.iter().enumerate() {
+                program += &format!("  %stack_{} = alloca {}\n", addr, tys[0]);
+            // }
+        }
+        for (addr, tys) in self.fpstack.iter() {
+            for (i, ty) in tys.iter().enumerate() {
+                program += &format!("  %stack_{}_{} = alloca {}\n", addr, i, ty);
+            }
+        }
         program += &format!("\n  br label %label_{}\n", self.entry);
+        program += "label_1:\n  unreachable\n";
         for code_block in self.code_blocks.iter() {
             program += &format!("\n{}", code_block);
         }
@@ -1039,7 +1067,7 @@ impl Display for Instruction {
 
             // Misc
             Loadstack { rslt, ty, stk, ver } => {
-                write!(f, "{} = load {}, {}* %stack_{}_{}", rslt, ty, ty, stk, ver)
+                write!(f, "{} = load {}, {}* %stack_{}", rslt, ty, ty, stk)
             }
             Floadstack {
                 rslt,
@@ -1052,14 +1080,14 @@ impl Display for Instruction {
                 rslt, fty, fty, stk, ver
             ),
             Storestack { ty, val, stk, ver } => {
-                write!(f, "store {} {}, {}* %stack_{}_{}", ty, val, ty, stk, ver)
+                write!(f, "store {} {}, {}* %stack_{}", ty, val, ty, stk)
             }
             Fstorestack { fty, val, stk, ver } => {
                 write!(f, "store {} {}, {}* %stack_{}_{}", fty, val, fty, stk, ver)
             }
 
             Getdataptr { rslt, ty, addr } => {
-                write!(f, "{} = call i8 @get_data_ptr({} {})", rslt, ty, addr)
+                write!(f, "{} = call i8* @get_data_ptr({} {})", rslt, ty, addr)
             }
         }
     }
