@@ -215,7 +215,7 @@ impl Display for Program {
         program += "\n";
         for (addr, tys) in self.stack.iter() {
             // for (i, ty) in tys.iter().enumerate() {
-                program += &format!("  %stack_{} = alloca {}\n", addr, tys[0]);
+            program += &format!("  %stack_{} = alloca {}\n", addr, tys[0]);
             // }
         }
         for (addr, tys) in self.fpstack.iter() {

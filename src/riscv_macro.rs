@@ -206,6 +206,16 @@ macro_rules! define_instruction {
                     )*
                 }
             }
+
+            pub fn raw(&self) -> &str {
+                use Instruction::*;
+
+                match self {
+                    $(
+                        $inst { raw: Raw(s), .. } => s,
+                    )*
+                }
+            }
         }
     };
 }

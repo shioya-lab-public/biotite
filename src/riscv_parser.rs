@@ -4,83 +4,84 @@ use regex::Regex;
 use std::mem;
 
 lazy_static! {
-    static ref RODATA: Regex = Regex::new(r"Disassembly of section \.rodata:").unwrap();
-    static ref CODE: Regex = Regex::new(r"Disassembly of section (\.text.*):").unwrap();
-    static ref NOT_DATA: Regex =
-        Regex::new(r"Disassembly of section (\.rodata)|(\.comment)|(\.debug.*):").unwrap();
+    static ref CODE: Regex = Regex::new(r"\.text.*").unwrap();
+    static ref NOT_DATA: Regex = Regex::new(r"(\.rodata)|(\.comment)|(\.debug.*)").unwrap();
     static ref SECTION: Regex = Regex::new(r"Disassembly of section (.+):").unwrap();
     static ref SYMBOL: Regex = Regex::new(r"([[:xdigit:]]+) <(.*)>:").unwrap();
-    static ref BYTES: Regex = Regex::new(r"[[:xdigit:]]+:\s+([[:xdigit:]]+)").unwrap();
+    static ref RODATA: Regex = Regex::new(r"Disassembly of section \.rodata:").unwrap();
 }
 
-pub struct Parser<'a> {
-    lines: Vec<&'a str>,
-    jump_table: Vec<Address>,
+#[derive(Debug)]
+enum Line {
+    Section(String),
+    Symbol(Address, String),
+    Instruction(Instruction),
+}
+
+pub struct Parser {
+    lines: Vec<Line>,
+    jump_targets: Vec<Address>,
     abi: Abi,
     data_blocks: Vec<DataBlock>,
     code_blocks: Vec<CodeBlock>,
 }
 
-impl<'a> Parser<'a> {
+impl Parser {
     pub fn new() -> Self {
         Parser {
             lines: Vec::new(),
-            jump_table: Vec::new(),
+            jump_targets: Vec::new(),
             abi: Abi::default(),
             data_blocks: Vec::new(),
             code_blocks: Vec::new(),
         }
     }
 
-    pub fn run(&mut self, source: &'a str, abi: &Option<String>) -> Program {
+    pub fn run(&mut self, source: &str, abi: &Option<String>) -> Program {
         self.lines = source
             .lines()
             .map(|l| l.trim())
             .filter(|l| !l.is_empty())
             .skip_while(|l| !SECTION.is_match(l))
+            .map(|l| self.parse_line(l))
             .collect();
-        self.jump_table.clear();
+        self.jump_targets.clear();
         self.abi = Abi::new(abi);
 
         assert!(!self.lines.is_empty(), "No disassembly");
 
-        let rodata: Vec<_> = self
-            .lines
-            .iter()
-            .cloned()
-            .skip_while(|l| !RODATA.is_match(l))
-            .take_while(|l| RODATA.is_match(l) || !SECTION.is_match(l))
-            .collect();
-        if !rodata.is_empty() {
-            let data_blocks = self.parse_rodata_section(&rodata);
-            self.data_blocks.extend(data_blocks);
-        }
+        self.find_direct_jump_targets();
+        self.find_indirect_jump_targets();
 
-        let mut start = 0;
-        let mut end = self.lines[1..]
-            .iter()
-            .position(|l| SECTION.is_match(l))
-            .map(|i| i + 1)
-            .unwrap_or(self.lines.len());
-        while end <= self.lines.len() {
-            let section = &self.lines[start..end];
-            if CODE.is_match(section[0]) {
-                let code_blocks = self.parse_code_section(section);
-                self.code_blocks.extend(code_blocks);
-            } else if !NOT_DATA.is_match(section[0]) {
-                let data_blocks = self.parse_data_section(section);
-                self.data_blocks.extend(data_blocks);
-            }
+        if !self.lines.is_empty() {
+            let mut end = self.lines[1..]
+                .iter()
+                .position(|l| matches!(l, Line::Section(_)))
+                .unwrap_or(self.lines.len() - 1)
+                + 1;
+            loop {
+                let section: Vec<_> = self.lines.drain(0..end).collect();
+                match &section[0] {
+                    Line::Section(s) if CODE.is_match(s) => {
+                        let code_blocks = self.parse_code_section(section);
+                        self.code_blocks.extend(code_blocks);
+                    }
+                    Line::Section(s) if !NOT_DATA.is_match(s) => {
+                        let data_blocks = self.parse_data_section(section);
+                        self.data_blocks.extend(data_blocks);
+                    }
+                    _ => {}
+                }
 
-            if end == self.lines.len() {
-                break;
-            } else {
-                start = end;
-                end = self.lines[end + 1..]
-                    .iter()
-                    .position(|l| SECTION.is_match(l))
-                    .map(|i| i + end + 1)
-                    .unwrap_or(self.lines.len());
+                if self.lines.is_empty() {
+                    break;
+                } else {
+                    end = self.lines[1..]
+                        .iter()
+                        .position(|l| matches!(l, Line::Section(_)))
+                        .unwrap_or(self.lines.len() - 1)
+                        + 1;
+                }
             }
         }
 
@@ -91,62 +92,120 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_rodata_section(&mut self, lines: &[&str]) -> Vec<DataBlock> {
-        let data_blocks = self.parse_data_section(lines);
-        let addr_lens = match self.abi {
-            Abi::Ilp32 | Abi::Ilp32f | Abi::Ilp32d => vec![4],
-            Abi::Lp64 | Abi::Lp64f | Abi::Lp64d => vec![4, 8],
-        };
-        for addr_len in addr_lens {
-            for data_block in data_blocks.iter() {
-                let mut i = 0;
-                while i + addr_len <= data_block.bytes.len() {
-                    let mut bytes = data_block.bytes[i..i + addr_len].to_vec();
-                    if addr_len == 4 {
-                        bytes.extend(vec![0; 4]);
-                    }
-                    let address = Address(u64::from_le_bytes(bytes.try_into().unwrap()));
-                    self.jump_table.push(address);
-                    i += 2;
+    fn parse_line(&self, line: &str) -> Line {
+        if let Some(caps) = SECTION.captures(line) {
+            Line::Section(caps[1].to_string())
+        } else if let Some(caps) = SYMBOL.captures(line) {
+            Line::Symbol(Address::new(&caps[1]), caps[2].to_string())
+        } else {
+            Line::Instruction(Instruction::new(line))
+        }
+    }
+
+    fn find_direct_jump_targets(&mut self) {
+        use Instruction::*;
+
+        for line in self.lines.iter() {
+            if let Line::Instruction(inst) = line {
+                if let Jal { addr, .. }
+                | Beq { addr, .. }
+                | Bne { addr, .. }
+                | Blt { addr, .. }
+                | Bge { addr, .. }
+                | Bltu { addr, .. }
+                | Bgeu { addr, .. }
+                | Beqz { addr, .. }
+                | Bnez { addr, .. }
+                | Blez { addr, .. }
+                | Bgez { addr, .. }
+                | Bltz { addr, .. }
+                | Bgtz { addr, .. }
+                | J { addr, .. } = inst
+                {
+                    self.jump_targets.push(*addr)
                 }
             }
         }
-        self.jump_table.push(Address(66826)); // fix me: direct target for `j`
-        data_blocks
     }
 
-    fn parse_data_section(&self, lines: &[&str]) -> Vec<DataBlock> {
+    fn find_indirect_jump_targets(&mut self) {
+        if let Some(start) = self.lines.iter().position(|l| {
+            if let Line::Section(s) = l {
+                s.as_str() == ".rodata"
+            } else {
+                false
+            }
+        }) {
+            let end = self.lines[start + 1..]
+                .iter()
+                .position(|l| matches!(l, Line::Section(_)))
+                .map(|e| e + start + 1)
+                .unwrap_or(self.lines.len());
+            let rodata = self.lines.drain(start..end).collect();
+            let data_blocks = self.parse_data_section(rodata);
+            let addr_lens = match self.abi {
+                Abi::Ilp32 | Abi::Ilp32f | Abi::Ilp32d => vec![4],
+                Abi::Lp64 | Abi::Lp64f | Abi::Lp64d => vec![4, 8],
+            };
+            for addr_len in addr_lens {
+                for data_block in data_blocks.iter() {
+                    let mut i = 0;
+                    while i + addr_len <= data_block.bytes.len() {
+                        let mut bytes = data_block.bytes[i..i + addr_len].to_vec();
+                        if addr_len == 4 {
+                            bytes.extend(vec![0; 4]);
+                        }
+                        let address = Address(u64::from_le_bytes(bytes.try_into().unwrap()));
+                        self.jump_targets.push(address);
+                        i += 2;
+                    }
+                }
+            }
+            self.data_blocks.extend(data_blocks);
+        }
+    }
+
+    fn parse_data_section(&self, lines: Vec<Line>) -> Vec<DataBlock> {
         let mut data_blocks = Vec::new();
-        let section = SECTION.captures(lines[0]).unwrap()[1].to_string();
-        let caps = SYMBOL.captures(lines[1]).unwrap();
-        let mut symbol = caps[2].to_string();
-        let mut address = Address::new(&caps[1]);
+        let mut lines = lines.into_iter();
+        let section = match lines.next().unwrap() {
+            Line::Section(section) => section,
+            _ => unreachable!(),
+        };
+        let (mut address, mut symbol) = match lines.next().unwrap() {
+            Line::Symbol(address, symbol) => (address, symbol),
+            _ => unreachable!(),
+        };
         let mut bytes = Vec::new();
 
-        for line in &lines[2..] {
-            if let Some(caps) = SYMBOL.captures(line) {
-                let symbol = mem::replace(&mut symbol, caps[2].to_string());
-                let address = mem::replace(&mut address, Address::new(&caps[1]));
-                let bytes = mem::take(&mut bytes);
-                data_blocks.push(DataBlock {
-                    section: section.clone(),
-                    symbol,
-                    address,
-                    bytes,
-                });
-            } else {
-                let bytes_str = &BYTES.captures(line).unwrap()[1];
-                bytes.extend(match bytes_str.len() {
-                    4 => u16::from_str_radix(bytes_str, 16)
-                        .unwrap()
-                        .to_le_bytes()
-                        .to_vec(),
-                    8 => u32::from_str_radix(bytes_str, 16)
-                        .unwrap()
-                        .to_le_bytes()
-                        .to_vec(),
-                    _ => unreachable!(),
-                });
+        for line in lines {
+            match line {
+                Line::Section(_) => unreachable!(),
+                Line::Symbol(addr, sym) => {
+                    let symbol = mem::replace(&mut symbol, sym);
+                    let address = mem::replace(&mut address, addr);
+                    let bytes = mem::take(&mut bytes);
+                    data_blocks.push(DataBlock {
+                        section: section.clone(),
+                        symbol,
+                        address,
+                        bytes,
+                    });
+                }
+                Line::Instruction(inst) => {
+                    let bytes_str = inst.raw();
+                    bytes.extend(match bytes_str.len() {
+                        4 => u16::from_str_radix(bytes_str, 16)
+                            .unwrap()
+                            .to_le_bytes()
+                            .to_vec(),
+                        8 => u32::from_str_radix(bytes_str, 16)
+                            .unwrap()
+                            .to_le_bytes()
+                            .to_vec(),
+                        _ => unreachable!(),
+                    });
+                }
             }
         }
 
@@ -160,41 +219,26 @@ impl<'a> Parser<'a> {
         data_blocks
     }
 
-    fn parse_code_section(&self, lines: &[&str]) -> Vec<CodeBlock> {
+    fn parse_code_section(&self, lines: Vec<Line>) -> Vec<CodeBlock> {
         use Instruction::*;
 
         let mut code_blocks = Vec::new();
-        let section = SECTION.captures(lines[0]).unwrap()[1].to_string();
-        let caps = SYMBOL.captures(lines[1]).unwrap();
-        let mut symbol = caps[2].to_string();
-        let mut address = Address::new(&caps[1]);
+        let mut lines = lines.into_iter();
+        let section = match lines.next().unwrap() {
+            Line::Section(section) => section,
+            _ => unreachable!(),
+        };
+        let (mut address, mut symbol) = match lines.next().unwrap() {
+            Line::Symbol(address, symbol) => (address, symbol),
+            _ => unreachable!(),
+        };
         let mut instructions = Vec::new();
         let mut branch_split = false;
 
-        for line in &lines[2..] {
-            if let Some(caps) = SYMBOL.captures(line) {
-                if !branch_split {
-                    instructions.push(Instruction::J {
-                        address: Address(0x0),
-                        raw: Raw::new(""),
-                        addr: Address::new(&caps[1]),
-                    });
-                }
-                branch_split = false;
-                let symbol = mem::replace(&mut symbol, caps[2].to_string());
-                let address = mem::replace(&mut address, Address::new(&caps[1]));
-                let instructions = mem::take(&mut instructions);
-                code_blocks.push(CodeBlock {
-                    section: section.clone(),
-                    symbol,
-                    address,
-                    instructions,
-                });
-            } else {
-                let inst = Instruction::new(line);
-                let addr = inst.address();
-
-                if branch_split || self.jump_table.iter().any(|a| *a == addr) {
+        for line in lines {
+            match line {
+                Line::Section(_) => unreachable!(),
+                Line::Symbol(addr, sym) => {
                     if !branch_split {
                         instructions.push(Instruction::J {
                             address: Address(0x0),
@@ -203,7 +247,7 @@ impl<'a> Parser<'a> {
                         });
                     }
                     branch_split = false;
-                    let symbol = mem::replace(&mut symbol, String::new());
+                    let symbol = mem::replace(&mut symbol, sym);
                     let address = mem::replace(&mut address, addr);
                     let instructions = mem::take(&mut instructions);
                     code_blocks.push(CodeBlock {
@@ -213,31 +257,56 @@ impl<'a> Parser<'a> {
                         instructions,
                     });
                 }
+                Line::Instruction(inst) => {
+                    let addr = inst.address();
+                    if branch_split
+                        || (!instructions.is_empty()
+                            && self.jump_targets.iter().any(|a| *a == addr))
+                    {
+                        if !branch_split {
+                            instructions.push(Instruction::J {
+                                address: Address(0x0),
+                                raw: Raw::new(""),
+                                addr,
+                            });
+                        }
+                        branch_split = false;
+                        let symbol = mem::replace(&mut symbol, String::new());
+                        let address = mem::replace(&mut address, addr);
+                        let instructions = mem::take(&mut instructions);
+                        code_blocks.push(CodeBlock {
+                            section: section.clone(),
+                            symbol,
+                            address,
+                            instructions,
+                        });
+                    }
 
-                if let Jal { .. }
-                | Jalr { .. }
-                | ImplicitJalr { .. }
-                | Beq { .. }
-                | Bne { .. }
-                | Blt { .. }
-                | Bge { .. }
-                | Bltu { .. }
-                | Bgeu { .. }
-                | Beqz { .. }
-                | Bnez { .. }
-                | Blez { .. }
-                | Bgez { .. }
-                | Bltz { .. }
-                | Bgtz { .. }
-                | J { .. }
-                | Jr { .. }
-                | PseudoJalr { .. }
-                | Ret { .. } = inst
-                {
-                    branch_split = true;
+                    if let Jal { .. }
+                    | Jalr { .. }
+                    | ImplicitJalr { .. }
+                    | Beq { .. }
+                    | Bne { .. }
+                    | Blt { .. }
+                    | Bge { .. }
+                    | Bltu { .. }
+                    | Bgeu { .. }
+                    | Beqz { .. }
+                    | Bnez { .. }
+                    | Blez { .. }
+                    | Bgez { .. }
+                    | Bltz { .. }
+                    | Bgtz { .. }
+                    | J { .. }
+                    | Jr { .. }
+                    | PseudoJalr { .. }
+                    | Ret { .. } = inst
+                    {
+                        branch_split = true;
+                    }
+
+                    instructions.push(inst);
                 }
-
-                instructions.push(inst);
             }
         }
 
@@ -394,7 +463,7 @@ mod tests {
         let mut parser = Parser::new();
         parser.run(&source, &Some("ilp32d".to_string()));
         assert_eq!(
-            parser.jump_table,
+            parser.jump_targets,
             vec![
                 Address(0x00000002),
                 Address(0x00000004),
@@ -410,7 +479,7 @@ mod tests {
         let mut parser = Parser::new();
         parser.run(&source, &Some("lp64d".to_string()));
         assert_eq!(
-            parser.jump_table,
+            parser.jump_targets,
             vec![
                 Address(0x00000002),
                 Address(0x00000004),
@@ -487,8 +556,9 @@ mod tests {
                 lui t0,128
             sym_2:
                 lui t0,128
-                j sym_2
-
+                lui t0,128
+                j sym_2+0x8
+            
             .section .text.startup
             main:
                 jal ra,main
@@ -564,10 +634,28 @@ mod tests {
                         section: String::from(".text"),
                         symbol: String::from(String::new()),
                         address: Address(0x8),
+                        instructions: vec![
+                            Lui {
+                                address: Address(0x8),
+                                raw: Raw::new(""),
+                                rd: T0,
+                                imm: Immediate(128),
+                            },
+                            J {
+                                address: Address(0x0),
+                                raw: Raw::new(""),
+                                addr: Address(0xc),
+                            }
+                        ],
+                    },
+                    CodeBlock {
+                        section: String::from(".text"),
+                        symbol: String::from(String::new()),
+                        address: Address(0xc),
                         instructions: vec![J {
-                            address: Address(0x8),
+                            address: Address(0xc),
                             raw: Raw::new(""),
-                            addr: Address(0x4),
+                            addr: Address(0xc),
                         }],
                     },
                     CodeBlock {
@@ -892,7 +980,7 @@ mod tests {
         csr_fflags("csrrc t0,fflags,t1", Csrrc { rd: T0, csr: Fflags, rs1: T1 }),
         csr_frm("csrrc t0,frm,t1", Csrrc { rd: T0, csr: Frm, rs1: T1 }),
         csr_fcsr("csrrc t0,fcsr,t1", Csrrc { rd: T0, csr: Fcsr, rs1: T1 }),
-        csr_unknown("csrrc t0,0x99,t1", Csrrc { rd: T0, csr: Unknown(0x99), rs1: T1 }),
+        csr_unknown("csrrc t0,0x99,t1", Csrrc { rd: T0, csr: Unnamed(0x99), rs1: T1 }),
 
         // RV32M (8 tests)
         mul("mul t0,t1,t2", Mul { rd: T0, rs1: T1, rs2: T2 }),
@@ -1122,14 +1210,14 @@ mod tests {
         rdtime("rdtime t0", Rdtime { rd: T0 }),
         rdtimeh("rdtimeh t0", Rdtimeh { rd: T0 }, ["-march=rv32gc", "-mabi=ilp32d"]),
 
-        csrr("csrr t0, 0x99", Csrr { rd: T0, csr: Unknown(0x99) }),
-        csrw("csrw 0x99, t0", Csrw { csr: Unknown(0x99), rs1: T0 }),
-        csrs("csrs 0x99, t0", Csrs { csr: Unknown(0x99), rs1: T0 }),
-        csrc("csrc 0x99, t0", Csrc { csr: Unknown(0x99), rs1: T0 }),
+        csrr("csrr t0, 0x99", Csrr { rd: T0, csr: Unnamed(0x99) }),
+        csrw("csrw 0x99, t0", Csrw { csr: Unnamed(0x99), rs1: T0 }),
+        csrs("csrs 0x99, t0", Csrs { csr: Unnamed(0x99), rs1: T0 }),
+        csrc("csrc 0x99, t0", Csrc { csr: Unnamed(0x99), rs1: T0 }),
 
-        csrwi("csrwi 0x99, 4", Csrwi { csr: Unknown(0x99), imm: Immediate(4) }),
-        csrsi("csrsi 0x99, 4", Csrsi { csr: Unknown(0x99), imm: Immediate(4) }),
-        csrci("csrci 0x99, 4", Csrci { csr: Unknown(0x99), imm: Immediate(4) }),
+        csrwi("csrwi 0x99, 4", Csrwi { csr: Unnamed(0x99), imm: Immediate(4) }),
+        csrsi("csrsi 0x99, 4", Csrsi { csr: Unnamed(0x99), imm: Immediate(4) }),
+        csrci("csrci 0x99, 4", Csrci { csr: Unnamed(0x99), imm: Immediate(4) }),
 
         frcsr("frcsr t0", Frcsr { rd: T0 }),
         fscsr("fscsr t0,t1", Fscsr { rd: T0, rs1: T1 }),

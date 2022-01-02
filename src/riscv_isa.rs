@@ -412,7 +412,7 @@ pub enum Csr {
     Cycleh,
     Timeh,
     Instreth,
-    Unknown(u16),
+    Unnamed(u16),
 }
 
 impl Csr {
@@ -430,7 +430,7 @@ impl Csr {
             "timeh" => Timeh,
             "instreth" => Instreth,
             s => match s.strip_prefix("0x") {
-                Some(s) => Unknown(u16::from_str_radix(s, 16).unwrap()),
+                Some(s) => Unnamed(u16::from_str_radix(s, 16).unwrap()),
                 None => panic!("Unknown CSR: `{}`", s),
             },
         }
@@ -731,4 +731,8 @@ define_instruction! {
     Frflags(r"frflags\s+{}", rd),
     Fsflags(r"fsflags\s+{},{}", rd, rs1),
     Fwflags(r"fsflags\s+{}", rs1), // `fsflags rs` is renamed to `fwflags` to avoid conflicts.
+
+    // Misc
+    Unimp(r"unimp"),
+    Unknown(".*"),
 }

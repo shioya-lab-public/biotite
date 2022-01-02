@@ -490,14 +490,25 @@ impl Translator {
             RI::Nop { .. } => Vec::new(),
             RI::Ret { address, raw } => {
                 let default = Value::Address(Address(0x1));
-                let targets = self.targets.clone().into_iter().map(|t| Value::Address(t)).collect();
+                let targets = self
+                    .targets
+                    .clone()
+                    .into_iter()
+                    .map(|t| Value::Address(t))
+                    .collect();
                 build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: ra },
-                Switch { ty: _i, val: _0, default: default, targets: targets },
-            }}
+                    Load { rslt: _0, ty: _i, ptr: ra },
+                    Switch { ty: _i, val: _0, default: default, targets: targets },
+                }
+            }
             RI::Jr { address, raw, rs1 } => {
                 let default = Value::Address(Address(0x1));
-                let targets = self.targets.clone().into_iter().map(|t| Value::Address(t)).collect();
+                let targets = self
+                    .targets
+                    .clone()
+                    .into_iter()
+                    .map(|t| Value::Address(t))
+                    .collect();
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Switch { ty: _i, val: _0, default: default, targets: targets },
