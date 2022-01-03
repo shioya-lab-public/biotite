@@ -11,7 +11,6 @@ lazy_static! {
     static ref RODATA: Regex = Regex::new(r"Disassembly of section \.rodata:").unwrap();
 }
 
-#[derive(Debug)]
 enum Line {
     Section(String),
     Symbol(Address, String),

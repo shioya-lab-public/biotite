@@ -4,30 +4,20 @@ use crate::riscv_isa::{
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-const SYSCALL: &str = "; declare dso_local void @exit(i32)
-; declare dso_local i32 @printf(i8*, ...)
-; @.str = private unnamed_addr constant [13 x i8] c\"#value: %d#\\0A\\00\", align 1
-; %val = load i64, i64* %zero
-; %code = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str, i64 0, i64 0), i64 %val)
-; call void @exit(i32 0)
-
-declare i{xlen} @syscall(i{xlen}, ...)
-";
+const SYSCALL: &str = "declare i{xlen} @syscall(i{xlen}, ...)";
 
 const FPFUNCTIONS: &str = "declare {ftype} @llvm.sqrt.f{flen}({ftype} %op1)
 declare {ftype} @llvm.fma.f{flen}({ftype} %op1, {ftype} %op2, {ftype} %op3)
 declare {ftype} @llvm.fabs.f{flen}({ftype} %op1)
 declare {ftype} @llvm.minimum.f{flen}({ftype} %op1, {ftype} %op2)
 declare {ftype} @llvm.maximum.f{flen}({ftype} %op1, {ftype} %op2)
-declare {ftype} @llvm.copysign.f{flen}({ftype} %mag, {ftype} %sgn)
-";
+declare {ftype} @llvm.copysign.f{flen}({ftype} %mag, {ftype} %sgn)";
 
 const GETDATAPTR: &str = "define i8* @get_data_ptr(i64 %addr) {
   %rel_addr = add i64 %addr, -66912
   %ptr = getelementptr [24 x i8], [24 x i8]* @data_66912, i64 0, i64 %rel_addr
   ret i8* %ptr
-}
-";
+}";
 
 const REGISTERS: &str = "  %zero = alloca i{xlen}
   %ra = alloca i{xlen}
@@ -93,8 +83,7 @@ const REGISTERS: &str = "  %zero = alloca i{xlen}
   store i{xlen} zeroinitializer, i{xlen}* %t3
   store i{xlen} zeroinitializer, i{xlen}* %t4
   store i{xlen} zeroinitializer, i{xlen}* %t5
-  store i{xlen} zeroinitializer, i{xlen}* %t6
-";
+  store i{xlen} zeroinitializer, i{xlen}* %t6";
 
 const FPREGISTERS: &str = "  %ft0 = alloca {ftype}
   %ft1 = alloca {ftype}
@@ -160,8 +149,7 @@ const FPREGISTERS: &str = "  %ft0 = alloca {ftype}
   store {ftype} zeroinitializer, {ftype}* %ft8
   store {ftype} zeroinitializer, {ftype}* %ft9
   store {ftype} zeroinitializer, {ftype}* %ft10
-  store {ftype} zeroinitializer, {ftype}* %ft11
-";
+  store {ftype} zeroinitializer, {ftype}* %ft11";
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
@@ -170,13 +158,10 @@ pub struct Program {
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
     pub stack: HashMap<Address, Vec<Type>>,
-    pub fpstack: HashMap<Address, Vec<FPType>>,
 }
 
 impl Display for Program {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let mut program = format!("; ABI: {}\n", self.abi);
-
         let (xlen, flen, ftype) = match self.abi {
             Abi::Ilp32 => ("32", None, None),
             Abi::Ilp32f => ("32", Some("32"), Some("float")),
@@ -186,51 +171,60 @@ impl Display for Program {
             Abi::Lp64d => ("64", Some("64"), Some("double")),
         };
 
-        program += &format!("\n{}", &SYSCALL.replace("{xlen}", xlen));
-        if let (Some(flen), Some(ftype)) = (flen, ftype) {
-            program += &format!(
-                "\n{}",
+        let abi = format!("; ABI: {}", self.abi);
+        let syscall = SYSCALL.replace("{xlen}", xlen);
+        let fpfunctions = if let (Some(flen), Some(ftype)) = (flen, ftype) {
                 FPFUNCTIONS
                     .replace("{flen}", flen)
                     .replace("{ftype}", ftype)
-            );
-        }
-        for data_block in self.data_blocks.iter() {
-            program += &format!("\n{}", data_block);
-        }
-        program += &format!("\n{}", GETDATAPTR);
-
-        program += "\ndefine void @main(i32 %argc, i8** %argv) {\n";
-        program += "entry:\n";
-        program += &REGISTERS.replace("{xlen}", xlen);
-        if xlen == "64" {
-            program += "\n  %argc_i64 = sext i32 %argc to i64\n";
-            program += "  store i64 %argc_i64, i64* %a0\n";
         } else {
-            program += "\n  store i32 %argc, i32* %a0\n";
-        }
-        if let Some(ftype) = ftype {
-            program += &format!("\n{}", FPREGISTERS.replace("{ftype}", ftype));
-        }
-        program += "\n";
+            String::new()
+        };
+        let data_blocks =self.data_blocks.iter().fold(String::new(), |s, b|s +&format!("{}\n", b));
+        let mut registers = REGISTERS.replace("{xlen}", xlen);
+        if xlen == "64" {
+            registers += "\n\n  %argc_i64 = sext i32 %argc to i64\n";
+            registers += "  store i64 %argc_i64, i64* %a0";
+        } else {
+            registers += "\n\n  store i32 %argc, i32* %a0";
+        };
+        let fpregisters = if let Some(ftype) = ftype {
+            FPREGISTERS.replace("{ftype}", ftype)
+        } else {
+            String::new()
+        };
+        let mut stack = String::new();
         for (addr, tys) in self.stack.iter() {
-            // for (i, ty) in tys.iter().enumerate() {
-            program += &format!("  %stack_{} = alloca {}\n", addr, tys[0]);
-            // }
-        }
-        for (addr, tys) in self.fpstack.iter() {
-            for (i, ty) in tys.iter().enumerate() {
-                program += &format!("  %stack_{}_{} = alloca {}\n", addr, i, ty);
+            for (ver, ty) in tys.iter().enumerate() {
+                stack += &format!("  %stack_{}_{} = alloca {}\n", addr, ver, ty);
             }
         }
-        program += &format!("\n  br label %label_{}\n", self.entry);
-        program += "label_1:\n  unreachable\n";
-        for code_block in self.code_blocks.iter() {
-            program += &format!("\n{}", code_block);
-        }
-        program += "}\n";
+        let entry = format!("  br label %label_{}", self.entry);
+        let code_blocks =self.code_blocks.iter().fold(String::new(), |s, b|s +&format!("{}\n", b));
 
-        write!(f, "{}", program)
+        write!(f, "{}
+
+{}
+
+{}
+
+{}
+
+{}
+define void @main(i32 %argc, i8** %argv) {{
+entry:
+{}
+
+{}
+
+{}
+{}
+
+label_1:
+  unreachable
+
+{}}}
+", abi, syscall, fpfunctions, GETDATAPTR, data_blocks, registers, fpregisters, stack, entry, code_blocks)
     }
 }
 
@@ -300,6 +294,8 @@ pub enum Type {
     I32,
     I64,
     I128,
+    Float,
+    Double,
 }
 
 impl Display for Type {
@@ -313,34 +309,20 @@ impl Display for Type {
             I32 => write!(f, "i32"),
             I64 => write!(f, "i64"),
             I128 => write!(f, "i128"),
+            Float => write!(f, "float"),
+            Double => write!(f, "double"),
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum FPType {
-    Float,
-    Double,
-}
-
-impl FPType {
-    fn flen(&self) -> u8 {
-        use FPType::*;
+impl Type {
+    fn size(&self) -> usize {
+        use Type::*;
 
         match self {
             Float => 32,
             Double => 64,
-        }
-    }
-}
-
-impl Display for FPType {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use FPType::*;
-
-        match self {
-            Float => write!(f, "float"),
-            Double => write!(f, "double"),
+            _ => unreachable!(),
         }
     }
 }
@@ -466,7 +448,7 @@ pub enum Instruction {
     // Unary Operations
     Fneg {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         op1: Value,
     },
 
@@ -479,7 +461,7 @@ pub enum Instruction {
     },
     Fadd {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         op1: Value,
         op2: Value,
     },
@@ -491,7 +473,7 @@ pub enum Instruction {
     },
     Fsub {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         op1: Value,
         op2: Value,
     },
@@ -503,7 +485,7 @@ pub enum Instruction {
     },
     Fmul {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         op1: Value,
         op2: Value,
     },
@@ -521,7 +503,7 @@ pub enum Instruction {
     },
     Fdiv {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         op1: Value,
         op2: Value,
     },
@@ -590,22 +572,14 @@ pub enum Instruction {
         ty: Type,
         ptr: Value,
     },
-    Fload {
-        rslt: Value,
-        fty: FPType,
-        ptr: Value,
-    },
     Store {
         ty: Type,
         val: Value,
         ptr: Value,
     },
-    Fstore {
-        fty: FPType,
-        val: Value,
-        ptr: Value,
+    Fence {
+        ord: Ordering
     },
-    Fence(Ordering),
     Cmpxchg {
         rslt: Value,
         ty: Type,
@@ -645,39 +619,39 @@ pub enum Instruction {
     },
     Fptrunc {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         val: Value,
-        fty2: FPType,
+        ty2: Type,
     },
     Fpext {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         val: Value,
-        fty2: FPType,
+        ty2: Type,
     },
     Fptoui {
         rslt: Value,
-        fty: FPType,
-        val: Value,
         ty: Type,
+        val: Value,
+        ty2: Type,
     },
     Fptosi {
         rslt: Value,
-        fty: FPType,
-        val: Value,
         ty: Type,
+        val: Value,
+        ty2: Type,
     },
     Uitofp {
         rslt: Value,
         ty: Type,
         val: Value,
-        fty: FPType,
+        ty2: Type,
     },
     Sitofp {
         rslt: Value,
         ty: Type,
         val: Value,
-        fty: FPType,
+        ty2: Type,
     },
     Bitcast {
         rslt: Value,
@@ -697,7 +671,7 @@ pub enum Instruction {
     Fcmp {
         rslt: Value,
         fcond: FPCondition,
-        fty: FPType,
+        ty: Type,
         op1: Value,
         op2: Value,
     },
@@ -705,36 +679,36 @@ pub enum Instruction {
     // Standard C/C++ Library Intrinsics
     Sqrt {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         op1: Value,
     },
     Fma {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         op1: Value,
         op2: Value,
         op3: Value,
     },
     Fabs {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         op1: Value,
     },
     Minimum {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         op1: Value,
         op2: Value,
     },
     Maximum {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         op1: Value,
         op2: Value,
     },
     Copysign {
         rslt: Value,
-        fty: FPType,
+        ty: Type,
         mag: Value,
         sgn: Value,
     },
@@ -759,20 +733,8 @@ pub enum Instruction {
         stk: Value,
         ver: Value,
     },
-    Floadstack {
-        rslt: Value,
-        fty: FPType,
-        stk: Value,
-        ver: Value,
-    },
     Storestack {
         ty: Type,
-        val: Value,
-        stk: Value,
-        ver: Value,
-    },
-    Fstorestack {
-        fty: FPType,
         val: Value,
         stk: Value,
         ver: Value,
@@ -816,38 +778,38 @@ impl Display for Instruction {
             }
 
             // Unary Operations
-            Fneg { rslt, fty, op1 } => write!(f, "{} = fneg {} {}", rslt, fty, op1),
+            Fneg { rslt, ty, op1 } => write!(f, "{} = fneg {} {}", rslt, ty, op1),
 
             // Binary Operations
             Add { rslt, ty, op1, op2 } => write!(f, "{} = add {} {}, {}", rslt, ty, op1, op2),
             Fadd {
                 rslt,
-                fty,
+                ty,
                 op1,
                 op2,
-            } => write!(f, "{} = fadd {} {}, {}", rslt, fty, op1, op2),
+            } => write!(f, "{} = fadd {} {}, {}", rslt, ty, op1, op2),
             Sub { rslt, ty, op1, op2 } => write!(f, "{} = sub {} {}, {}", rslt, ty, op1, op2),
             Fsub {
                 rslt,
-                fty,
+                ty,
                 op1,
                 op2,
-            } => write!(f, "{} = fsub {} {}, {}", rslt, fty, op1, op2),
+            } => write!(f, "{} = fsub {} {}, {}", rslt, ty, op1, op2),
             Mul { rslt, ty, op1, op2 } => write!(f, "{} = mul {} {}, {}", rslt, ty, op1, op2),
             Fmul {
                 rslt,
-                fty,
+                ty,
                 op1,
                 op2,
-            } => write!(f, "{} = fmul {} {}, {}", rslt, fty, op1, op2),
+            } => write!(f, "{} = fmul {} {}, {}", rslt, ty, op1, op2),
             Udiv { rslt, ty, op1, op2 } => write!(f, "{} = udiv {} {}, {}", rslt, ty, op1, op2),
             Sdiv { rslt, ty, op1, op2 } => write!(f, "{} = sdiv {} {}, {}", rslt, ty, op1, op2),
             Fdiv {
                 rslt,
-                fty,
+                ty,
                 op1,
                 op2,
-            } => write!(f, "{} = fdiv {} {}, {}", rslt, fty, op1, op2),
+            } => write!(f, "{} = fdiv {} {}, {}", rslt, ty, op1, op2),
             Urem { rslt, ty, op1, op2 } => write!(f, "{} = urem {} {}, {}", rslt, ty, op1, op2),
             Srem { rslt, ty, op1, op2 } => write!(f, "{} = srem {} {}, {}", rslt, ty, op1, op2),
 
@@ -868,10 +830,8 @@ impl Display for Instruction {
 
             // Memory Access and Addressing Operations
             Load { rslt, ty, ptr } => write!(f, "{} = load {}, {}* {}", rslt, ty, ty, ptr),
-            Fload { rslt, fty, ptr } => write!(f, "{} = load {}, {}* {}", rslt, fty, fty, ptr),
             Store { ty, val, ptr } => write!(f, "store {} {}, {}* {}", ty, val, ty, ptr),
-            Fstore { fty, val, ptr } => write!(f, "store {} {}, {}* {}", fty, val, fty, ptr),
-            Fence(ord) => write!(f, "fence {}", ord),
+            Fence{ord} => write!(f, "fence {}", ord),
             Cmpxchg {
                 rslt,
                 ty,
@@ -913,33 +873,33 @@ impl Display for Instruction {
             },
             Fptrunc {
                 rslt,
-                fty,
+                ty,
                 val,
-                fty2,
-            } => match fty == fty2 {
-                true => write!(f, "{} = fadd {} {}, {}", rslt, fty, val, 0),
-                false => write!(f, "{} = fptrunc {} {} to {}", rslt, fty, val, fty2),
+                ty2,
+            } => match ty == ty2 {
+                true => write!(f, "{} = fadd {} {}, {}", rslt, ty, val, 0),
+                false => write!(f, "{} = fptrunc {} {} to {}", rslt, ty, val, ty2),
             },
             Fpext {
                 rslt,
-                fty,
+                ty,
                 val,
-                fty2,
-            } => match fty == fty2 {
-                true => write!(f, "{} = fadd {} {}, {}", rslt, fty, val, 0),
-                false => write!(f, "{} = fpext {} {} to {}", rslt, fty, val, fty2),
+                ty2,
+            } => match ty == ty2 {
+                true => write!(f, "{} = fadd {} {}, {}", rslt, ty, val, 0),
+                false => write!(f, "{} = fpext {} {} to {}", rslt, ty, val, ty2),
             },
-            Fptoui { rslt, fty, val, ty } => {
-                write!(f, "{} = fptoui {} {} to {}", rslt, fty, val, ty)
+            Fptoui { rslt, ty, val, ty2 } => {
+                write!(f, "{} = fptoui {} {} to {}", rslt, ty, val, ty2)
             }
-            Fptosi { rslt, fty, val, ty } => {
-                write!(f, "{} = fptosi {} {} to {}", rslt, fty, val, ty)
+            Fptosi { rslt, ty, val, ty2 } => {
+                write!(f, "{} = fptosi {} {} to {}", rslt, ty, val, ty2)
             }
-            Uitofp { rslt, ty, val, fty } => {
-                write!(f, "{} = uitofp {} {} to {}", rslt, ty, val, fty)
+            Uitofp { rslt, ty, val, ty2 } => {
+                write!(f, "{} = uitofp {} {} to {}", rslt, ty, val, ty2)
             }
-            Sitofp { rslt, ty, val, fty } => {
-                write!(f, "{} = sitofp {} {} to {}", rslt, ty, val, fty)
+            Sitofp { rslt, ty, val, ty2 } => {
+                write!(f, "{} = sitofp {} {} to {}", rslt, ty, val, ty2)
             }
             Bitcast { rslt, ty, val, ty2 } => {
                 write!(f, "{} = bitcast {}* {} to {}*", rslt, ty, val, ty2)
@@ -956,24 +916,24 @@ impl Display for Instruction {
             Fcmp {
                 rslt,
                 fcond,
-                fty,
+                ty,
                 op1,
                 op2,
-            } => write!(f, "{} = fcmp {} {} {}, {}", rslt, fcond, fty, op1, op2),
+            } => write!(f, "{} = fcmp {} {} {}, {}", rslt, fcond, ty, op1, op2),
 
             // Standard C/C++ Library Intrinsics
-            Sqrt { rslt, fty, op1 } => write!(
+            Sqrt { rslt, ty, op1 } => write!(
                 f,
                 "{} = call {} @llvm.sqrt.f{}({} {})",
                 rslt,
-                fty,
-                fty.flen(),
-                fty,
+                ty,
+                ty.size(),
+                ty,
                 op1
             ),
             Fma {
                 rslt,
-                fty,
+                ty,
                 op1,
                 op2,
                 op3,
@@ -981,70 +941,70 @@ impl Display for Instruction {
                 f,
                 "{} = call {} @llvm.fma.f{}({} {}, {} {}, {} {})",
                 rslt,
-                fty,
-                fty.flen(),
-                fty,
+                ty,
+                ty.size(),
+                ty,
                 op1,
-                fty,
+                ty,
                 op2,
-                fty,
+                ty,
                 op3
             ),
-            Fabs { rslt, fty, op1 } => write!(
+            Fabs { rslt, ty, op1 } => write!(
                 f,
                 "{} = call {} @llvm.fabs.f{}({} {})",
                 rslt,
-                fty,
-                fty.flen(),
-                fty,
+                ty,
+                ty.size(),
+                ty,
                 op1
             ),
             Minimum {
                 rslt,
-                fty,
+                ty,
                 op1,
                 op2,
             } => write!(
                 f,
                 "{} = call {} @llvm.minimum.f{}({} {}, {} {})",
                 rslt,
-                fty,
-                fty.flen(),
-                fty,
+                ty,
+                ty.size(),
+                ty,
                 op1,
-                fty,
+                ty,
                 op2
             ),
             Maximum {
                 rslt,
-                fty,
+                ty,
                 op1,
                 op2,
             } => write!(
                 f,
                 "{} = call {} @llvm.maximum.f{}({} {}, {} {})",
                 rslt,
-                fty,
-                fty.flen(),
-                fty,
+                ty,
+                ty.size(),
+                ty,
                 op1,
-                fty,
+                ty,
                 op2
             ),
             Copysign {
                 rslt,
-                fty,
+                ty,
                 mag,
                 sgn,
             } => write!(
                 f,
                 "{} = call {} @llvm.copysign.f{}({} {}, {} {})",
                 rslt,
-                fty,
-                fty.flen(),
-                fty,
+                ty,
+                ty.size(),
+                ty,
                 mag,
-                fty,
+                ty,
                 sgn
             ),
 
@@ -1069,21 +1029,8 @@ impl Display for Instruction {
             Loadstack { rslt, ty, stk, ver } => {
                 write!(f, "{} = load {}, {}* %stack_{}", rslt, ty, ty, stk)
             }
-            Floadstack {
-                rslt,
-                fty,
-                stk,
-                ver,
-            } => write!(
-                f,
-                "{} = load {}, {}* %fpstack_{}_{}",
-                rslt, fty, fty, stk, ver
-            ),
             Storestack { ty, val, stk, ver } => {
                 write!(f, "store {} {}, {}* %stack_{}", ty, val, ty, stk)
-            }
-            Fstorestack { fty, val, stk, ver } => {
-                write!(f, "store {} {}, {}* %stack_{}_{}", fty, val, fty, stk, ver)
             }
 
             Getdataptr { rslt, ty, addr } => {

@@ -34,6 +34,18 @@ macro_rules! _5 {
     };
 }
 
+macro_rules! _6 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::Temp(*$addr, 6)
+    };
+}
+
+macro_rules! _7 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::Temp(*$addr, 7)
+    };
+}
+
 macro_rules! _i {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         match $abi {
@@ -43,9 +55,21 @@ macro_rules! _i {
     };
 }
 
+macro_rules! _i1 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Type::I1
+    };
+}
+
 macro_rules! _i8 {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Type::I8
+    };
+}
+
+macro_rules! _i16 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Type::I16
     };
 }
 
@@ -58,16 +82,6 @@ macro_rules! _i32 {
 macro_rules! _i64 {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Type::I64
-    };
-}
-
-macro_rules! f {
-    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
-        match $abi {
-            Abi::Ilp32 | Abi::Lp64 => panic!("Instruction at `{}` requires a FP ABI", $addr),
-            Abi::Ilp32f | Abi::Lp64f => FPType::Float,
-            Abi::Ilp32d | Abi::Lp64d => FPType::Double,
-        }
     };
 }
 
@@ -117,6 +131,48 @@ macro_rules! ra {
     };
 }
 
+macro_rules! a7 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::Register(Register::A7)
+    };
+}
+
+macro_rules! a0 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::Register(Register::A0)
+    };
+}
+
+macro_rules! a1 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::Register(Register::A1)
+    };
+}
+
+macro_rules! a2 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::Register(Register::A2)
+    };
+}
+
+macro_rules! a3 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::Register(Register::A3)
+    };
+}
+
+macro_rules! a4 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::Register(Register::A4)
+    };
+}
+
+macro_rules! a5 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::Register(Register::A5)
+    };
+}
+
 macro_rules! rd {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Value::Register(*$value)
@@ -153,6 +209,18 @@ macro_rules! addr {
     };
 }
 
+macro_rules! eq {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Condition::Eq
+    };
+}
+
+macro_rules! ne {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Condition::Ne
+    };
+}
+
 macro_rules! uge {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Condition::Uge
@@ -165,9 +233,51 @@ macro_rules! ult {
     };
 }
 
+macro_rules! sgt {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Condition::Sgt
+    };
+}
+
 macro_rules! sge {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Condition::Sge
+    };
+}
+
+macro_rules! slt {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Condition::Slt
+    };
+}
+
+macro_rules! sle {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Condition::Sle
+    };
+}
+
+macro_rules! monotonic {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Ordering::Monotonic
+    };
+}
+
+macro_rules! acquire {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Ordering::Acquire
+    };
+}
+
+macro_rules! release {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Ordering::Release
+    };
+}
+
+macro_rules! seq_cst {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Ordering::SeqCst
     };
 }
 
@@ -186,6 +296,6 @@ macro_rules! build_instructions {
 }
 
 pub(crate) use {
-    _i, _i32, _i64, _i8, addr, address, build_instructions, default, f, imm, imm_12, next_pc, ra,
-    rd, rs1, rs2, sge, stk, targets, uge, ult, ver, _0, _1, _2, _3, _4, _5,
+    _i, _i1, _i32, _i64, _i8, addr, address, build_instructions, default, imm, imm_12, next_pc, ra,a7,a0,a1,a2,a3,a4,a5,
+    rd, _6,_7,rs1, rs2, eq, ne, sgt, slt, sle, _i16,sge, stk, targets, uge, ult, ver, _0, _1, _2, _3, _4, _5,monotonic,acquire,release,seq_cst
 };

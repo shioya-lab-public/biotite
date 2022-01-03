@@ -262,6 +262,7 @@ Counter
 
 - Do not assume executable file.
 - Extract `.text`, `.rodata`, `.data`, `.bss`, `.sdata`, and `.sbss`.
+- Trap `argv` in address 0.
 
 - add arbitrary memory access support for ld/sd: Keep all static sections as static byte array in LLVM.
 - add support for RV32/64A
@@ -310,8 +311,15 @@ sudo docker cp straight-env:/work/straight-util/STRAIGHT_Tester/HelloMusl/hello.
 
 ### Reference
 
-https://llvm.org/doxygen/SROA_8cpp.html
 https://releases.llvm.org/13.0.0/docs/tutorial/MyFirstLanguageFrontend/LangImpl07.html
 
-- [LLVM Language Reference Manual](https://releases.llvm.org/12.0.0/docs/LangRef.html)
 - [A Complete Guide to LLVM for Programming Language Creators](https://mukulrathi.co.uk/create-your-own-programming-language/llvm-ir-cpp-api-tutorial/)
+
+``` llvm
+declare dso_local void @exit(i32)
+declare dso_local i32 @printf(i8*, ...)
+@.str = private unnamed_addr constant [13 x i8] c\"#value: %d#\\0A\\00\", align 1
+%val = load i64, i64* %zero
+%code = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str, i64 0, i64 0), i64 %val)
+call void @exit(i32 0)
+```

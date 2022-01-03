@@ -78,7 +78,7 @@ impl Display for DataBlock {
         }
         data_block.pop();
         data_block.pop();
-        data_block += "]\n";
+        data_block += "]";
         write!(f, "{}", data_block)
     }
 }
