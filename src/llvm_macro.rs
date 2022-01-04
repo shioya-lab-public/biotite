@@ -125,12 +125,6 @@ macro_rules! next_pc {
     };
 }
 
-macro_rules! ra {
-    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
-        Value::Register(Register::Ra)
-    };
-}
-
 macro_rules! a7 {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Value::Register(Register::A7)
@@ -296,6 +290,7 @@ macro_rules! build_instructions {
 }
 
 pub(crate) use {
-    _i, _i1, _i32, _i64, _i8, addr, address, build_instructions, default, imm, imm_12, next_pc, ra,a7,a0,a1,a2,a3,a4,a5,
-    rd, _6,_7,rs1, rs2, eq, ne, sgt, slt, sle, _i16,sge, stk, targets, uge, ult, ver, _0, _1, _2, _3, _4, _5,monotonic,acquire,release,seq_cst
+    _i, _i1, _i16, _i32, _i64, _i8, a0, a1, a2, a3, a4, a5, a7, acquire, addr, address,
+    build_instructions, default, eq, imm, imm_12, monotonic, ne, next_pc, rd, release, rs1, rs2,
+    seq_cst, sge, sgt, sle, slt, stk, targets, uge, ult, ver, _0, _1, _2, _3, _4, _5, _6, _7,
 };

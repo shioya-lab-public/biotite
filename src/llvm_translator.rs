@@ -37,8 +37,8 @@ impl Translator {
         self.entry = Address(0x0);
         self.data_blocks = rv_program.data_blocks;
         self.targets.clear();
-        self.sp = Address(u64::MAX);
-        self.fp = Address(u64::MAX);
+        self.sp = Address(10_000000);
+        self.fp = Address(10_000000);
 
         for code_block in rv_program.code_blocks.iter() {
             self.targets.push(code_block.address);
@@ -144,8 +144,9 @@ impl Translator {
                     .into_iter()
                     .map(|t| Value::Address(t))
                     .collect();
+                let rs2 = &Register::Ra;
                 build_instructions! { address, raw, self.abi,
-                    Store { ty: _i, val: next_pc, ptr: ra },
+                    Store { ty: _i, val: next_pc, ptr: rs2 },
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
                     Switch { ty: _i, val: _1, default: default, targets: targets },
@@ -422,7 +423,7 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    self.stack.entry(stk).or_default().push(Type::I32);
+                    self.stack.entry(stk).or_default().push(Type::I8);
                     let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
                         Load { rslt: _0, ty: _i, ptr: rs2 },
@@ -459,7 +460,7 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    self.stack.entry(stk).or_default().push(Type::I32);
+                    self.stack.entry(stk).or_default().push(Type::I16);
                     let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
                         Load { rslt: _0, ty: _i, ptr: rs2 },
@@ -754,30 +755,6 @@ impl Translator {
             RI::Ebreak { .. } => panic!("`ebreak` is not implemented"),
 
             // RV64I
-            RI::Addw {
-                address,
-                raw,
-                rd,
-                rs1,
-                rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Add { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
-            },
-            RI::Addiw {
-                address,
-                raw,
-                rd,
-                rs1,
-                imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
-            },
-
             RI::Lwu {
                 address,
                 raw,
@@ -786,34 +763,22 @@ impl Translator {
                 rs1,
             } => match rs1 {
                 Register::Sp | Register::S0 => {
-                    let stk = match rs1 {
-                        Register::Sp => {
-                            let Address(addr) = self.sp;
-                            let Immediate(imm) = *imm;
-                            if imm >= 0 {
-                                Address(addr + imm as u64)
-                            } else {
-                                Address(addr - (-imm) as u64)
-                            }
-                        }
-                        Register::S0 => {
-                            let Address(addr) = self.fp;
-                            let Immediate(imm) = *imm;
-                            if imm >= 0 {
-                                Address(addr + imm as u64)
-                            } else {
-                                Address(addr - (-imm) as u64)
-                            }
-                        }
+                    let Address(addr) = match rs1 {
+                        Register::Sp => self.sp,
+                        Register::S0 => self.fp,
                         _ => unreachable!(),
+                    };
+                    let Immediate(imm) = *imm;
+                    let stk = if imm >= 0 {
+                        Address(addr + imm as u64)
+                    } else {
+                        Address(addr - (-imm) as u64)
                     };
                     let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
-                        Load { rslt: _0, ty: _i, ptr: rs1 },
-                        Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                        Loadstack { rslt: _2, ty: _i32, stk: stk, ver: ver },
-                        Zext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                        Store { ty: _i, val: _3, ptr: rd },
+                        Loadstack { rslt: _0, ty: _i32, stk: stk, ver: ver },
+                        Zext { rslt: _1, ty: _i32, val: _0, ty2: _i },
+                        Store { ty: _i, val: _1, ptr: rd },
                     }
                 }
                 _ => build_instructions! { address, raw, self.abi,
@@ -834,41 +799,31 @@ impl Translator {
                 rs1,
             } => match rs1 {
                 Register::Sp | Register::S0 => {
-                    let stk = match rs1 {
-                        Register::Sp => {
-                            let Address(addr) = self.sp;
-                            let Immediate(imm) = *imm;
-                            if imm >= 0 {
-                                Address(addr + imm as u64)
-                            } else {
-                                Address(addr - (-imm) as u64)
-                            }
-                        }
-                        Register::S0 => {
-                            let Address(addr) = self.fp;
-                            let Immediate(imm) = *imm;
-                            if imm >= 0 {
-                                Address(addr + imm as u64)
-                            } else {
-                                Address(addr - (-imm) as u64)
-                            }
-                        }
+                    let Address(addr) = match rs1 {
+                        Register::Sp => self.sp,
+                        Register::S0 => self.fp,
                         _ => unreachable!(),
+                    };
+                    let Immediate(imm) = *imm;
+                    let stk = if imm >= 0 {
+                        Address(addr + imm as u64)
+                    } else {
+                        Address(addr - (-imm) as u64)
                     };
                     let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
-                        Load { rslt: _0, ty: _i, ptr: rs1 },
-                        Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                        Loadstack { rslt: _2, ty: _i64, stk: stk, ver: ver },
-                        Store { ty: _i, val: _2, ptr: rd },
+                        Loadstack { rslt: _0, ty: _i64, stk: stk, ver: ver },
+                        Zext { rslt: _1, ty: _i64, val: _0, ty2: _i },
+                        Store { ty: _i, val: _1, ptr: rd },
                     }
                 }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
                     Getdataptr { rslt: _2, ty: _i, addr: _1 },
-                    Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i32 },
+                    Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i64 },
                     Load { rslt: _4, ty: _i64, ptr: _3 },
+                    Zext { rslt: _5, ty: _i64, val: _4, ty2: _i },
                     Store { ty: _i, val: _5, ptr: rd },
                 },
             },
@@ -880,45 +835,168 @@ impl Translator {
                 rs1,
             } => match rs1 {
                 Register::Sp | Register::S0 => {
-                    let stk = match rs1 {
-                        Register::Sp => {
-                            let Address(addr) = self.sp;
-                            let Immediate(imm) = *imm;
-                            if imm >= 0 {
-                                Address(addr + imm as u64)
-                            } else {
-                                Address(addr - (-imm) as u64)
-                            }
-                        }
-                        Register::S0 => {
-                            let Address(addr) = self.fp;
-                            let Immediate(imm) = *imm;
-                            if imm >= 0 {
-                                Address(addr + imm as u64)
-                            } else {
-                                Address(addr - (-imm) as u64)
-                            }
-                        }
+                    let Address(addr) = match rs1 {
+                        Register::Sp => self.sp,
+                        Register::S0 => self.fp,
                         _ => unreachable!(),
+                    };
+                    let Immediate(imm) = *imm;
+                    let stk = if imm >= 0 {
+                        Address(addr + imm as u64)
+                    } else {
+                        Address(addr - (-imm) as u64)
                     };
                     self.stack.entry(stk).or_default().push(Type::I64);
                     let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
                         Load { rslt: _0, ty: _i, ptr: rs2 },
-                        Storestack { ty: _i64, val: _0, stk: stk, ver: ver },
+                        Trunc { rslt: _1, ty: _i, val: _0, ty2: _i64 },
+                        Storestack { ty: _i64, val: _1, stk: stk, ver: ver },
                     }
                 }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs2 },
-                    Load { rslt: _1, ty: _i, ptr: rs1 },
-                    Add { rslt: _2, ty: _i, op1: _1, op2: imm },
-                    Getdataptr { rslt: _3, ty: _i, addr: _2 },
-                    Bitcast { rslt: _4, ty: _i8, val: _3, ty2: _i64 },
-                    Store { ty: _i64, val: _0, ptr: _4 },
+                    Trunc { rslt: _1, ty: _i, val: _0, ty2: _i64 },
+                    Load { rslt: _2, ty: _i, ptr: rs1 },
+                    Add { rslt: _3, ty: _i, op1: _2, op2: imm },
+                    Getdataptr { rslt: _4, ty: _i, addr: _3 },
+                    Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
+                    Store { ty: _i64, val: _1, ptr: _5 },
                 },
+            },
+            RI::Addiw {
+                address,
+                raw,
+                rd,
+                rs1,
+                imm,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Add { rslt: _1, ty: _i, op1: _0, op2: imm },
+                Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
+                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
+                Store { ty: _i, val: _3, ptr: rd },
+            },
+            RI::Slliw {
+                address,
+                raw,
+                rd,
+                rs1,
+                imm,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Shl { rslt: _1, ty: _i, op1: _0, op2: imm },
+                Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
+                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
+                Store { ty: _i, val: _3, ptr: rd },
+            },
+            RI::Srliw {
+                address,
+                raw,
+                rd,
+                rs1,
+                imm,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Lshr { rslt: _1, ty: _i, op1: _0, op2: imm },
+                Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
+                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
+                Store { ty: _i, val: _3, ptr: rd },
+            },
+            RI::Sraiw {
+                address,
+                raw,
+                rd,
+                rs1,
+                imm,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Ashr { rslt: _1, ty: _i, op1: _0, op2: imm },
+                Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
+                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
+                Store { ty: _i, val: _3, ptr: rd },
+            },
+            RI::Addw {
+                address,
+                raw,
+                rd,
+                rs1,
+                rs2,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Load { rslt: _1, ty: _i, ptr: rs2 },
+                Add { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
+                Store { ty: _i, val: _4, ptr: rd },
+            },
+            RI::Subw {
+                address,
+                raw,
+                rd,
+                rs1,
+                rs2,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Load { rslt: _1, ty: _i, ptr: rs2 },
+                Sub { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
+                Store { ty: _i, val: _4, ptr: rd },
+            },
+            RI::Sllw {
+                address,
+                raw,
+                rd,
+                rs1,
+                rs2,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Load { rslt: _1, ty: _i, ptr: rs2 },
+                Shl { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
+                Store { ty: _i, val: _4, ptr: rd },
+            },
+            RI::Srlw {
+                address,
+                raw,
+                rd,
+                rs1,
+                rs2,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Load { rslt: _1, ty: _i, ptr: rs2 },
+                Lshr { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
+                Store { ty: _i, val: _4, ptr: rd },
+            },
+            RI::Sraw {
+                address,
+                raw,
+                rd,
+                rs1,
+                rs2,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Load { rslt: _1, ty: _i, ptr: rs2 },
+                Ashr { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
+                Store { ty: _i, val: _4, ptr: rd },
             },
 
             // Pseudoinstructions
+            RI::Nop { .. } => Vec::new(),
+            RI::Li {
+                address,
+                raw,
+                rd,
+                imm,
+            } => build_instructions! { address, raw, self.abi,
+                Store { ty: _i, val: imm, ptr: rd },
+            },
             RI::Mv {
                 address,
                 raw,
@@ -928,6 +1006,47 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Store { ty: _i, val: _0, ptr: rd },
             },
+            RI::Not {
+                address,
+                raw,
+                rd,
+                rs1,
+            } => {
+                let imm = &Immediate(-1);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Xor { rslt: _1, ty: _i, op1: _0, op2: imm },
+                    Store { ty: _i, val: _1, ptr: rd },
+                }
+            }
+            RI::Neg {
+                address,
+                raw,
+                rd,
+                rs1,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Sub { rslt: _1, ty: _i, op1: imm, op2: _0 },
+                    Store { ty: _i, val: _1, ptr: rd },
+                }
+            }
+            RI::Negw {
+                address,
+                raw,
+                rd,
+                rs1,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Sub { rslt: _1, ty: _i, op1: imm, op2: _0 },
+                    Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
+                    Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
+                    Store { ty: _i, val: _3, ptr: rd },
+                }
+            }
             RI::SextW {
                 address,
                 raw,
@@ -937,32 +1056,145 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Store { ty: _i, val: _0, ptr: rd },
             },
-            RI::Li {
+            RI::Seqz {
                 address,
                 raw,
                 rd,
-                imm,
-            } => build_instructions! { address, raw, self.abi,
-                Store { ty: _i, val: imm, ptr: rd },
-            },
+                rs1,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Icmp { rslt: _1, cond: eq, ty: _i, op1: _0, op2: imm },
+                    Sext { rslt: _2, ty: _i1, val: _1, ty2: _i },
+                    Store { ty: _i, val: _2, ptr: rd },
+                }
+            }
+            RI::Snez {
+                address,
+                raw,
+                rd,
+                rs1,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Icmp { rslt: _1, cond: ne, ty: _i, op1: _0, op2: imm },
+                    Sext { rslt: _2, ty: _i1, val: _1, ty2: _i },
+                    Store { ty: _i, val: _2, ptr: rd },
+                }
+            }
+            RI::Sltz {
+                address,
+                raw,
+                rd,
+                rs1,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Icmp { rslt: _1, cond: slt, ty: _i, op1: _0, op2: imm },
+                    Sext { rslt: _2, ty: _i1, val: _1, ty2: _i },
+                    Store { ty: _i, val: _2, ptr: rd },
+                }
+            }
+            RI::Sgtz {
+                address,
+                raw,
+                rd,
+                rs1,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Icmp { rslt: _1, cond: sgt, ty: _i, op1: _0, op2: imm },
+                    Sext { rslt: _2, ty: _i1, val: _1, ty2: _i },
+                    Store { ty: _i, val: _2, ptr: rd },
+                }
+            }
+
+            RI::Beqz {
+                address,
+                raw,
+                rs1,
+                addr,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Icmp { rslt: _1, cond: eq, ty: _i, op1: _0, op2: imm },
+                    ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
+                }
+            }
+            RI::Bnez {
+                address,
+                raw,
+                rs1,
+                addr,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Icmp { rslt: _1, cond: ne, ty: _i, op1: _0, op2: imm },
+                    ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
+                }
+            }
+            RI::Blez {
+                address,
+                raw,
+                rs1,
+                addr,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Icmp { rslt: _1, cond: sle, ty: _i, op1: _0, op2: imm },
+                    ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
+                }
+            }
+            RI::Bgez {
+                address,
+                raw,
+                rs1,
+                addr,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Icmp { rslt: _1, cond: sge, ty: _i, op1: _0, op2: imm },
+                    ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
+                }
+            }
+            RI::Bltz {
+                address,
+                raw,
+                rs1,
+                addr,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Icmp { rslt: _1, cond: slt, ty: _i, op1: _0, op2: imm },
+                    ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
+                }
+            }
+            RI::Bgtz {
+                address,
+                raw,
+                rs1,
+                addr,
+            } => {
+                let imm = &Immediate(0);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Icmp { rslt: _1, cond: sgt, ty: _i, op1: _0, op2: imm },
+                    ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
+                }
+            }
 
             RI::J { address, raw, addr } => build_instructions! { address, raw, self.abi,
                 UnconBr { addr: addr },
             },
-            RI::Nop { .. } => Vec::new(),
-            RI::Ret { address, raw } => {
-                let default = Value::Address(Address(0x1));
-                let targets = self
-                    .targets
-                    .clone()
-                    .into_iter()
-                    .map(|t| Value::Address(t))
-                    .collect();
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: ra },
-                    Switch { ty: _i, val: _0, default: default, targets: targets },
-                }
-            }
             RI::Jr { address, raw, rs1 } => {
                 let default = Value::Address(Address(0x1));
                 let targets = self
@@ -976,6 +1208,45 @@ impl Translator {
                     Switch { ty: _i, val: _0, default: default, targets: targets },
                 }
             }
+            RI::PseudoJalr { address, raw, rs1 } => {
+                let default = Value::Address(Address(0x1));
+                let targets = self
+                    .targets
+                    .clone()
+                    .into_iter()
+                    .map(|t| Value::Address(t))
+                    .collect();
+                let imm = &Immediate(0);
+                let rs2 = &Register::Ra;
+                build_instructions! { address, raw, self.abi,
+                    Store { ty: _i, val: next_pc, ptr: rs2 },
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
+                    Switch { ty: _i, val: _1, default: default, targets: targets },
+                }
+            }
+            RI::Ret { address, raw } => {
+                let default = Value::Address(Address(0x1));
+                let targets = self
+                    .targets
+                    .clone()
+                    .into_iter()
+                    .map(|t| Value::Address(t))
+                    .collect();
+                let rs1 = &Register::Ra;
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Switch { ty: _i, val: _0, default: default, targets: targets },
+                }
+            }
+
+            RI::PseudoFence { address, raw } => build_instructions! { address, raw, self.abi,
+                Fence { ord: monotonic },
+            },
+
+            // Misc
+            RI::Unimp { address, .. } => panic!("Encounter `unimp` at `{}`", address),
+            RI::Unknown { address, .. } => panic!("Encounter `unknown` at `{}`", address),
 
             inst => todo!("{:?}", inst),
         };

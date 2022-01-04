@@ -13,12 +13,6 @@ declare {ftype} @llvm.minimum.f{flen}({ftype} %op1, {ftype} %op2)
 declare {ftype} @llvm.maximum.f{flen}({ftype} %op1, {ftype} %op2)
 declare {ftype} @llvm.copysign.f{flen}({ftype} %mag, {ftype} %sgn)";
 
-const GETDATAPTR: &str = "define i8* @get_data_ptr(i64 %addr) {
-  %rel_addr = add i64 %addr, -66912
-  %ptr = getelementptr [24 x i8], [24 x i8]* @data_66912, i64 0, i64 %rel_addr
-  ret i8* %ptr
-}";
-
 const REGISTERS: &str = "  %zero = alloca i{xlen}
   %ra = alloca i{xlen}
   %sp = alloca i{xlen}
@@ -174,13 +168,65 @@ impl Display for Program {
         let abi = format!("; ABI: {}", self.abi);
         let syscall = SYSCALL.replace("{xlen}", xlen);
         let fpfunctions = if let (Some(flen), Some(ftype)) = (flen, ftype) {
-                FPFUNCTIONS
-                    .replace("{flen}", flen)
-                    .replace("{ftype}", ftype)
+            FPFUNCTIONS
+                .replace("{flen}", flen)
+                .replace("{ftype}", ftype)
         } else {
             String::new()
         };
-        let data_blocks =self.data_blocks.iter().fold(String::new(), |s, b|s +&format!("{}\n", b));
+        let data_blocks = self
+            .data_blocks
+            .iter()
+            .fold(String::new(), |s, b| s + &format!("{}\n", b));
+
+        let mut get_data_ptr = format!("define i8* @get_data_ptr(i{} %addr) {{\n", xlen);
+        let mut data_blocks_iter = self.data_blocks.iter();
+        let mut current = data_blocks_iter.next();
+        let mut next = data_blocks_iter.next();
+        while let Some(cur) = current {
+            if let Some(nxt) = next {
+                get_data_ptr += &format!(
+                    "data_{cur}:
+  %data_{cur}_start = icmp sle i{xlen} {cur}, %addr
+  br i1 %data_{cur}_start, label %data_{cur}_start_true, label %data_{nxt}
+data_{cur}_start_true:
+  %data_{cur}_end = icmp sgt i{xlen} {cur}, %addr
+  br i1 %data_{cur}_end, label %data_{cur}_true, label %data_{nxt}
+data_{cur}_true:
+  %rel_addr = sub i{xlen} %addr, {cur}
+  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i{xlen} %rel_addr
+  ret i8* %ptr_{cur}
+",
+                    cur = cur.address,
+                    xlen = xlen,
+                    nxt = nxt.address,
+                    len = cur.bytes.len()
+                );
+            } else {
+                get_data_ptr += &format!(
+                    "data_{cur}:
+  %data_{cur}_start = icmp sle i{xlen} {cur}, %addr
+  br i1 %data_{cur}_start, label %data_{cur}_start_true, label %fallback
+data_{cur}_start_true:
+  %data_{cur}_end = icmp sgt i{xlen} {cur}, %addr
+  br i1 %data_{cur}_end, label %data_{cur}_true, label %fallback
+data_{cur}_true:
+  %rel_addr = sub i{xlen} %addr, {cur}
+  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i{xlen} %rel_addr
+  ret i8* %ptr_{cur}
+fallback:
+  unreachable
+",
+                    cur = cur.address,
+                    xlen = xlen,
+                    len = cur.bytes.len()
+                );
+            }
+            current = next;
+            next = data_blocks_iter.next();
+        }
+        get_data_ptr += "}";
+
         let mut registers = REGISTERS.replace("{xlen}", xlen);
         if xlen == "64" {
             registers += "\n\n  %argc_i64 = sext i32 %argc to i64\n";
@@ -200,9 +246,14 @@ impl Display for Program {
             }
         }
         let entry = format!("  br label %label_{}", self.entry);
-        let code_blocks =self.code_blocks.iter().fold(String::new(), |s, b|s +&format!("{}\n", b));
+        let code_blocks = self
+            .code_blocks
+            .iter()
+            .fold(String::new(), |s, b| s + &format!("{}\n", b));
 
-        write!(f, "{}
+        write!(
+            f,
+            "{}
 
 {}
 
@@ -224,7 +275,18 @@ label_1:
   unreachable
 
 {}}}
-", abi, syscall, fpfunctions, GETDATAPTR, data_blocks, registers, fpregisters, stack, entry, code_blocks)
+",
+            abi,
+            syscall,
+            fpfunctions,
+            get_data_ptr,
+            data_blocks,
+            registers,
+            fpregisters,
+            stack,
+            entry,
+            code_blocks
+        )
     }
 }
 
@@ -578,7 +640,7 @@ pub enum Instruction {
         ptr: Value,
     },
     Fence {
-        ord: Ordering
+        ord: Ordering,
     },
     Cmpxchg {
         rslt: Value,
@@ -782,34 +844,14 @@ impl Display for Instruction {
 
             // Binary Operations
             Add { rslt, ty, op1, op2 } => write!(f, "{} = add {} {}, {}", rslt, ty, op1, op2),
-            Fadd {
-                rslt,
-                ty,
-                op1,
-                op2,
-            } => write!(f, "{} = fadd {} {}, {}", rslt, ty, op1, op2),
+            Fadd { rslt, ty, op1, op2 } => write!(f, "{} = fadd {} {}, {}", rslt, ty, op1, op2),
             Sub { rslt, ty, op1, op2 } => write!(f, "{} = sub {} {}, {}", rslt, ty, op1, op2),
-            Fsub {
-                rslt,
-                ty,
-                op1,
-                op2,
-            } => write!(f, "{} = fsub {} {}, {}", rslt, ty, op1, op2),
+            Fsub { rslt, ty, op1, op2 } => write!(f, "{} = fsub {} {}, {}", rslt, ty, op1, op2),
             Mul { rslt, ty, op1, op2 } => write!(f, "{} = mul {} {}, {}", rslt, ty, op1, op2),
-            Fmul {
-                rslt,
-                ty,
-                op1,
-                op2,
-            } => write!(f, "{} = fmul {} {}, {}", rslt, ty, op1, op2),
+            Fmul { rslt, ty, op1, op2 } => write!(f, "{} = fmul {} {}, {}", rslt, ty, op1, op2),
             Udiv { rslt, ty, op1, op2 } => write!(f, "{} = udiv {} {}, {}", rslt, ty, op1, op2),
             Sdiv { rslt, ty, op1, op2 } => write!(f, "{} = sdiv {} {}, {}", rslt, ty, op1, op2),
-            Fdiv {
-                rslt,
-                ty,
-                op1,
-                op2,
-            } => write!(f, "{} = fdiv {} {}, {}", rslt, ty, op1, op2),
+            Fdiv { rslt, ty, op1, op2 } => write!(f, "{} = fdiv {} {}, {}", rslt, ty, op1, op2),
             Urem { rslt, ty, op1, op2 } => write!(f, "{} = urem {} {}, {}", rslt, ty, op1, op2),
             Srem { rslt, ty, op1, op2 } => write!(f, "{} = srem {} {}, {}", rslt, ty, op1, op2),
 
@@ -831,7 +873,7 @@ impl Display for Instruction {
             // Memory Access and Addressing Operations
             Load { rslt, ty, ptr } => write!(f, "{} = load {}, {}* {}", rslt, ty, ty, ptr),
             Store { ty, val, ptr } => write!(f, "store {} {}, {}* {}", ty, val, ty, ptr),
-            Fence{ord} => write!(f, "fence {}", ord),
+            Fence { ord } => write!(f, "fence {}", ord),
             Cmpxchg {
                 rslt,
                 ty,
@@ -871,21 +913,11 @@ impl Display for Instruction {
                 true => write!(f, "{} = add {} {}, {}", rslt, ty, val, 0),
                 false => write!(f, "{} = sext {} {} to {}", rslt, ty, val, ty2),
             },
-            Fptrunc {
-                rslt,
-                ty,
-                val,
-                ty2,
-            } => match ty == ty2 {
+            Fptrunc { rslt, ty, val, ty2 } => match ty == ty2 {
                 true => write!(f, "{} = fadd {} {}, {}", rslt, ty, val, 0),
                 false => write!(f, "{} = fptrunc {} {} to {}", rslt, ty, val, ty2),
             },
-            Fpext {
-                rslt,
-                ty,
-                val,
-                ty2,
-            } => match ty == ty2 {
+            Fpext { rslt, ty, val, ty2 } => match ty == ty2 {
                 true => write!(f, "{} = fadd {} {}, {}", rslt, ty, val, 0),
                 false => write!(f, "{} = fpext {} {} to {}", rslt, ty, val, ty2),
             },
@@ -959,12 +991,7 @@ impl Display for Instruction {
                 ty,
                 op1
             ),
-            Minimum {
-                rslt,
-                ty,
-                op1,
-                op2,
-            } => write!(
+            Minimum { rslt, ty, op1, op2 } => write!(
                 f,
                 "{} = call {} @llvm.minimum.f{}({} {}, {} {})",
                 rslt,
@@ -975,12 +1002,7 @@ impl Display for Instruction {
                 ty,
                 op2
             ),
-            Maximum {
-                rslt,
-                ty,
-                op1,
-                op2,
-            } => write!(
+            Maximum { rslt, ty, op1, op2 } => write!(
                 f,
                 "{} = call {} @llvm.maximum.f{}({} {}, {} {})",
                 rslt,
@@ -991,12 +1013,7 @@ impl Display for Instruction {
                 ty,
                 op2
             ),
-            Copysign {
-                rslt,
-                ty,
-                mag,
-                sgn,
-            } => write!(
+            Copysign { rslt, ty, mag, sgn } => write!(
                 f,
                 "{} = call {} @llvm.copysign.f{}({} {}, {} {})",
                 rslt,
@@ -1027,10 +1044,10 @@ impl Display for Instruction {
 
             // Misc
             Loadstack { rslt, ty, stk, ver } => {
-                write!(f, "{} = load {}, {}* %stack_{}", rslt, ty, ty, stk)
+                write!(f, "{} = load {}, {}* %stack_{}_{}", rslt, ty, ty, stk, ver)
             }
             Storestack { ty, val, stk, ver } => {
-                write!(f, "store {} {}, {}* %stack_{}", ty, val, ty, stk)
+                write!(f, "store {} {}, {}* %stack_{}_{}", ty, val, ty, stk, ver)
             }
 
             Getdataptr { rslt, ty, addr } => {
