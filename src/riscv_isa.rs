@@ -468,7 +468,7 @@ pub struct Iorw(pub String);
 
 impl Iorw {
     pub fn new(s: &str) -> Self {
-        match s.strip_prefix(".") {
+        match s.strip_prefix('.') {
             Some(s) => Iorw(s.to_string()),
             None => Iorw(s.trim().to_string()),
         }

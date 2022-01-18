@@ -1,7 +1,9 @@
+#![allow(dead_code)]
+
 use crate::riscv_isa::{
     Abi, Address, DataBlock, FPRegister, Immediate, Instruction as RiscvInstruction, Register,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 const SYSCALL: &str = "declare i{xlen} @syscall(i{xlen}, ...)";
@@ -151,7 +153,7 @@ pub struct Program {
     pub entry: Address,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
-    pub stack: HashMap<Address, Vec<Type>>,
+    pub stack: HashMap<Address, HashSet<Type>>,
 }
 
 impl Display for Program {
@@ -185,12 +187,14 @@ impl Display for Program {
         let mut next = data_blocks_iter.next();
         while let Some(cur) = current {
             if let Some(nxt) = next {
+                let Address(addr) = cur.address;
+                let cur_end = addr as usize + cur.bytes.len();
                 get_data_ptr += &format!(
                     "data_{cur}:
   %data_{cur}_start = icmp sle i{xlen} {cur}, %addr
   br i1 %data_{cur}_start, label %data_{cur}_start_true, label %data_{nxt}
 data_{cur}_start_true:
-  %data_{cur}_end = icmp sgt i{xlen} {cur}, %addr
+  %data_{cur}_end = icmp sgt i{xlen} {cur_end}, %addr
   br i1 %data_{cur}_end, label %data_{cur}_true, label %data_{nxt}
 data_{cur}_true:
   %rel_addr = sub i{xlen} %addr, {cur}
@@ -203,12 +207,14 @@ data_{cur}_true:
                     len = cur.bytes.len()
                 );
             } else {
+                let Address(addr) = cur.address;
+                let cur_end = addr as usize + cur.bytes.len();
                 get_data_ptr += &format!(
                     "data_{cur}:
   %data_{cur}_start = icmp sle i{xlen} {cur}, %addr
   br i1 %data_{cur}_start, label %data_{cur}_start_true, label %fallback
 data_{cur}_start_true:
-  %data_{cur}_end = icmp sgt i{xlen} {cur}, %addr
+  %data_{cur}_end = icmp sgt i{xlen} {cur_end}, %addr
   br i1 %data_{cur}_end, label %data_{cur}_true, label %fallback
 data_{cur}_true:
   %rel_addr = sub i{xlen} %addr, {cur}
@@ -241,8 +247,8 @@ fallback:
         };
         let mut stack = String::new();
         for (addr, tys) in self.stack.iter() {
-            for (ver, ty) in tys.iter().enumerate() {
-                stack += &format!("  %stack_{}_{} = alloca {}\n", addr, ver, ty);
+            for ty in tys {
+                stack += &format!("  %stack_{}_{} = alloca {}\n", addr, ty, ty);
             }
         }
         let entry = format!("  br label %label_{}", self.entry);
@@ -262,7 +268,7 @@ fallback:
 {}
 
 {}
-define void @main(i32 %argc, i8** %argv) {{
+define i{xlen} @main(i32 %argc, i8** %argv) {{
 entry:
 {}
 
@@ -274,7 +280,12 @@ entry:
 label_1:
   unreachable
 
-{}}}
+{}
+
+label_0:
+  %ret = load i{xlen}, i{xlen}* %a0
+  ret i{xlen} %ret
+}}
 ",
             abi,
             syscall,
@@ -348,7 +359,7 @@ impl Display for Value {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Type {
     I1,
     I8,
@@ -503,8 +514,8 @@ pub enum Instruction {
     Switch {
         ty: Type,
         val: Value,
-        default: Value,
-        targets: Vec<Value>,
+        dflt: Value,
+        tgts: Vec<Value>,
     },
 
     // Unary Operations
@@ -793,13 +804,11 @@ pub enum Instruction {
         rslt: Value,
         ty: Type,
         stk: Value,
-        ver: Value,
     },
     Storestack {
         ty: Type,
         val: Value,
         stk: Value,
-        ver: Value,
     },
 
     Getdataptr {
@@ -828,11 +837,11 @@ impl Display for Instruction {
             Switch {
                 ty,
                 val,
-                default,
-                targets,
+                dflt,
+                tgts,
             } => {
-                let mut s = format!("switch {} {}, label %label_{} [", ty, val, default);
-                for target in targets {
+                let mut s = format!("switch {} {}, label %label_{} [", ty, val, dflt);
+                for target in tgts {
                     s += &format!("{} {}, label %label_{} ", ty, target, target);
                 }
                 s += "]";
@@ -1043,11 +1052,11 @@ impl Display for Instruction {
             ),
 
             // Misc
-            Loadstack { rslt, ty, stk, ver } => {
-                write!(f, "{} = load {}, {}* %stack_{}_{}", rslt, ty, ty, stk, ver)
+            Loadstack { rslt, ty, stk } => {
+                write!(f, "{} = load {}, {}* %stack_{}_{}", rslt, ty, ty, stk, ty)
             }
-            Storestack { ty, val, stk, ver } => {
-                write!(f, "store {} {}, {}* %stack_{}_{}", ty, val, ty, stk, ver)
+            Storestack { ty, val, stk } => {
+                write!(f, "store {} {}, {}* %stack_{}_{}", ty, val, ty, stk, ty)
             }
 
             Getdataptr { rslt, ty, addr } => {

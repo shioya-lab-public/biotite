@@ -262,7 +262,7 @@ Counter
 
 - Do not assume executable file.
 - Extract `.text`, `.rodata`, `.data`, `.bss`, `.sdata`, and `.sbss`.
-- Trap `argv` in address 0.
+- Trap `argv` in address 1?
 
 - add arbitrary memory access support for ld/sd: Keep all static sections as static byte array in LLVM.
 - add support for RV32/64A
@@ -318,7 +318,8 @@ https://releases.llvm.org/13.0.0/docs/tutorial/MyFirstLanguageFrontend/LangImpl0
 ``` llvm
 declare dso_local void @exit(i32)
 declare dso_local i32 @printf(i8*, ...)
-@.str = private unnamed_addr constant [13 x i8] c\"#value: %d#\\0A\\00\", align 1
+@.str = private unnamed_addr constant [13 x i8] c"#value: %d#\0A\00", align 1
+
 %val = load i64, i64* %zero
 %code = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str, i64 0, i64 0), i64 %val)
 call void @exit(i32 0)

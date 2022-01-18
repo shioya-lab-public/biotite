@@ -6,7 +6,7 @@ use crate::riscv_isa::{
     Abi, Address, CodeBlock as RiscvCodeBlock, DataBlock, Immediate,
     Instruction as RiscvInstruction, Program as RiscvProgram, Raw, Register,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 
 pub struct Translator {
@@ -16,7 +16,7 @@ pub struct Translator {
     targets: Vec<Address>,
     sp: Address,
     fp: Address,
-    stack: HashMap<Address, Vec<Type>>,
+    stack: HashMap<Address, HashSet<Type>>,
 }
 
 impl Translator {
@@ -43,6 +43,7 @@ impl Translator {
         for code_block in rv_program.code_blocks.iter() {
             self.targets.push(code_block.address);
         }
+        self.targets.push(Address(0x0));
 
         let code_blocks = rv_program
             .code_blocks
@@ -76,6 +77,7 @@ impl Translator {
         }
     }
 
+    #[allow(unused_variables)]
     fn translate_instruction(&mut self, rv_inst: RiscvInstruction) -> InstructionBlock {
         use Instruction::*;
         use RiscvInstruction as RI;
@@ -122,13 +124,13 @@ impl Translator {
                     .targets
                     .clone()
                     .into_iter()
-                    .map(|t| Value::Address(t))
+                    .map(Value::Address)
                     .collect();
                 build_instructions! { address, raw, self.abi,
                     Store { ty: _i, val: next_pc, ptr: rd },
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Switch { ty: _i, val: _1, default: default, targets: targets },
+                    Switch { ty: _i, val: _1, dflt: default, tgts: targets },
                 }
             }
             RI::ImplicitJalr {
@@ -142,14 +144,14 @@ impl Translator {
                     .targets
                     .clone()
                     .into_iter()
-                    .map(|t| Value::Address(t))
+                    .map(Value::Address)
                     .collect();
                 let rs2 = &Register::Ra;
                 build_instructions! { address, raw, self.abi,
                     Store { ty: _i, val: next_pc, ptr: rs2 },
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Switch { ty: _i, val: _1, default: default, targets: targets },
+                    Switch { ty: _i, val: _1, dflt: default, tgts: targets },
                 }
             }
             RI::Beq {
@@ -243,9 +245,8 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i8, stk: stk, ver: ver },
+                        Loadstack { rslt: _0, ty: _i8, stk: stk },
                         Sext { rslt: _1, ty: _i8, val: _0, ty2: _i },
                         Store { ty: _i, val: _1, ptr: rd },
                     }
@@ -279,9 +280,8 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i16, stk: stk, ver: ver },
+                        Loadstack { rslt: _0, ty: _i16, stk: stk },
                         Sext { rslt: _1, ty: _i16, val: _0, ty2: _i },
                         Store { ty: _i, val: _1, ptr: rd },
                     }
@@ -315,9 +315,8 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i32, stk: stk, ver: ver },
+                        Loadstack { rslt: _0, ty: _i32, stk: stk },
                         Sext { rslt: _1, ty: _i32, val: _0, ty2: _i },
                         Store { ty: _i, val: _1, ptr: rd },
                     }
@@ -351,9 +350,8 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i8, stk: stk, ver: ver },
+                        Loadstack { rslt: _0, ty: _i8, stk: stk },
                         Zext { rslt: _1, ty: _i8, val: _0, ty2: _i },
                         Store { ty: _i, val: _1, ptr: rd },
                     }
@@ -387,9 +385,8 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i16, stk: stk, ver: ver },
+                        Loadstack { rslt: _0, ty: _i16, stk: stk },
                         Zext { rslt: _1, ty: _i16, val: _0, ty2: _i },
                         Store { ty: _i, val: _1, ptr: rd },
                     }
@@ -423,12 +420,11 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    self.stack.entry(stk).or_default().push(Type::I8);
-                    let ver = (self.stack[&stk].len() - 1) as i64;
+                    self.stack.entry(stk).or_default().insert(Type::I8);
                     build_instructions! { address, raw, self.abi,
                         Load { rslt: _0, ty: _i, ptr: rs2 },
                         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i8 },
-                        Storestack { ty: _i8, val: _1, stk: stk, ver: ver },
+                        Storestack { ty: _i8, val: _1, stk: stk },
                     }
                 }
                 _ => build_instructions! { address, raw, self.abi,
@@ -460,12 +456,11 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    self.stack.entry(stk).or_default().push(Type::I16);
-                    let ver = (self.stack[&stk].len() - 1) as i64;
+                    self.stack.entry(stk).or_default().insert(Type::I16);
                     build_instructions! { address, raw, self.abi,
                         Load { rslt: _0, ty: _i, ptr: rs2 },
                         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i16 },
-                        Storestack { ty: _i16, val: _1, stk: stk, ver: ver },
+                        Storestack { ty: _i16, val: _1, stk: stk },
                     }
                 }
                 _ => build_instructions! { address, raw, self.abi,
@@ -497,12 +492,11 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    self.stack.entry(stk).or_default().push(Type::I32);
-                    let ver = (self.stack[&stk].len() - 1) as i64;
+                    self.stack.entry(stk).or_default().insert(Type::I32);
                     build_instructions! { address, raw, self.abi,
                         Load { rslt: _0, ty: _i, ptr: rs2 },
                         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i32 },
-                        Storestack { ty: _i32, val: _1, stk: stk, ver: ver },
+                        Storestack { ty: _i32, val: _1, stk: stk },
                     }
                 }
                 _ => build_instructions! { address, raw, self.abi,
@@ -774,9 +768,8 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i32, stk: stk, ver: ver },
+                        Loadstack { rslt: _0, ty: _i32, stk: stk },
                         Zext { rslt: _1, ty: _i32, val: _0, ty2: _i },
                         Store { ty: _i, val: _1, ptr: rd },
                     }
@@ -810,9 +803,8 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    let ver = (self.stack[&stk].len() - 1) as i64;
                     build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i64, stk: stk, ver: ver },
+                        Loadstack { rslt: _0, ty: _i64, stk: stk },
                         Zext { rslt: _1, ty: _i64, val: _0, ty2: _i },
                         Store { ty: _i, val: _1, ptr: rd },
                     }
@@ -846,12 +838,11 @@ impl Translator {
                     } else {
                         Address(addr - (-imm) as u64)
                     };
-                    self.stack.entry(stk).or_default().push(Type::I64);
-                    let ver = (self.stack[&stk].len() - 1) as i64;
+                    self.stack.entry(stk).or_default().insert(Type::I64);
                     build_instructions! { address, raw, self.abi,
                         Load { rslt: _0, ty: _i, ptr: rs2 },
                         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i64 },
-                        Storestack { ty: _i64, val: _1, stk: stk, ver: ver },
+                        Storestack { ty: _i64, val: _1, stk: stk },
                     }
                 }
                 _ => build_instructions! { address, raw, self.abi,
@@ -1201,11 +1192,11 @@ impl Translator {
                     .targets
                     .clone()
                     .into_iter()
-                    .map(|t| Value::Address(t))
+                    .map(Value::Address)
                     .collect();
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Switch { ty: _i, val: _0, default: default, targets: targets },
+                    Switch { ty: _i, val: _0, dflt: default, tgts: targets },
                 }
             }
             RI::PseudoJalr { address, raw, rs1 } => {
@@ -1214,7 +1205,7 @@ impl Translator {
                     .targets
                     .clone()
                     .into_iter()
-                    .map(|t| Value::Address(t))
+                    .map(Value::Address)
                     .collect();
                 let imm = &Immediate(0);
                 let rs2 = &Register::Ra;
@@ -1222,7 +1213,7 @@ impl Translator {
                     Store { ty: _i, val: next_pc, ptr: rs2 },
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Switch { ty: _i, val: _1, default: default, targets: targets },
+                    Switch { ty: _i, val: _1, dflt: default, tgts: targets },
                 }
             }
             RI::Ret { address, raw } => {
@@ -1231,12 +1222,12 @@ impl Translator {
                     .targets
                     .clone()
                     .into_iter()
-                    .map(|t| Value::Address(t))
+                    .map(Value::Address)
                     .collect();
                 let rs1 = &Register::Ra;
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Switch { ty: _i, val: _0, default: default, targets: targets },
+                    Switch { ty: _i, val: _0, dflt: default, tgts: targets },
                 }
             }
 

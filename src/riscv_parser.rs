@@ -270,7 +270,7 @@ impl Parser {
                             });
                         }
                         branch_split = false;
-                        let symbol = mem::replace(&mut symbol, String::new());
+                        let symbol = mem::take(&mut symbol);
                         let address = mem::replace(&mut address, addr);
                         let instructions = mem::take(&mut instructions);
                         code_blocks.push(CodeBlock {
