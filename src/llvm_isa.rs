@@ -181,6 +181,9 @@ impl Display for Program {
             .iter()
             .fold(String::new(), |s, b| s + &format!("{}\n", b));
 
+        let get_data_ptr = if self.data_blocks.is_empty() {
+            String::new()
+        } else {
         let mut get_data_ptr = format!("define i8* @get_data_ptr(i{} %addr) {{\n", xlen);
         let mut data_blocks_iter = self.data_blocks.iter();
         let mut current = data_blocks_iter.next();
@@ -197,8 +200,8 @@ data_{cur}_start_true:
   %data_{cur}_end = icmp sgt i{xlen} {cur_end}, %addr
   br i1 %data_{cur}_end, label %data_{cur}_true, label %data_{nxt}
 data_{cur}_true:
-  %rel_addr = sub i{xlen} %addr, {cur}
-  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i{xlen} %rel_addr
+  %rel_addr_{cur} = sub i{xlen} %addr, {cur}
+  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i{xlen} %rel_addr_{cur}
   ret i8* %ptr_{cur}
 ",
                     cur = cur.address,
@@ -217,8 +220,8 @@ data_{cur}_start_true:
   %data_{cur}_end = icmp sgt i{xlen} {cur_end}, %addr
   br i1 %data_{cur}_end, label %data_{cur}_true, label %fallback
 data_{cur}_true:
-  %rel_addr = sub i{xlen} %addr, {cur}
-  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i{xlen} %rel_addr
+  %rel_addr_{cur} = sub i{xlen} %addr, {cur}
+  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i{xlen} %rel_addr_{cur}
   ret i8* %ptr_{cur}
 fallback:
   unreachable
@@ -232,6 +235,8 @@ fallback:
             next = data_blocks_iter.next();
         }
         get_data_ptr += "}";
+        get_data_ptr
+        };
 
         let mut registers = REGISTERS.replace("{xlen}", xlen);
         if xlen == "64" {

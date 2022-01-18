@@ -194,6 +194,7 @@ impl Parser {
                 Line::Instruction(inst) => {
                     let bytes_str = inst.raw();
                     bytes.extend(match bytes_str.len() {
+                        0 => vec![0x0],
                         4 => u16::from_str_radix(bytes_str, 16)
                             .unwrap()
                             .to_le_bytes()
@@ -979,7 +980,7 @@ mod tests {
         csr_fflags("csrrc t0,fflags,t1", Csrrc { rd: T0, csr: Fflags, rs1: T1 }),
         csr_frm("csrrc t0,frm,t1", Csrrc { rd: T0, csr: Frm, rs1: T1 }),
         csr_fcsr("csrrc t0,fcsr,t1", Csrrc { rd: T0, csr: Fcsr, rs1: T1 }),
-        csr_unknown("csrrc t0,0x99,t1", Csrrc { rd: T0, csr: Unnamed(0x99), rs1: T1 }),
+        csr_unknown("csrrc t0,0x99,t1", Csrrc { rd: T0, csr: UnknownCsr("0x99".to_string()), rs1: T1 }),
 
         // RV32M (8 tests)
         mul("mul t0,t1,t2", Mul { rd: T0, rs1: T1, rs2: T2 }),
@@ -1209,14 +1210,14 @@ mod tests {
         rdtime("rdtime t0", Rdtime { rd: T0 }),
         rdtimeh("rdtimeh t0", Rdtimeh { rd: T0 }, ["-march=rv32gc", "-mabi=ilp32d"]),
 
-        csrr("csrr t0, 0x99", Csrr { rd: T0, csr: Unnamed(0x99) }),
-        csrw("csrw 0x99, t0", Csrw { csr: Unnamed(0x99), rs1: T0 }),
-        csrs("csrs 0x99, t0", Csrs { csr: Unnamed(0x99), rs1: T0 }),
-        csrc("csrc 0x99, t0", Csrc { csr: Unnamed(0x99), rs1: T0 }),
+        csrr("csrr t0, 0x99", Csrr { rd: T0, csr: UnknownCsr("0x99".to_string()) }),
+        csrw("csrw 0x99, t0", Csrw { csr: UnknownCsr("0x99".to_string()), rs1: T0 }),
+        csrs("csrs 0x99, t0", Csrs { csr: UnknownCsr("0x99".to_string()), rs1: T0 }),
+        csrc("csrc 0x99, t0", Csrc { csr: UnknownCsr("0x99".to_string()), rs1: T0 }),
 
-        csrwi("csrwi 0x99, 4", Csrwi { csr: Unnamed(0x99), imm: Immediate(4) }),
-        csrsi("csrsi 0x99, 4", Csrsi { csr: Unnamed(0x99), imm: Immediate(4) }),
-        csrci("csrci 0x99, 4", Csrci { csr: Unnamed(0x99), imm: Immediate(4) }),
+        csrwi("csrwi 0x99, 4", Csrwi { csr: UnknownCsr("0x99".to_string()), imm: Immediate(4) }),
+        csrsi("csrsi 0x99, 4", Csrsi { csr: UnknownCsr("0x99".to_string()), imm: Immediate(4) }),
+        csrci("csrci 0x99, 4", Csrci { csr: UnknownCsr("0x99".to_string()), imm: Immediate(4) }),
 
         frcsr("frcsr t0", Frcsr { rd: T0 }),
         fscsr("fscsr t0,t1", Fscsr { rd: T0, rs1: T1 }),

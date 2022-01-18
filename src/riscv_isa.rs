@@ -412,7 +412,8 @@ pub enum Csr {
     Cycleh,
     Timeh,
     Instreth,
-    Unnamed(u16),
+    UnknownCsr(String),
+    
 }
 
 impl Csr {
@@ -429,10 +430,7 @@ impl Csr {
             "cycleh" => Cycleh,
             "timeh" => Timeh,
             "instreth" => Instreth,
-            s => match s.strip_prefix("0x") {
-                Some(s) => Unnamed(u16::from_str_radix(s, 16).unwrap()),
-                None => panic!("Unknown CSR: `{}`", s),
-            },
+            s => UnknownCsr(s.to_string()),
         }
     }
 }
@@ -445,6 +443,7 @@ pub enum Rounding {
     Rup,
     Rmm,
     Dyn,
+    UnknownRounding(String),
 }
 
 impl Rounding {
@@ -458,7 +457,7 @@ impl Rounding {
             "rup" => Rup,
             "rmm" => Rmm,
             "" => Dyn,
-            _ => unreachable!(),
+            s => UnknownRounding(s.to_string()),
         }
     }
 }

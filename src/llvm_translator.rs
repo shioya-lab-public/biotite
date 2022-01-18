@@ -1236,8 +1236,50 @@ impl Translator {
             },
 
             // Misc
-            RI::Unimp { address, .. } => panic!("Encounter `unimp` at `{}`", address),
-            RI::Unknown { address, .. } => panic!("Encounter `unknown` at `{}`", address),
+            RI::Unimp { address, .. } => Vec::new(), // panic!("Encounter `unimp` at `{}`", address),
+            RI::Unknown { address, .. } => Vec::new(), // panic!("Encounter `unknown` at `{}`", address),
+
+            // Ad Hoc
+            RI::Mul {
+                address,
+                raw,
+                rd,
+                rs1,
+                rs2,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Load { rslt: _1, ty: _i, ptr: rs2 },
+                Mul { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                Store { ty: _i, val: _2, ptr: rd },
+            },
+            RI::Mulw {
+                address,
+                raw,
+                rd,
+                rs1,
+                rs2,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Load { rslt: _1, ty: _i, ptr: rs2 },
+                Mul { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
+                Store { ty: _i, val: _4, ptr: rd },
+            },
+            RI::Divw {
+                address,
+                raw,
+                rd,
+                rs1,
+                rs2,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Load { rslt: _1, ty: _i, ptr: rs2 },
+                Sdiv { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
+                Store { ty: _i, val: _4, ptr: rd },
+            },
 
             inst => todo!("{:?}", inst),
         };

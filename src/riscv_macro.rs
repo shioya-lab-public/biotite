@@ -120,7 +120,7 @@ macro_rules! define_instruction {
         use lazy_static::lazy_static;
 
         const ADDRESS: &str = r"(?P<address>[[:xdigit:]]+)";
-        const RAW: &str = r"(?P<byte>[[:xdigit:]]+)";
+        const RAW: &str = r"(?P<byte>[[:xdigit:]]*)";
         const ORD: &str = r"(\.(?P<ord>[[:alpha:]]+))?";
         const RD: &str = r"(?P<rd>[[:alpha:]][[:alnum:]]+)";
         const RS1: &str = r"(?P<rs1>[[:alpha:]][[:alnum:]]+)";
@@ -174,7 +174,8 @@ macro_rules! define_instruction {
 
                 let matches: Vec<_> = REGEX_SET.matches(line).into_iter().collect();
                 if matches.is_empty() {
-                    panic!("Unknown instruction: {}", line);
+                    return Unknown {address: Address(0x0), raw: Raw(line.to_string())};
+                    // panic!("Unknown instruction: {}", line);
                 }
                 let (inst, regex) = &REGEXES[matches[0]];
                 let caps = regex.captures(line).unwrap();

@@ -284,6 +284,15 @@ Counter
 - argv is trapped for access to addr 0.
 - local stack alloc with a compile-time allocator, require equal store and load
 
+- Stack access uses arbitrary registers.
+```
+   109a8:	f2040713          	addi	a4,s0,-224
+   109ac:	9ae1b823          	sd	a4,-1616(gp) # 70a78 <Ptr_Glob>
+   109b0:	9b01b783          	ld	a5,-1616(gp) # 70a78 <Ptr_Glob>
+   109b4:	9b81b703          	ld	a4,-1608(gp) # 70a80 <Next_Ptr_Glob>
+   109b8:	e398                	sd	a4,0(a5)
+```
+
 ### Testing Commands
 
 ``` Bash
