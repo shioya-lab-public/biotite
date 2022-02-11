@@ -50,7 +50,7 @@ const REGISTERS: &str = "  %zero = alloca i{xlen}
 
   store i{xlen} zeroinitializer, i{xlen}* %zero
   store i{xlen} zeroinitializer, i{xlen}* %ra
-  store i{xlen} zeroinitializer, i{xlen}* %sp
+  store i{xlen} 1024, i{xlen}* %sp
   store i{xlen} zeroinitializer, i{xlen}* %gp
   store i{xlen} zeroinitializer, i{xlen}* %tp
   store i{xlen} zeroinitializer, i{xlen}* %t0

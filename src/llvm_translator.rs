@@ -40,6 +40,14 @@ impl Translator {
         self.sp = Address(10_000000);
         self.fp = Address(10_000000);
 
+        let stack = DataBlock {
+            section: String::from(".stack"),
+            symbol: String::from("stack"),
+            address: Address(0),
+            bytes: vec![0;1024],
+        };
+        self.data_blocks.push(stack);
+
         for code_block in rv_program.code_blocks.iter() {
             self.targets.push(code_block.address);
         }
@@ -233,24 +241,24 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i8, stk: stk },
-                        Sext { rslt: _1, ty: _i8, val: _0, ty2: _i },
-                        Store { ty: _i, val: _1, ptr: rd },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     build_instructions! { address, raw, self.abi,
+                //         Loadstack { rslt: _0, ty: _i8, stk: stk },
+                //         Sext { rslt: _1, ty: _i8, val: _0, ty2: _i },
+                //         Store { ty: _i, val: _1, ptr: rd },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
@@ -268,24 +276,24 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i16, stk: stk },
-                        Sext { rslt: _1, ty: _i16, val: _0, ty2: _i },
-                        Store { ty: _i, val: _1, ptr: rd },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     build_instructions! { address, raw, self.abi,
+                //         Loadstack { rslt: _0, ty: _i16, stk: stk },
+                //         Sext { rslt: _1, ty: _i16, val: _0, ty2: _i },
+                //         Store { ty: _i, val: _1, ptr: rd },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
@@ -303,24 +311,24 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i32, stk: stk },
-                        Sext { rslt: _1, ty: _i32, val: _0, ty2: _i },
-                        Store { ty: _i, val: _1, ptr: rd },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     build_instructions! { address, raw, self.abi,
+                //         Loadstack { rslt: _0, ty: _i32, stk: stk },
+                //         Sext { rslt: _1, ty: _i32, val: _0, ty2: _i },
+                //         Store { ty: _i, val: _1, ptr: rd },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
@@ -338,24 +346,24 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i8, stk: stk },
-                        Zext { rslt: _1, ty: _i8, val: _0, ty2: _i },
-                        Store { ty: _i, val: _1, ptr: rd },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     build_instructions! { address, raw, self.abi,
+                //         Loadstack { rslt: _0, ty: _i8, stk: stk },
+                //         Zext { rslt: _1, ty: _i8, val: _0, ty2: _i },
+                //         Store { ty: _i, val: _1, ptr: rd },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
@@ -373,24 +381,24 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i16, stk: stk },
-                        Zext { rslt: _1, ty: _i16, val: _0, ty2: _i },
-                        Store { ty: _i, val: _1, ptr: rd },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     build_instructions! { address, raw, self.abi,
+                //         Loadstack { rslt: _0, ty: _i16, stk: stk },
+                //         Zext { rslt: _1, ty: _i16, val: _0, ty2: _i },
+                //         Store { ty: _i, val: _1, ptr: rd },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
@@ -408,25 +416,25 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    self.stack.entry(stk).or_default().insert(Type::I8);
-                    build_instructions! { address, raw, self.abi,
-                        Load { rslt: _0, ty: _i, ptr: rs2 },
-                        Trunc { rslt: _1, ty: _i, val: _0, ty2: _i8 },
-                        Storestack { ty: _i8, val: _1, stk: stk },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     self.stack.entry(stk).or_default().insert(Type::I8);
+                //     build_instructions! { address, raw, self.abi,
+                //         Load { rslt: _0, ty: _i, ptr: rs2 },
+                //         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i8 },
+                //         Storestack { ty: _i8, val: _1, stk: stk },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs2 },
                     Trunc { rslt: _1, ty: _i, val: _0, ty2: _i8 },
@@ -444,25 +452,25 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    self.stack.entry(stk).or_default().insert(Type::I16);
-                    build_instructions! { address, raw, self.abi,
-                        Load { rslt: _0, ty: _i, ptr: rs2 },
-                        Trunc { rslt: _1, ty: _i, val: _0, ty2: _i16 },
-                        Storestack { ty: _i16, val: _1, stk: stk },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     self.stack.entry(stk).or_default().insert(Type::I16);
+                //     build_instructions! { address, raw, self.abi,
+                //         Load { rslt: _0, ty: _i, ptr: rs2 },
+                //         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i16 },
+                //         Storestack { ty: _i16, val: _1, stk: stk },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs2 },
                     Trunc { rslt: _1, ty: _i, val: _0, ty2: _i16 },
@@ -480,25 +488,25 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    self.stack.entry(stk).or_default().insert(Type::I32);
-                    build_instructions! { address, raw, self.abi,
-                        Load { rslt: _0, ty: _i, ptr: rs2 },
-                        Trunc { rslt: _1, ty: _i, val: _0, ty2: _i32 },
-                        Storestack { ty: _i32, val: _1, stk: stk },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     self.stack.entry(stk).or_default().insert(Type::I32);
+                //     build_instructions! { address, raw, self.abi,
+                //         Load { rslt: _0, ty: _i, ptr: rs2 },
+                //         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i32 },
+                //         Storestack { ty: _i32, val: _1, stk: stk },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs2 },
                     Trunc { rslt: _1, ty: _i, val: _0, ty2: _i32 },
@@ -756,24 +764,24 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i32, stk: stk },
-                        Zext { rslt: _1, ty: _i32, val: _0, ty2: _i },
-                        Store { ty: _i, val: _1, ptr: rd },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     build_instructions! { address, raw, self.abi,
+                //         Loadstack { rslt: _0, ty: _i32, stk: stk },
+                //         Zext { rslt: _1, ty: _i32, val: _0, ty2: _i },
+                //         Store { ty: _i, val: _1, ptr: rd },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
@@ -791,24 +799,24 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    build_instructions! { address, raw, self.abi,
-                        Loadstack { rslt: _0, ty: _i64, stk: stk },
-                        Zext { rslt: _1, ty: _i64, val: _0, ty2: _i },
-                        Store { ty: _i, val: _1, ptr: rd },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     build_instructions! { address, raw, self.abi,
+                //         Loadstack { rslt: _0, ty: _i64, stk: stk },
+                //         Zext { rslt: _1, ty: _i64, val: _0, ty2: _i },
+                //         Store { ty: _i, val: _1, ptr: rd },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
@@ -826,25 +834,25 @@ impl Translator {
                 imm,
                 rs1,
             } => match rs1 {
-                Register::Sp | Register::S0 => {
-                    let Address(addr) = match rs1 {
-                        Register::Sp => self.sp,
-                        Register::S0 => self.fp,
-                        _ => unreachable!(),
-                    };
-                    let Immediate(imm) = *imm;
-                    let stk = if imm >= 0 {
-                        Address(addr + imm as u64)
-                    } else {
-                        Address(addr - (-imm) as u64)
-                    };
-                    self.stack.entry(stk).or_default().insert(Type::I64);
-                    build_instructions! { address, raw, self.abi,
-                        Load { rslt: _0, ty: _i, ptr: rs2 },
-                        Trunc { rslt: _1, ty: _i, val: _0, ty2: _i64 },
-                        Storestack { ty: _i64, val: _1, stk: stk },
-                    }
-                }
+                // Register::Sp | Register::S0 => {
+                //     let Address(addr) = match rs1 {
+                //         Register::Sp => self.sp,
+                //         Register::S0 => self.fp,
+                //         _ => unreachable!(),
+                //     };
+                //     let Immediate(imm) = *imm;
+                //     let stk = if imm >= 0 {
+                //         Address(addr + imm as u64)
+                //     } else {
+                //         Address(addr - (-imm) as u64)
+                //     };
+                //     self.stack.entry(stk).or_default().insert(Type::I64);
+                //     build_instructions! { address, raw, self.abi,
+                //         Load { rslt: _0, ty: _i, ptr: rs2 },
+                //         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i64 },
+                //         Storestack { ty: _i64, val: _1, stk: stk },
+                //     }
+                // }
                 _ => build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs2 },
                     Trunc { rslt: _1, ty: _i, val: _0, ty2: _i64 },
