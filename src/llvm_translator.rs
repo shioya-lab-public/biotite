@@ -537,7 +537,7 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Icmp { rslt: _1, cond: slt, ty: _i, op1: _0, op2: imm },
-                Sext { rslt: _2, ty: _i1, val: _1, ty2: _i },
+                Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
                 Store { ty: _i, val: _2, ptr: rd },
             },
             RI::Sltiu {
@@ -549,7 +549,7 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Icmp { rslt: _1, cond: ult, ty: _i, op1: _0, op2: imm },
-                Sext { rslt: _2, ty: _i1, val: _1, ty2: _i },
+                Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
                 Store { ty: _i, val: _2, ptr: rd },
             },
             RI::Xori {
@@ -664,7 +664,7 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Icmp { rslt: _2, cond: slt, ty: _i, op1: _0, op2: _1 },
-                Sext { rslt: _3, ty: _i1, val: _2, ty2: _i },
+                Zext { rslt: _3, ty: _i1, val: _2, ty2: _i },
                 Store { ty: _i, val: _3, ptr: rd },
             },
             RI::Sltu {
@@ -677,7 +677,7 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Icmp { rslt: _2, cond: ult, ty: _i, op1: _0, op2: _1 },
-                Sext { rslt: _3, ty: _i1, val: _2, ty2: _i },
+                Zext { rslt: _3, ty: _i1, val: _2, ty2: _i },
                 Store { ty: _i, val: _3, ptr: rd },
             },
             RI::Xor {
@@ -1065,7 +1065,7 @@ impl Translator {
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Icmp { rslt: _1, cond: eq, ty: _i, op1: _0, op2: imm },
-                    Sext { rslt: _2, ty: _i1, val: _1, ty2: _i },
+                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
                     Store { ty: _i, val: _2, ptr: rd },
                 }
             }
@@ -1079,7 +1079,7 @@ impl Translator {
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Icmp { rslt: _1, cond: ne, ty: _i, op1: _0, op2: imm },
-                    Sext { rslt: _2, ty: _i1, val: _1, ty2: _i },
+                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
                     Store { ty: _i, val: _2, ptr: rd },
                 }
             }
@@ -1093,7 +1093,7 @@ impl Translator {
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Icmp { rslt: _1, cond: slt, ty: _i, op1: _0, op2: imm },
-                    Sext { rslt: _2, ty: _i1, val: _1, ty2: _i },
+                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
                     Store { ty: _i, val: _2, ptr: rd },
                 }
             }
@@ -1107,7 +1107,7 @@ impl Translator {
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Icmp { rslt: _1, cond: sgt, ty: _i, op1: _0, op2: imm },
-                    Sext { rslt: _2, ty: _i1, val: _1, ty2: _i },
+                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
                     Store { ty: _i, val: _2, ptr: rd },
                 }
             }
