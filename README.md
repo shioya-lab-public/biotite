@@ -333,3 +333,8 @@ declare dso_local i32 @printf(i8*, ...)
 %code = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str, i64 0, i64 0), i64 %val)
 call void @exit(i32 0)
 ```
+
+### syscall
+
+The system call number is different for each architecture, even all running Linux.
+To call a generic `syscall` in LLVM IR, we must recover the type for each argument in each system call.

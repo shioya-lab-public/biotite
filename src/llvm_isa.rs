@@ -1051,9 +1051,14 @@ impl Display for Instruction {
                 arg5,
                 arg6,
             } => write!(
+                // f,
+                // "{} = call {} ({}, ...) @syscall({} {}, {} {}, {} {}, {} {}, {} {}, {} {}, {} {})",
+                // rslt, ty, ty, ty, nr, ty, arg1, ty, arg2, ty, arg3, ty, arg4, ty, arg5, ty, arg6
+
+                // SYS_write
                 f,
-                "{} = call {} @syscall({} {}, {} {}, {} {}, {} {}, {} {}, {} {}, {} {})",
-                rslt, ty, ty, nr, ty, arg1, ty, arg2, ty, arg3, ty, arg4, ty, arg5, ty, arg6
+                "{} = call {} ({}, ...) @syscall({} {}, {} {}, {} {}, {} {}, {} {}, {} {}, {} {})",
+                rslt, ty, ty, ty, "1", ty, arg1, "i8*", arg2, ty, arg3, ty, arg4, ty, arg5, ty, arg6
             ),
 
             // Misc
