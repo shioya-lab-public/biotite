@@ -43,7 +43,7 @@ impl Translator {
         let stack = DataBlock {
             section: String::from(".stack"),
             symbol: String::from("stack"),
-            address: Address(0),
+            address: Address(1),
             bytes: vec![0;1024],
         };
         self.data_blocks.push(stack);
@@ -744,24 +744,15 @@ impl Translator {
                 Fence { ord: monotonic },
             },
             RI::Ecall { address, raw, .. } => build_instructions! { address, raw, self.abi,
-                // Load { rslt: _0, ty: _i, ptr: a7 },
-                // Load { rslt: _1, ty: _i, ptr: a0 },
-                // Load { rslt: _2, ty: _i, ptr: a1 },
-                // Load { rslt: _3, ty: _i, ptr: a2 },
-                // Load { rslt: _4, ty: _i, ptr: a3 },
-                // Load { rslt: _5, ty: _i, ptr: a4 },
-                // Load { rslt: _6, ty: _i, ptr: a5 },
-                // Syscall { rslt: _7, ty: _i, nr: _0, arg1: _1, arg2: _2, arg3: _3, arg4: _4, arg5: _5, arg6: _6 },
-                // Store { ty: _i, val: _7, ptr: a0 },
-
-                // SYS_write
                 Load { rslt: _0, ty: _i, ptr: a7 },
                 Load { rslt: _1, ty: _i, ptr: a0 },
                 Load { rslt: _2, ty: _i, ptr: a1 },
-                Getdataptr { rslt: _3, ty: _i, addr: _2 },
-                Load { rslt: _4, ty: _i, ptr: a2 },
-                Syscall { rslt: _5, ty: _i, nr: _0, arg1: _1, arg2: _3, arg3: _4, arg4: _4, arg5: _4, arg6: _4 },
-                Store { ty: _i, val: _5, ptr: a0 },
+                Load { rslt: _3, ty: _i, ptr: a2 },
+                Load { rslt: _4, ty: _i, ptr: a3 },
+                Load { rslt: _5, ty: _i, ptr: a4 },
+                Load { rslt: _6, ty: _i, ptr: a5 },
+                Syscall { rslt: _7, ty: _i, nr: _0, arg1: _1, arg2: _2, arg3: _3, arg4: _4, arg5: _5, arg6: _6 },
+                Store { ty: _i, val: _7, ptr: a0 },
             },
             RI::Ebreak { .. } => panic!("`ebreak` is not implemented"),
 
@@ -1214,6 +1205,20 @@ impl Translator {
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Switch { ty: _i, val: _0, dflt: default, tgts: targets },
+                }
+            }
+            RI::OffsetJr { address, raw, imm, rs1 } => {
+                let default = Value::Address(Address(0x1));
+                let targets = self
+                    .targets
+                    .clone()
+                    .into_iter()
+                    .map(Value::Address)
+                    .collect();
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
+                    Switch { ty: _i, val: _1, dflt: default, tgts: targets },
                 }
             }
             RI::PseudoJalr { address, raw, rs1 } => {

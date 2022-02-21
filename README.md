@@ -298,9 +298,9 @@ Counter
 ``` Bash
 clang -S -emit-llvm test.c -o reference.ll
 
-riscv64-unknown-linux-gnu-gcc -static test.c -o test
-riscv64-unknown-linux-gnu-strip -g test -o test.stripped
-riscv64-unknown-linux-gnu-objdump -D -z test.stripped > test.dump
+riscv64-unknown-elf-gcc -static test.c -o test
+# riscv64-unknown-elf-strip -g test -o test.stripped
+riscv64-unknown-elf-objdump -D -z test > test.dump
 
 cargo run -- test.dump -o test.ll
 lli test.ll
@@ -320,7 +320,7 @@ sudo docker cp straight-env:/work/straight-util/STRAIGHT_Tester/HelloMusl/hello.
 
 ### Reference
 
-https://releases.llvm.org/13.0.0/docs/tutorial/MyFirstLanguageFrontend/LangImpl07.html
+- <https://releases.llvm.org/13.0.0/docs/LangRef.html>
 
 - [A Complete Guide to LLVM for Programming Language Creators](https://mukulrathi.co.uk/create-your-own-programming-language/llvm-ir-cpp-api-tutorial/)
 
@@ -336,5 +336,7 @@ call void @exit(i32 0)
 
 ### syscall
 
-The system call number is different for each architecture, even all running Linux.
-To call a generic `syscall` in LLVM IR, we must recover the type for each argument in each system call.
+The Linux system call number is different for each architecture.
+    - `SYS_write` in spike pk is 64, but in x64 is 1.
+    - <https://github.com/westerndigitalcorporation/RISC-V-Linux/blob/master/riscv-pk/pk/syscall.h>
+To call a generic `syscall` in LLVM IR, we must recover the type for each argument, possibly with some other processing, in each system call.

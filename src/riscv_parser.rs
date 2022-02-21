@@ -11,6 +11,7 @@ lazy_static! {
     static ref RODATA: Regex = Regex::new(r"Disassembly of section \.rodata:").unwrap();
 }
 
+#[derive(Clone)]
 enum Line {
     Section(String),
     Symbol(Address, String),
@@ -128,6 +129,7 @@ impl Parser {
     }
 
     fn find_indirect_jump_targets(&mut self) {
+        // rodata
         if let Some(start) = self.lines.iter().position(|l| {
             if let Line::Section(s) = l {
                 s.as_str() == ".rodata"
@@ -162,6 +164,29 @@ impl Parser {
             }
             self.data_blocks.extend(data_blocks);
         }
+
+        // memset
+        if let Some(start) = self.lines.iter().position(|l| {
+            if let Line::Symbol(_, s) = l {
+                s.as_str() == "memset"
+            } else {
+                false
+            }
+        }) {
+            let end = self.lines[start + 1..]
+                .iter()
+                .position(|l| matches!(l, Line::Section(_) | Line::Symbol(..)))
+                .map(|e| e + start + 1)
+                .unwrap_or(self.lines.len());
+            let mut memset = vec![Line::Section(String::from(".text"))];
+            memset.extend(self.lines.clone()[start..end].to_vec());
+            let code_blocks = self.parse_code_section(memset);
+            for code_block in &code_blocks {
+                for inst in &code_block.instructions {
+                    self.jump_targets.push(inst.address());
+                }
+            }
+        }
     }
 
     fn parse_data_section(&self, lines: Vec<Line>) -> Vec<DataBlock> {
@@ -195,6 +220,8 @@ impl Parser {
                     let bytes_str = inst.raw();
                     bytes.extend(match bytes_str.len() {
                         0 => vec![0x0],
+                        2 => vec![u8::from_str_radix(bytes_str, 16)
+                            .unwrap()],
                         4 => u16::from_str_radix(bytes_str, 16)
                             .unwrap()
                             .to_le_bytes()
@@ -299,6 +326,7 @@ impl Parser {
                     | Bgtz { .. }
                     | J { .. }
                     | Jr { .. }
+                    | OffsetJr { .. }
                     | PseudoJalr { .. }
                     | Ret { .. } = inst
                     {

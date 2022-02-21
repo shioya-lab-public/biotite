@@ -91,7 +91,7 @@ pub struct CodeBlock {
     pub instructions: Vec<Instruction>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Raw(pub String);
 
 impl Raw {
@@ -106,7 +106,7 @@ impl PartialEq for Raw {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Ordering {
     No,
     Aq,
@@ -401,7 +401,7 @@ impl Display for Address {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Csr {
     Fflags,
     Frm,
@@ -435,7 +435,7 @@ impl Csr {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Rounding {
     Rne,
     Rtz,
@@ -462,7 +462,7 @@ impl Rounding {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Iorw(pub String);
 
 impl Iorw {
@@ -696,6 +696,7 @@ define_instruction! {
     J(r"j\s+{}", addr),
     // `jal offset` is always converted to `jal ra,addr`.
     Jr(r"jr\s+{}", rs1),
+    OffsetJr(r"jr\s+{}\({}\)", imm, rs1),
     PseudoJalr(r"jalr\s+{}", rs1),
     Ret(r"ret"),
     // `call offset` is always converted to the base instruction.

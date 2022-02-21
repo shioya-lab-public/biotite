@@ -6,7 +6,29 @@ use crate::riscv_isa::{
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-const SYSCALL: &str = "declare i{xlen} @syscall(i{xlen}, ...)";
+const SYSCALL: &str = "declare i{xlen} @syscall(i{xlen}, ...)
+
+%struct.tms = type { i64, i64, i64, i64 }
+
+define i64 @sys_call(i64 %nr, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6) {
+  switch i64 %nr, label %fallback [
+    i64 93, label %SYS_exit
+    i64 169, label %SYS_gettimeofday
+  ]
+
+SYS_exit:
+  %SYS_exit_rslt = call i64 (i64, ...) @syscall(i64 60, i64 %arg1)
+  ret i64 %SYS_exit_rslt
+
+SYS_gettimeofday:
+  %ptr = call i8* @get_data_ptr(i64 %arg1)
+  %tms = bitcast i8* %ptr to %struct.tms*
+  %SYS_gettimeofday_rslt = call i64 (i64, ...) @syscall(i64 96, %struct.tms* %tms, i64 %arg2)
+  ret i64 %SYS_gettimeofday_rslt
+
+fallback:
+  unreachable
+}";
 
 const FPFUNCTIONS: &str = "declare {ftype} @llvm.sqrt.f{flen}({ftype} %op1)
 declare {ftype} @llvm.fma.f{flen}({ftype} %op1, {ftype} %op2, {ftype} %op3)
@@ -1051,14 +1073,9 @@ impl Display for Instruction {
                 arg5,
                 arg6,
             } => write!(
-                // f,
-                // "{} = call {} ({}, ...) @syscall({} {}, {} {}, {} {}, {} {}, {} {}, {} {}, {} {})",
-                // rslt, ty, ty, ty, nr, ty, arg1, ty, arg2, ty, arg3, ty, arg4, ty, arg5, ty, arg6
-
-                // SYS_write
                 f,
-                "{} = call {} ({}, ...) @syscall({} {}, {} {}, {} {}, {} {}, {} {}, {} {}, {} {})",
-                rslt, ty, ty, ty, "1", ty, arg1, "i8*", arg2, ty, arg3, ty, arg4, ty, arg5, ty, arg6
+                "{} = call {} @sys_call({} {}, {} {}, {} {}, {} {}, {} {}, {} {}, {} {})",
+                rslt, ty, ty, nr, ty, arg1, ty, arg2, ty, arg3, ty, arg4, ty, arg5, ty, arg6
             ),
 
             // Misc

@@ -155,7 +155,7 @@ macro_rules! define_instruction {
             ).unwrap();
         }
 
-        #[derive(Debug, PartialEq)]
+        #[derive(Debug, PartialEq, Clone)]
         pub enum Instruction {
             $(
                 $inst {
