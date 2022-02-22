@@ -88,6 +88,18 @@ macro_rules! _i64 {
     };
 }
 
+macro_rules! _i128 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Type::I128
+    };
+}
+
+macro_rules! _d {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Type::Double
+    };
+}
+
 macro_rules! default {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         $value
@@ -179,6 +191,24 @@ macro_rules! rs1 {
 macro_rules! rs2 {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Value::Register(*$value)
+    };
+}
+
+macro_rules! frd {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::FPRegister(*$value)
+    };
+}
+
+macro_rules! frs1 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::FPRegister(*$value)
+    };
+}
+
+macro_rules! frs2 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::FPRegister(*$value)
     };
 }
 
@@ -289,5 +319,5 @@ macro_rules! build_instructions {
 pub(crate) use {
     _i, _i1, _i16, _i32, _i64, _i8, a0, a1, a2, a3, a4, a5, a7, acquire, addr, address,
     build_instructions, default, eq, imm, imm_12, monotonic, ne, next_pc, rd, release, rs1, rs2,
-    seq_cst, sge, sgt, sle, slt, stk, targets, uge, ult, _0, _1, _2, _3, _4, _5, _6, _7,
+    seq_cst, sge, sgt, sle, slt, stk, targets, uge, ult, _0, _1, _2, _3, _4, _5, _6, _7, frd, _d, frs2, frs1, _i128
 };
