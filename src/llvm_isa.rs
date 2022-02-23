@@ -333,6 +333,13 @@ fallback:
 {}
 
 {}
+
+declare dso_local void @exit(i32)
+declare dso_local i32 @printf(i8*, ...)
+@.str.d = private unnamed_addr constant [13 x i8] c\"#value: %d#\\0A\\00\", align 1
+@.str.f = private unnamed_addr constant [13 x i8] c\"#value: %f#\\0A\\00\", align 1
+@.str.s = private unnamed_addr constant [13 x i8] c\"#value: %s#\\0A\\00\", align 1
+
 define i{xlen} @main(i32 %argc, i8** %argv) {{
 entry:
 {}
@@ -394,6 +401,10 @@ pub struct InstructionBlock {
 impl Display for InstructionBlock {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let mut inst_block = format!("  ; {:?}\n", self.riscv_instruction);
+
+        // debug
+        // inst_block += &format!("  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str, i64 0, i64 0), i64 {})\n", self.riscv_instruction.address());
+
         for inst in self.instructions.iter() {
             inst_block += &format!("  {}\n", inst);
         }
@@ -1008,7 +1019,7 @@ impl Display for Instruction {
                 write!(f, "{} = sitofp {} {} to {}", rslt, ty, val, ty2)
             }
             Bitcast { rslt, ty, val, ty2 } => match (ty, ty2) {
-                (Type::Double, _) | (_, Type::Double) => write!(f, "{} = bitcast {} {} to {}", rslt, ty, val, ty2),
+                (Type::Double, _) | (_, Type::Double) | (Type::Float, _) | (_, Type::Float) => write!(f, "{} = bitcast {} {} to {}", rslt, ty, val, ty2),
                 _ => write!(f, "{} = bitcast {}* {} to {}*", rslt, ty, val, ty2),
             }
 

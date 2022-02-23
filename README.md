@@ -293,6 +293,8 @@ Counter
    109b8:	e398                	sd	a4,0(a5)
 ```
 
+- `1c6b6:	8e1bc9bf 00004034 	0x40348e1bc9bf`
+
 ### Testing Commands
 
 ``` Bash
@@ -327,10 +329,12 @@ sudo docker cp straight-env:/work/straight-util/STRAIGHT_Tester/HelloMusl/hello.
 ``` llvm
 declare dso_local void @exit(i32)
 declare dso_local i32 @printf(i8*, ...)
-@.str = private unnamed_addr constant [13 x i8] c"#value: %d#\0A\00", align 1
+@.str.d = private unnamed_addr constant [13 x i8] c"#value: %d#\0A\00", align 1
+@.str.f = private unnamed_addr constant [13 x i8] c"#value: %f#\0A\00", align 1
+@.str.s = private unnamed_addr constant [13 x i8] c"#value: %s#\0A\00", align 1
 
 %val = load i64, i64* %zero
-%code = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str, i64 0, i64 0), i64 %val)
+call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str.d, i64 0, i64 0), i64 %val)
 call void @exit(i32 0)
 ```
 

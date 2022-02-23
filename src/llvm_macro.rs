@@ -94,6 +94,12 @@ macro_rules! _i128 {
     };
 }
 
+macro_rules! _f {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Type::Float
+    };
+}
+
 macro_rules! _d {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Type::Double
@@ -127,8 +133,8 @@ macro_rules! address {
 macro_rules! next_pc {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         match ($addr, $raw) {
-            (Address(addr), Raw(raw)) if raw.len() == 4 => Value::Address(Address(addr + 2)),
-            (Address(addr), Raw(raw)) if raw.len() == 8 => Value::Address(Address(addr + 4)),
+            (Address(addr), Raw(raw)) if raw.len() == 5 => Value::Address(Address(addr + 2)),
+            (Address(addr), Raw(raw)) if raw.len() == 9 => Value::Address(Address(addr + 4)),
             _ => unreachable!(),
         }
     };
@@ -212,6 +218,12 @@ macro_rules! frs2 {
     };
 }
 
+macro_rules! frs3 {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        Value::FPRegister(*$value)
+    };
+}
+
 macro_rules! imm {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Value::Immediate(*$value)
@@ -278,6 +290,24 @@ macro_rules! sle {
     };
 }
 
+macro_rules! oeq {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        FPCondition::Oeq
+    };
+}
+
+macro_rules! olt {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        FPCondition::Olt
+    };
+}
+
+macro_rules! ole {
+    ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
+        FPCondition::Ole
+    };
+}
+
 macro_rules! monotonic {
     ( $addr:expr, $raw:expr, $abi:expr, $value:ident ) => {
         Ordering::Monotonic
@@ -317,7 +347,7 @@ macro_rules! build_instructions {
 }
 
 pub(crate) use {
-    _i, _i1, _i16, _i32, _i64, _i8, a0, a1, a2, a3, a4, a5, a7, acquire, addr, address,
+    _i, _i1, _i16, _i32, _i64, _i8, a0, a1, a2, a3, a4, a5, a7, acquire, addr, address, frs3,
     build_instructions, default, eq, imm, imm_12, monotonic, ne, next_pc, rd, release, rs1, rs2,
-    seq_cst, sge, sgt, sle, slt, stk, targets, uge, ult, _0, _1, _2, _3, _4, _5, _6, _7, frd, _d, frs2, frs1, _i128
+    seq_cst, sge, sgt, sle, slt, stk, targets, uge, ult, _0, _1, _2, _3, _4, _5, _6, _7, frd, _d, frs2, frs1, _i128, _f, oeq, olt, ole
 };

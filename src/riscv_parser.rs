@@ -217,21 +217,34 @@ impl Parser {
                     });
                 }
                 Line::Instruction(inst) => {
-                    let bytes_str = inst.raw();
-                    bytes.extend(match bytes_str.len() {
-                        0 => vec![0x0],
-                        2 => vec![u8::from_str_radix(bytes_str, 16)
-                            .unwrap()],
-                        4 => u16::from_str_radix(bytes_str, 16)
-                            .unwrap()
-                            .to_le_bytes()
-                            .to_vec(),
-                        8 => u32::from_str_radix(bytes_str, 16)
-                            .unwrap()
-                            .to_le_bytes()
-                            .to_vec(),
-                        _ => unreachable!(),
-                    });
+                    let bytes_str = inst.raw().split_ascii_whitespace().collect::<Vec<_>>().join("");
+                    // bytes.extend(match bytes_str.len() {
+                    //     // 0 => vec![0x0],
+                    //     2 => vec![u8::from_str_radix(&bytes_str, 16)
+                    //         .unwrap()],
+                    //     4 => u16::from_str_radix(&bytes_str, 16)
+                    //         .unwrap()
+                    //         .to_le_bytes()
+                    //         .to_vec(),
+                    //     8 => u32::from_str_radix(&bytes_str, 16)
+                    //         .unwrap()
+                    //         .to_le_bytes()
+                    //         .to_vec(),
+                    //     16 => u64::from_str_radix(&bytes_str, 16)
+                    //         .unwrap()
+                    //         .to_le_bytes()
+                    //         .to_vec(),
+                    //     _ => panic!("{:?}", inst),
+                    //     // _ => unreachable!()
+                    // });
+                    let mut i = 0;
+                    let mut bs = Vec::new();
+                    while i < bytes_str.len() {
+                        bs.push(u8::from_str_radix(&bytes_str[i..i+2], 16).unwrap());
+                        i += 2;
+                    }
+                    bs.reverse();
+                    bytes.extend(bs);
                 }
             }
         }
