@@ -336,7 +336,7 @@ fallback:
 
 declare dso_local void @exit(i32)
 declare dso_local i32 @printf(i8*, ...)
-@.str.d = private unnamed_addr constant [13 x i8] c\"#value: %d#\\0A\\00\", align 1
+@.str.d = private unnamed_addr constant [14 x i8] c\"#value: %ld#\\0A\\00\", align 1
 @.str.f = private unnamed_addr constant [13 x i8] c\"#value: %f#\\0A\\00\", align 1
 @.str.s = private unnamed_addr constant [13 x i8] c\"#value: %s#\\0A\\00\", align 1
 

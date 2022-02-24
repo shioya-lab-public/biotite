@@ -98,8 +98,9 @@ impl Translator {
                 rd,
                 imm,
             } => build_instructions! { address, raw, self.abi,
-                Shl { rslt: _0, ty: _i, op1: imm, op2: imm_12 },
-                Store { ty: _i, val: _0, ptr: rd },
+                Shl { rslt: _0, ty: _i32, op1: imm, op2: imm_12 },
+                Sext { rslt: _1, ty: _i32, val: _0, ty2: _i },
+                Store { ty: _i, val: _1, ptr: rd },
             },
             RI::Auipc {
                 address,
@@ -823,7 +824,7 @@ impl Translator {
                     Getdataptr { rslt: _2, ty: _i, addr: _1 },
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i64 },
                     Load { rslt: _4, ty: _i64, ptr: _3 },
-                    Zext { rslt: _5, ty: _i64, val: _4, ty2: _i },
+                    Sext { rslt: _5, ty: _i64, val: _4, ty2: _i },
                     Store { ty: _i, val: _5, ptr: rd },
                 },
             },
@@ -1784,6 +1785,20 @@ impl Translator {
             RI::Csrrsi { .. } => vec![],
             RI::Csrrci { .. } => vec![],
             RI::Csrrs { .. } => vec![],
+
+            RI::ZextB {
+                address,
+                raw,
+                rd,
+                rs1,
+            } => {
+                let imm = &Immediate(255);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    And { rslt: _1, ty: _i, op1: _0, op2: imm },
+                    Store { ty: _i, val: _1, ptr: rd },
+                }
+            }
 
             inst => todo!("{:?}", inst),
         };

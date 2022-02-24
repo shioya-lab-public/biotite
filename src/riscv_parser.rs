@@ -217,7 +217,7 @@ impl Parser {
                     });
                 }
                 Line::Instruction(inst) => {
-                    let bytes_str = inst.raw().split_ascii_whitespace().collect::<Vec<_>>().join("");
+                    let bytes_strs = inst.raw().split_ascii_whitespace().collect::<Vec<_>>();
                     // bytes.extend(match bytes_str.len() {
                     //     // 0 => vec![0x0],
                     //     2 => vec![u8::from_str_radix(&bytes_str, 16)
@@ -237,14 +237,16 @@ impl Parser {
                     //     _ => panic!("{:?}", inst),
                     //     // _ => unreachable!()
                     // });
-                    let mut i = 0;
-                    let mut bs = Vec::new();
-                    while i < bytes_str.len() {
-                        bs.push(u8::from_str_radix(&bytes_str[i..i+2], 16).unwrap());
-                        i += 2;
+                    for bytes_str in bytes_strs {
+                        let mut i = 0;
+                        let mut bs = Vec::new();
+                        while i < bytes_str.len() {
+                            bs.push(u8::from_str_radix(&bytes_str[i..i+2], 16).unwrap());
+                            i += 2;
+                        }
+                        bs.reverse();
+                        bytes.extend(bs);
                     }
-                    bs.reverse();
-                    bytes.extend(bs);
                 }
             }
         }

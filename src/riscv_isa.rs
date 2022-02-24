@@ -733,6 +733,7 @@ define_instruction! {
     Fwflags(r"fsflags\s+{}", rs1), // `fsflags rs` is renamed to `fwflags` to avoid conflicts.
 
     // Misc
+    ZextB(r"zext\.b\s+{},{}", rd, rs1),
     Unimp(r"unimp"),
     Unknown(".*"),
 }
