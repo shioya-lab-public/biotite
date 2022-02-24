@@ -237,11 +237,18 @@ impl Parser {
                     //     _ => panic!("{:?}", inst),
                     //     // _ => unreachable!()
                     // });
+                    if bytes_strs.is_empty() {
+                        bytes.push(0);
+                        continue;
+                    }
                     for bytes_str in bytes_strs {
                         let mut i = 0;
                         let mut bs = Vec::new();
                         while i < bytes_str.len() {
-                            bs.push(u8::from_str_radix(&bytes_str[i..i+2], 16).unwrap());
+                            match u8::from_str_radix(&bytes_str[i..i+2], 16) {
+                                Ok(b) => bs.push(b),
+                                Err(e) => panic!("{}: {:?}", e, inst),
+                            }
                             i += 2;
                         }
                         bs.reverse();

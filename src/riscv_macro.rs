@@ -141,7 +141,7 @@ macro_rules! define_instruction {
                     (
                         stringify!($inst),
                         Regex::new(&format!(
-                            concat!(r"{}:\s+{}\s+", $regex),
+                            concat!(r"{}:\s+{}?\s+", $regex),
                             ADDRESS, RAW, $( $field!("uppercase") ),*
                         )).unwrap()
                     ),
@@ -184,7 +184,7 @@ macro_rules! define_instruction {
                     $(
                         stringify!($inst) => $inst {
                             address: Address::new(&caps["address"]),
-                            raw: Raw::new(&caps["byte"]),
+                            raw: Raw::new(caps.name("byte").map_or("", |m| m.as_str())),
                             $(
                                 $field: <$field!("type")>::new(
                                     caps.name(stringify!($field))
