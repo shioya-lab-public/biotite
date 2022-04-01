@@ -14,9 +14,11 @@ pub struct Translator {
     abi: Abi,
     entry: Address,
     data_blocks: Vec<DataBlock>,
-    symbols: Vec<Address>,
-    func_targets: Vec<Address>,
-    targets: Vec<Address>,
+    intra_targets: HashMap<Address, Vec<Address>>,
+    inter_targets: Vec<Address>,
+    ret_targets: HashMap<Address, Vec<Address>>,
+    rel_ret_targets: Vec<Address>,
+    inherit_ret_targets: HashMap<Address, Vec<Address>>,
     sp: Address,
     fp: Address,
     stack: HashMap<Address, HashSet<Type>>,
@@ -28,9 +30,11 @@ impl Translator {
             abi: Abi::default(),
             entry: Address(0x0),
             data_blocks: Vec::new(),
-            symbols: Vec::new(),
-            func_targets: Vec::new(),
-            targets: Vec::new(),
+            intra_targets: HashMap::new(),
+            inter_targets: Vec::new(),
+            ret_targets: HashMap::new(),
+            rel_ret_targets: Vec::new(),
+            inherit_ret_targets: HashMap::new(),
             sp: Address(10_000000),
             fp: Address(10_000000),
             stack: HashMap::new(),
@@ -41,9 +45,11 @@ impl Translator {
         self.abi = rv_program.abi;
         self.entry = Address(0x0);
         self.data_blocks = rv_program.data_blocks;
-        self.symbols.clear();
-        self.func_targets.clear();
-        self.targets.clear();
+        self.intra_targets.clear();
+        self.inter_targets.clear();
+        self.ret_targets.clear();
+        self.rel_ret_targets.clear();
+        self.inherit_ret_targets.clear();
         self.sp = Address(10_000000);
         self.fp = Address(10_000000);
 
@@ -55,20 +61,45 @@ impl Translator {
         };
         self.data_blocks.push(stack);
 
-        let mut flag = false;
-        let symbols = ["memset", "_start", "__libc_init_array"];
+        let mut func = Address(0);
+        let mut symbol = "";
+        let mut last_j_addr = Address(0);
         for code_block in rv_program.code_blocks.iter() {
-            self.targets.push(code_block.address);
-            if !code_block.symbol.is_empty() {
-                self.symbols.push(code_block.address);
-                self.func_targets.push(code_block.address);
+            // inherit ret targets
+            if last_j_addr != Address(0) {
+                self.inherit_ret_targets.entry(last_j_addr).or_default().push(func);
             }
 
+            if !code_block.symbol.is_empty() {
+                func = code_block.address;
+                symbol = &code_block.symbol;
+            }
+
+            // intra (jr)
+            self.intra_targets.entry(func).or_default().push(code_block.address);
+
+            // inter (jalr, memset, _start)
+            if !code_block.symbol.is_empty() || symbol == "memset" {
+                self.inter_targets.push(code_block.address);
+            }
+
+            // ret (jal)
+            if let RiscvInstruction::Jal { address, raw, addr, .. } = code_block.instructions.last().unwrap()
+            {
+                let Raw(raw) = raw;
+                let Address(ad) = address;
+                let ret = match raw.len() {
+                    5 => Address(ad + 2),
+                    9 => Address(ad + 4),
+                    _ => unreachable!(),
+                };
+                self.ret_targets.entry(*addr).or_default().push(ret);
+            }
+
+            // rel_ret (jalr)
             if let RiscvInstruction::Jalr { address, raw, .. }
-            | RiscvInstruction::Jal { address, raw, .. }
             | RiscvInstruction::ImplicitJalr { address, raw, .. }
-            | RiscvInstruction::PseudoJalr { address, raw, .. }
-            | RiscvInstruction::Ret { address, raw, .. } = code_block.instructions.last().unwrap()
+            | RiscvInstruction::PseudoJalr { address, raw, .. } = code_block.instructions.last().unwrap()
             {
                 let Raw(raw) = raw;
                 let Address(addr) = address;
@@ -77,41 +108,31 @@ impl Translator {
                     9 => Address(addr + 4),
                     _ => unreachable!(),
                 };
-                self.func_targets.push(addr);
+                self.rel_ret_targets.push(addr);
             }
 
-            for symbol in symbols {
-                let mut mutated = false;
-                if code_block.symbol == symbol {
-                    flag = true;
-                    mutated = true;
-                }
-                if flag && !code_block.symbol.is_empty() && code_block.symbol != symbol {
-                    flag = false;
-                    mutated = true;
-                }
-                if flag {
-                    self.func_targets.push(code_block.address);
-                    mutated = true;
-                }
-                if mutated {
-                    break;
-                }
+            // inherit ret targets
+            if let RiscvInstruction::J { addr, .. }= code_block.instructions.last().unwrap() {
+                last_j_addr = *addr;
+            } else {
+                last_j_addr = Address(0);
             }
         }
-        self.targets.push(Address(0x0));
-        self.targets.sort_unstable();
-        self.func_targets.sort_unstable();
-        self.func_targets.dedup();
-        self.func_targets.pop();
-        self.symbols.sort_unstable();
-        self.symbols.dedup();
 
-        let code_blocks = rv_program
-            .code_blocks
-            .into_iter()
-            .map(|b| self.translate_code_block(b))
-            .collect();
+        // let code_blocks = rv_program
+        //     .code_blocks
+        //     .into_iter()
+        //     .map(|b| self.translate_code_block(b))
+        //     .collect();
+        let mut func = Address(0);
+        let mut code_blocks = Vec::new();
+        for code_block in rv_program.code_blocks {
+            if !code_block.symbol.is_empty() {
+                func = code_block.address;
+            }
+            let code_block = self.translate_code_block(code_block, func);
+            code_blocks.push(code_block);
+        }
 
         Program {
             abi: self.abi,
@@ -122,29 +143,15 @@ impl Translator {
         }
     }
 
-    fn translate_code_block(&mut self, rv_code_block: RiscvCodeBlock) -> CodeBlock {
+    fn translate_code_block(&mut self, rv_code_block: RiscvCodeBlock, func: Address) -> CodeBlock {
         if let "_start" = rv_code_block.symbol.as_str() {
             self.entry = rv_code_block.address;
         }
 
-        let mut index = 0;
-        let addr = rv_code_block.address;
-        for (i, symbol) in self.symbols.iter().enumerate() {
-            if symbol <= &addr {
-                index = i;
-            }
-        }
-        let start = self.symbols[index];
-        let end = if index < self.symbols.len() - 1 {
-            self.symbols[index + 1]
-        } else {
-            let Address(addr) = *self.targets.last().unwrap();
-            Address(addr + 1)
-        };
         let instruction_blocks = rv_code_block
             .instructions
             .into_iter()
-            .map(|i| self.translate_instruction(i, &start, &end))
+            .map(|i| self.translate_instruction(i, func))
             .collect();
         CodeBlock {
             section: rv_code_block.section,
@@ -154,12 +161,19 @@ impl Translator {
         }
     }
 
+    fn inherit(&self, func: &Address, targets: &mut Vec<Address>) {
+        for f in self.inherit_ret_targets.get(func).cloned().unwrap_or_default() {
+            self.inherit(&f, targets);
+            let tgts = self.ret_targets.get(&f).cloned().unwrap_or_default();
+            targets.extend(tgts);
+        }
+    }
+
     #[allow(unused_variables)]
     fn translate_instruction(
         &mut self,
         rv_inst: RiscvInstruction,
-        start: &Address,
-        end: &Address,
+        func: Address,
     ) -> InstructionBlock {
         use Instruction::*;
         use RiscvInstruction as RI;
@@ -203,13 +217,15 @@ impl Translator {
                 rs1,
             } => {
                 let default = Value::Address(Address(0x1));
-                let targets = self
-                    .func_targets
+                let targets: Vec<_>= self
+                    .inter_targets
                     .clone()
                     .into_iter()
-                    // .filter_map(|t| if &t >= start && &t <= end {Some(Value::Address(t))} else {None})
-                    .map(|t| Value::Address(t))
+                    .map(Value::Address)
                     .collect();
+                    if targets.len() >= 300 {
+                        println!("jalr {:?}", address);
+                    }
                 build_instructions! { address, raw, self.abi,
                     Store { ty: _i, val: next_pc, ptr: rd },
                     Load { rslt: _0, ty: _i, ptr: rs1 },
@@ -224,13 +240,15 @@ impl Translator {
                 rs1,
             } => {
                 let default = Value::Address(Address(0x1));
-                let targets = self
-                    .func_targets
+                let targets: Vec<_> = self
+                    .inter_targets
                     .clone()
                     .into_iter()
-                    // .filter_map(|t| if &t >= start && &t <= end {Some(Value::Address(t))} else {None})
-                    .map(|t| Value::Address(t))
+                    .map(Value::Address)
                     .collect();
+                    if targets.len() >= 300 {
+                        println!("ImplicitJalr {:?}", address);
+                    }
                 let rs2 = &Register::Ra;
                 build_instructions! { address, raw, self.abi,
                     Store { ty: _i, val: next_pc, ptr: rs2 },
@@ -1273,13 +1291,15 @@ impl Translator {
             },
             RI::Jr { address, raw, rs1 } => {
                 let default = Value::Address(Address(0x1));
-                let targets = self
-                    .targets
-                    .clone()
+                let targets: Vec<_> = self
+                    .intra_targets.get(&func).cloned().unwrap_or_default()
                     .into_iter()
-                    .filter_map(|t| if &t >= start && &t < end {Some(Value::Address(t))} else {None})
-                    // .map(|t| Value::Address(t))
+                    .map(Value::Address)
+                    // .filter_map(|addr| if &addr > address {Some(Value::Address(addr))} else {None})
                     .collect();
+                    if targets.len() >= 300 {
+                        println!("jr {:?} - {}", address, targets.len());
+                    }
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Switch { ty: _i, val: _0, dflt: default, tgts: targets },
@@ -1292,13 +1312,14 @@ impl Translator {
                 rs1,
             } => {
                 let default = Value::Address(Address(0x1));
-                let targets = self
-                    .targets
-                    .clone()
+                let targets: Vec<_> = self
+                    .intra_targets.get(&func).cloned().unwrap_or_default()
                     .into_iter()
-                    .filter_map(|t| if &t >= start && &t < end {Some(Value::Address(t))} else {None})
-                    // .map(|t| Value::Address(t))
+                    .map(Value::Address)
                     .collect();
+                    if targets.len() >= 300 {
+                        println!("offsetjr {:?}", address);
+                    }
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
@@ -1307,13 +1328,16 @@ impl Translator {
             }
             RI::PseudoJalr { address, raw, rs1 } => {
                 let default = Value::Address(Address(0x1));
-                let targets = self
-                    .func_targets
+                let targets: Vec<_> = self
+                    .inter_targets
                     .clone()
                     .into_iter()
-                    // .filter_map(|t| if &t >= start && &t <= end {Some(Value::Address(t))} else {None})
-                    .map(|t| Value::Address(t))
+                    .map(Value::Address)
                     .collect();
+                
+                    if targets.len() >= 300 {
+                        println!("PseudoJalr {:?}", address);
+                    }
                 let imm = &Immediate(0);
                 let rs2 = &Register::Ra;
                 build_instructions! { address, raw, self.abi,
@@ -1325,13 +1349,21 @@ impl Translator {
             }
             RI::Ret { address, raw } => {
                 let default = Value::Address(Address(0x1));
-                let targets = self
-                    .func_targets
-                    .clone()
-                    .into_iter()
-                    // .filter_map(|t| if &t >= start && &t <= end {Some(Value::Address(t))} else {None})
-                    .map(|t| Value::Address(t))
+                let mut targets: Vec<_> = self
+                    .ret_targets.get(&func).cloned().unwrap_or_default();
+                let rel_targets: Vec<_> = self
+                    .rel_ret_targets
+                    .clone();
+                targets.extend(rel_targets);
+
+                self.inherit(&func, &mut targets);
+                
+                targets.sort_unstable();
+                targets.dedup();
+                let targets:Vec<_> =     targets.into_iter()
+                    .map(Value::Address)
                     .collect();
+
                 let rs1 = &Register::Ra;
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
