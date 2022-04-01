@@ -385,7 +385,7 @@ impl Display for Immediate {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash, PartialOrd, Ord)]
 pub struct Address(pub u64);
 
 impl Address {

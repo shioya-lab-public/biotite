@@ -342,14 +342,21 @@ declare dso_local i32 @printf(i8*, ...)
 
 define i{xlen} @main(i32 %argc, i8** %argv) {{
 entry:
-{}
+  %switch_target = alloca i64
 
 {}
 
 {}
+
 {}
+{}
+
+
 
 label_1:
+  %switch_target_value = load i64, i64* %switch_target
+  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_target_value)
+  call void @exit(i32 2)
   unreachable
 
 {}
@@ -916,7 +923,8 @@ impl Display for Instruction {
                 dflt,
                 tgts,
             } => {
-                let mut s = format!("switch {} {}, label %label_{} [", ty, val, dflt);
+                println!("{}", tgts.len());
+                let mut s = format!("store i64 {}, i64* %switch_target\nswitch {} {}, label %label_{} [", val, ty, val, dflt);
                 for target in tgts {
                     s += &format!("{} {}, label %label_{} ", ty, target, target);
                 }

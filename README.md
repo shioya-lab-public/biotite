@@ -342,6 +342,8 @@ call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.
 call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str.s, i64 0, i64 0), i8* %ptr_s)
 
 call void @exit(i32 0)
+
+opt --mem2reg -S dry2.ll -o dry2.o.ll
 ```
 
 ### syscall
@@ -351,3 +353,26 @@ The Linux system call number is different for each architecture.
     - <https://github.com/westerndigitalcorporation/RISC-V-Linux/blob/master/riscv-pk/pk/syscall.h>
     - <https://chromium.googlesource.com/chromiumos/docs/+/refs/heads/main/constants/syscalls.md>
 To call a generic `syscall` in LLVM IR, we must recover the type for each argument, possibly with some other processing, in each system call.
+
+### Endianness
+
+```
+000000000001c2e0 <etens>:
+   1c2e0:	6576                	ld	a0,344(sp)
+   1c2e2:	4a92                	lw	s5,4(sp)
+   1c2e4:	804a                	c.mv	zero,s2
+   1c2e6:	c94c153f 8a20979a 	0x8a20979ac94c153f
+   1c2ee:	5202                	lw	tp,32(sp)
+   1c2f0:	c460                	sw	s0,76(s0)
+   1c2f2:	7525                	lui	a0,0xfffe9
+```
+
+### gprof
+
+```
+declare void @mcount()
+attributes #0 = { "frame-pointer"="all" }
+call void @mcount()
+change `_exit` to `ret`
+clang -pg dry2.ll
+```
