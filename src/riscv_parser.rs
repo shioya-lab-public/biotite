@@ -85,9 +85,32 @@ impl Parser {
             }
         }
 
+        let mut end = 0;
+        for data_block in &self.data_blocks {
+            let Address(head) = data_block.address;
+            let len = data_block.bytes.len();
+            if head as usize + len > end {
+                end = head as usize+ len;
+            }
+        }
+        let mut bytes = vec![0;end];
+        for data_block in &self.data_blocks {
+            let Address(head ) = data_block.address;
+            for (i, byte) in data_block.bytes.iter().enumerate() {
+                bytes[head as usize + i] = *byte;
+            }
+        }
+        let data_blocks = vec![DataBlock {
+            address: Address(0),
+            section: String::new(),
+            symbol: String::new(),
+            bytes,
+        }];
+
         Program {
             abi: mem::take(&mut self.abi),
-            data_blocks: mem::take(&mut self.data_blocks),
+            // data_blocks: mem::take(&mut self.data_blocks),
+            data_blocks,
             code_blocks: mem::take(&mut self.code_blocks),
         }
     }

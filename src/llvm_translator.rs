@@ -53,13 +53,13 @@ impl Translator {
         self.sp = Address(10_000000);
         self.fp = Address(10_000000);
 
-        let stack = DataBlock {
-            section: String::from(".stack"),
-            symbol: String::from("stack"),
-            address: Address(1),
-            bytes: vec![0; 10240],
-        };
-        self.data_blocks.push(stack);
+        // let stack = DataBlock {
+        //     section: String::from(".stack"),
+        //     symbol: String::from("stack"),
+        //     address: Address(1),
+        //     bytes: vec![0; 10240],
+        // };
+        // self.data_blocks.push(stack);
 
         let mut func = Address(0);
         let mut symbol = "";
