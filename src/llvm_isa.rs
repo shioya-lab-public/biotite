@@ -328,11 +328,18 @@ fallback:
                 stack += &format!("  %stack_{}_{} = alloca {}\n", addr, ty, ty);
             }
         }
-        let entry = format!("  br label %label_{}", self.entry);
+        let entry = format!("  %rslt = call i64 @code(i64 {}, %struct.reg* %reg, %struct.freg* %freg)", self.entry);
         let code_blocks = self
             .code_blocks
             .iter()
             .fold(String::new(), |s, b| s + &format!("{}\n", b));
+
+        let targets = self.code_blocks.iter().map(|b| b.address);
+        let mut dispatch = format!("store i64 %entry, i64* %switch_target\nswitch i64 %entry, label %label_1 [");
+        for tgt in targets {
+            dispatch += &format!("i64 {tgt}, label %label_{tgt} ");
+        }
+        dispatch += "]";
 
         write!(
             f,
@@ -356,32 +363,47 @@ declare dso_local i32 @printf(i8*, ...)
 @.str.s = private unnamed_addr constant [13 x i8] c\"#value: %s#\\0A\\00\", align 1
 
 define i{xlen} @main(i32 %argc, i8** %argv) {{
-entry:
+
+
+{}
+
+{}
+
+{}
+
+  %entry_p= alloca i64
+  store i64 {}, i64* %entry_p
+  br label %loop
+loop:
+  %entry = load i64, i64* %entry_p
+  %target = call i64 @code(i64 %entry, %struct.reg* %reg, %struct.freg* %freg)
+  %addr = call i64 @interpret(i64 %target, %struct.reg* %reg, %struct.freg* %freg)
+  store i64 %addr, i64* %entry_p
+  br label %loop
+}}
+
+define i64 @interpret(i64 %addr, %struct.reg* %reg, %struct.freg* %freg) {{
+    ret i64 %addr
+}}
+
+define i{xlen} @code(i64 %entry, %struct.reg* %reg, %struct.freg* %freg) {{
   %switch_address = alloca i64
   %switch_target = alloca i64
-
-{}
-
-{}
-
-{}
-{}
-
-
-
+  {dispatch}
 label_1:
   %switch_address_value = load i64, i64* %switch_address
   %switch_target_value = load i64, i64* %switch_target
-  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_address_value)
-  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_target_value)
-  call void @exit(i32 2)
-  unreachable
+  ;call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_address_value)
+  ;call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_target_value)
+  ;call void @exit(i32 2)
+  ret i64 %switch_target_value
+  
 
 {}
 
-label_0:
-  %ret = load i{xlen}, i{xlen}* %a0
-  ret i{xlen} %ret
+;label_0:
+  ;%ret = load i{xlen}, i{xlen}* %a0
+  ;ret i{xlen} %ret
 }}
 ",
             abi,
@@ -392,7 +414,7 @@ label_0:
             registers,
             fpregisters,
             stack,
-            entry,
+            self.entry,
             code_blocks
         )
     }
@@ -944,15 +966,12 @@ impl Display for Instruction {
                 dflt,
                 tgts,
             } => {
-                // println!("{}", tgts.len());
-                let mut s = format!("store i64 {}, i64* %switch_target\nswitch {} {}, label %label_{} [", val, ty, val, dflt);
-                // let start = if tgts.len() >60 {20} else {0};
-                // let end = if tgts.len() >60 {60} else {tgts.len()};
-                // for target in &tgts[start..end] {
-                for target in tgts {
-                    s += &format!("{} {}, label %label_{} ", ty, target, target);
-                }
-                s += "]";
+                // let mut s = format!("store i64 {}, i64* %switch_target\nswitch {} {}, label %label_{} [", val, ty, val, dflt);
+                // for target in tgts {
+                //     s += &format!("{} {}, label %label_{} ", ty, target, target);
+                // }
+                // s += "]";
+                let s = format!("store i64 {}, i64* %switch_target\n  br label %label_1", val);
                 write!(f, "{}", s)
             }
 
