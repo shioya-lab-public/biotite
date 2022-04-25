@@ -223,9 +223,9 @@ impl Translator {
                     .into_iter()
                     .map(Value::Address)
                     .collect();
-                    if targets.len() >= 300 {
-                        println!("jalr {:?}", address);
-                    }
+                    // if targets.len() >= 300 {
+                    //     println!("jalr {:?}", address);
+                    // }
                 build_instructions! { address, raw, self.abi,
                     Store { ty: _i, val: next_pc, ptr: rd },
                     Load { rslt: _0, ty: _i, ptr: rs1 },
@@ -246,9 +246,9 @@ impl Translator {
                     .into_iter()
                     .map(Value::Address)
                     .collect();
-                    if targets.len() >= 300 {
-                        println!("ImplicitJalr {:?}", address);
-                    }
+                    // if targets.len() >= 300 {
+                    //     println!("ImplicitJalr {:?}", address);
+                    // }
                 let rs2 = &Register::Ra;
                 build_instructions! { address, raw, self.abi,
                     Store { ty: _i, val: next_pc, ptr: rs2 },
@@ -1297,9 +1297,9 @@ impl Translator {
                     .map(Value::Address)
                     // .filter_map(|addr| if &addr > address {Some(Value::Address(addr))} else {None})
                     .collect();
-                    if targets.len() >= 300 {
-                        println!("jr {:?} - {}", address, targets.len());
-                    }
+                    // if targets.len() >= 300 {
+                    //     println!("jr {:?} - {}", address, targets.len());
+                    // }
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Switch { ty: _i, val: _0, dflt: default, tgts: targets },
@@ -1317,9 +1317,9 @@ impl Translator {
                     .into_iter()
                     .map(Value::Address)
                     .collect();
-                    if targets.len() >= 300 {
-                        println!("offsetjr {:?}", address);
-                    }
+                    // if targets.len() >= 300 {
+                    //     println!("offsetjr {:?}", address);
+                    // }
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
@@ -1335,9 +1335,9 @@ impl Translator {
                     .map(Value::Address)
                     .collect();
                 
-                    if targets.len() >= 300 {
-                        println!("PseudoJalr {:?}", address);
-                    }
+                    // if targets.len() >= 300 {
+                    //     println!("PseudoJalr {:?}", address);
+                    // }
                 let imm = &Immediate(0);
                 let rs2 = &Register::Ra;
                 build_instructions! { address, raw, self.abi,
