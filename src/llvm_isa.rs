@@ -224,7 +224,8 @@ pub struct Program {
     pub entry: Address,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
-    pub stack: HashMap<Address, HashSet<Type>>,
+    // pub stack: HashMap<Address, HashSet<Type>>,
+    pub targets: Vec<Address>,
 }
 
 impl Display for Program {
@@ -323,20 +324,23 @@ fallback:
             String::new()
         };
         let mut stack = String::new();
-        for (addr, tys) in self.stack.iter() {
-            for ty in tys {
-                stack += &format!("  %stack_{}_{} = alloca {}\n", addr, ty, ty);
-            }
-        }
+        // for (addr, tys) in self.stack.iter() {
+        //     for ty in tys {
+        //         stack += &format!("  %stack_{}_{} = alloca {}\n", addr, ty, ty);
+        //     }
+        // }
         let entry = format!("  %rslt = call i64 @code(i64 {}, %struct.reg* %reg, %struct.freg* %freg)", self.entry);
         let code_blocks = self
             .code_blocks
             .iter()
             .fold(String::new(), |s, b| s + &format!("{}\n", b));
 
-        let targets = self.code_blocks.iter().map(|b| b.address);
+        // let mut targets: Vec<_> = Vec::new();
+        // for block in self.code_blocks.iter() {
+        //     for inst in block.instruction_blocks
+        // }
         let mut dispatch = format!("store i64 %entry, i64* %switch_target\nswitch i64 %entry, label %label_1 [");
-        for tgt in targets {
+        for tgt in &self.targets {
             dispatch += &format!("i64 {tgt}, label %label_{tgt} ");
         }
         dispatch += "]";
@@ -377,8 +381,8 @@ define i{xlen} @main(i32 %argc, i8** %argv) {{
 loop:
   %entry = load i64, i64* %entry_p
   %target = call i64 @code(i64 %entry, %struct.reg* %reg, %struct.freg* %freg)
-  %addr = call i64 @interpret(i64 %target, %struct.reg* %reg, %struct.freg* %freg)
-  store i64 %addr, i64* %entry_p
+  ; %addr = call i64 @interpret(i64 %target, %struct.reg* %reg, %struct.freg* %freg)
+  store i64 %target, i64* %entry_p
   br label %loop
 }}
 
@@ -401,9 +405,9 @@ label_1:
 
 {}
 
-;label_0:
-  ;%ret = load i{xlen}, i{xlen}* %a0
-  ;ret i{xlen} %ret
+label_0:
+  ; %ret = load i{xlen}, i{xlen}* %a0
+  ret i{xlen} 101
 }}
 ",
             abi,
@@ -940,6 +944,11 @@ pub enum Instruction {
         ty: Type,
         addr: Value,
     },
+
+    Ret {
+        ty: Type,
+        val: Value,
+    }
 }
 
 static mut T: usize = 1000;
@@ -954,11 +963,23 @@ impl Display for Instruction {
                 cond,
                 iftrue,
                 iffalse,
-            } => write!(
-                f,
-                "br i1 {}, label %label_{}, label %label_{}",
-                cond, iftrue, iffalse
-            ),
+            } =>
+            // write!(
+            //     f,
+            //     "br i1 {}, label %label_{}, label %label_{}",
+            //     cond, iftrue, iffalse
+            // ),
+            {
+                let c = &format!("{cond}")[1..];
+                write!(
+                    f,
+                    "br i1 {cond}, label {cond}_t, label {cond}_f
+                    {c}_t:
+                      ret i64 {iftrue}
+                    {c}_f:
+                      ret i64 {iffalse}"
+                )
+            }
             UnconBr { addr } => write!(f, "br label %label_{}", addr),
             Switch {
                 ty,
@@ -1357,6 +1378,10 @@ impl Display for Instruction {
 
             Getdataptr { rslt, ty, addr } => {
                 write!(f, "{} = call i8* @get_data_ptr({} {})", rslt, ty, addr)
+            }
+
+            Ret { ty, val } => {
+                write!(f, "ret {} {}", ty, val)
             }
         }
     }

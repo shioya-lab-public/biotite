@@ -14,14 +14,6 @@ pub struct Translator {
     abi: Abi,
     entry: Address,
     data_blocks: Vec<DataBlock>,
-    intra_targets: HashMap<Address, Vec<Address>>,
-    inter_targets: Vec<Address>,
-    ret_targets: HashMap<Address, Vec<Address>>,
-    rel_ret_targets: Vec<Address>,
-    inherit_ret_targets: HashMap<Address, Vec<Address>>,
-    sp: Address,
-    fp: Address,
-    stack: HashMap<Address, HashSet<Type>>,
 }
 
 impl Translator {
@@ -30,14 +22,6 @@ impl Translator {
             abi: Abi::default(),
             entry: Address(0x0),
             data_blocks: Vec::new(),
-            intra_targets: HashMap::new(),
-            inter_targets: Vec::new(),
-            ret_targets: HashMap::new(),
-            rel_ret_targets: Vec::new(),
-            inherit_ret_targets: HashMap::new(),
-            sp: Address(10_000000),
-            fp: Address(10_000000),
-            stack: HashMap::new(),
         }
     }
 
@@ -45,13 +29,6 @@ impl Translator {
         self.abi = rv_program.abi;
         self.entry = Address(0x0);
         self.data_blocks = rv_program.data_blocks;
-        self.intra_targets.clear();
-        self.inter_targets.clear();
-        self.ret_targets.clear();
-        self.rel_ret_targets.clear();
-        self.inherit_ret_targets.clear();
-        self.sp = Address(10_000000);
-        self.fp = Address(10_000000);
 
         // let stack = DataBlock {
         //     section: String::from(".stack"),
@@ -61,63 +38,14 @@ impl Translator {
         // };
         // self.data_blocks.push(stack);
 
-        let mut func = Address(0);
-        let mut symbol = "";
-        let mut last_j_addr = Address(0);
-        for code_block in rv_program.code_blocks.iter() {
-            // inherit ret targets
-            if last_j_addr != Address(0) {
-                self.inherit_ret_targets.entry(last_j_addr).or_default().push(func);
-            }
-
-            if !code_block.symbol.is_empty() {
-                func = code_block.address;
-                symbol = &code_block.symbol;
-            }
-
-            // intra (jr)
-            self.intra_targets.entry(func).or_default().push(code_block.address);
-
-            // inter (jalr, memset, _start)
-            if !code_block.symbol.is_empty() || symbol == "memset" {
-                self.inter_targets.push(code_block.address);
-            }
-
-            // ret (jal)
-            if let RiscvInstruction::Jal { address, raw, addr, .. } = code_block.instructions.last().unwrap()
-            {
-                let Raw(raw) = raw;
-                let Address(ad) = address;
-                let ret = match raw.len() {
-                    5 => Address(ad + 2),
-                    9 => Address(ad + 4),
-                    _ => unreachable!(),
-                };
-                self.ret_targets.entry(*addr).or_default().push(ret);
-            }
-
-            // rel_ret (jalr)
-            if let RiscvInstruction::Jalr { address, raw, .. }
-            | RiscvInstruction::ImplicitJalr { address, raw, .. }
-            | RiscvInstruction::PseudoJalr { address, raw, .. } = code_block.instructions.last().unwrap()
-            {
-                let Raw(raw) = raw;
-                let Address(addr) = address;
-                let addr = match raw.len() {
-                    5 => Address(addr + 2),
-                    9 => Address(addr + 4),
-                    _ => unreachable!(),
-                };
-                self.rel_ret_targets.push(addr);
-            }
-
-            // inherit ret targets
-            if let RiscvInstruction::J { addr, .. }= code_block.instructions.last().unwrap() {
-                last_j_addr = *addr;
-            } else {
-                last_j_addr = Address(0);
+        let mut targets: Vec<_> = Vec::new();
+        for block in &rv_program.code_blocks {
+            for inst in &block.instructions {
+                targets.push(inst.address());
             }
         }
+        targets.sort();
+        targets.dedup();
 
         // let code_blocks = rv_program
         //     .code_blocks
@@ -130,8 +58,8 @@ impl Translator {
             if !code_block.symbol.is_empty() {
                 func = code_block.address;
             }
-            let code_block = self.translate_code_block(code_block, func);
-            code_blocks.push(code_block);
+            let blocks = self.translate_code_block(code_block, func);
+            code_blocks.extend(blocks);
         }
 
         Program {
@@ -139,35 +67,38 @@ impl Translator {
             entry: self.entry,
             data_blocks: mem::take(&mut self.data_blocks),
             code_blocks,
-            stack: mem::take(&mut self.stack),
+            targets,
         }
     }
 
-    fn translate_code_block(&mut self, rv_code_block: RiscvCodeBlock, func: Address) -> CodeBlock {
+    fn translate_code_block(&mut self, rv_code_block: RiscvCodeBlock, func: Address) -> Vec<CodeBlock> {
         if let "_start" = rv_code_block.symbol.as_str() {
             self.entry = rv_code_block.address;
         }
 
-        let instruction_blocks = rv_code_block
+        rv_code_block
             .instructions
             .into_iter()
-            .map(|i| self.translate_instruction(i, func))
-            .collect();
-        CodeBlock {
-            section: rv_code_block.section,
-            symbol: rv_code_block.symbol,
-            address: rv_code_block.address,
-            instruction_blocks,
-        }
+            .map(|i| {
+                let address = i.address();
+                let b = self.translate_instruction(i, func);
+            CodeBlock {
+                section: rv_code_block.section.clone(),
+                symbol: rv_code_block.symbol.clone(),
+                address,
+                instruction_blocks: vec![b],
+            }})
+            .collect()
+        
     }
 
-    fn inherit(&self, func: &Address, targets: &mut Vec<Address>) {
-        for f in self.inherit_ret_targets.get(func).cloned().unwrap_or_default() {
-            self.inherit(&f, targets);
-            let tgts = self.ret_targets.get(&f).cloned().unwrap_or_default();
-            targets.extend(tgts);
-        }
-    }
+    // fn inherit(&self, func: &Address, targets: &mut Vec<Address>) {
+    //     for f in self.inherit_ret_targets.get(func).cloned().unwrap_or_default() {
+    //         self.inherit(&f, targets);
+    //         let tgts = self.ret_targets.get(&f).cloned().unwrap_or_default();
+    //         targets.extend(tgts);
+    //     }
+    // }
 
     #[allow(unused_variables)]
     fn translate_instruction(
@@ -189,6 +120,7 @@ impl Translator {
                 Shl { rslt: _0, ty: _i32, op1: imm, op2: imm_12 },
                 Sext { rslt: _1, ty: _i32, val: _0, ty2: _i },
                 Store { ty: _i, val: _1, ptr: rd },
+                UnconBr { addr: next_pc },
             },
             RI::Auipc {
                 address,
@@ -199,6 +131,7 @@ impl Translator {
                 Shl { rslt: _0, ty: _i, op1: imm, op2: imm_12 },
                 Add { rslt: _1, ty: _i, op1: _0, op2: address },
                 Store { ty: _i, val: _1, ptr: rd },
+                UnconBr { addr: next_pc },
             },
             RI::Jal {
                 address,
@@ -207,7 +140,7 @@ impl Translator {
                 addr,
             } => build_instructions! { address, raw, self.abi,
                 Store { ty: _i, val: next_pc, ptr: rd },
-                UnconBr { addr: addr },
+                Ret { ty: _i, val: addr },
             },
             RI::Jalr {
                 address,
@@ -216,21 +149,22 @@ impl Translator {
                 imm,
                 rs1,
             } => {
-                let default = Value::Address(Address(0x1));
-                let targets: Vec<_>= self
-                    .inter_targets
-                    .clone()
-                    .into_iter()
-                    .map(Value::Address)
-                    .collect();
-                    // if targets.len() >= 300 {
-                    //     println!("jalr {:?}", address);
-                    // }
+                // let default = Value::Address(Address(0x1));
+                // let targets: Vec<_>= self
+                //     .inter_targets
+                //     .clone()
+                //     .into_iter()
+                //     .map(Value::Address)
+                //     .collect();
+                //     // if targets.len() >= 300 {
+                //     //     println!("jalr {:?}", address);
+                //     // }
                 build_instructions! { address, raw, self.abi,
                     Store { ty: _i, val: next_pc, ptr: rd },
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Switch { ty: _i, val: _1, dflt: default, tgts: targets },
+                    // Switch { ty: _i, val: _1, dflt: default, tgts: targets }, 
+                Ret { ty: _i, val: _1 },
                 }
             }
             RI::ImplicitJalr {
@@ -239,13 +173,13 @@ impl Translator {
                 imm,
                 rs1,
             } => {
-                let default = Value::Address(Address(0x1));
-                let targets: Vec<_> = self
-                    .inter_targets
-                    .clone()
-                    .into_iter()
-                    .map(Value::Address)
-                    .collect();
+                // let default = Value::Address(Address(0x1));
+                // let targets: Vec<_> = self
+                //     .inter_targets
+                //     .clone()
+                //     .into_iter()
+                //     .map(Value::Address)
+                //     .collect();
                     // if targets.len() >= 300 {
                     //     println!("ImplicitJalr {:?}", address);
                     // }
@@ -254,7 +188,8 @@ impl Translator {
                     Store { ty: _i, val: next_pc, ptr: rs2 },
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Switch { ty: _i, val: _1, dflt: default, tgts: targets },
+                    // Switch { ty: _i, val: _1, dflt: default, tgts: targets }, 
+                Ret { ty: _i, val: _1 },
                 }
             }
             RI::Beq {
@@ -361,7 +296,8 @@ impl Translator {
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i8 },
                     Load { rslt: _4, ty: _i8, ptr: _3 },
                     Sext { rslt: _5, ty: _i8, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Store { ty: _i, val: _5, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Lh {
@@ -396,7 +332,8 @@ impl Translator {
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i16 },
                     Load { rslt: _4, ty: _i16, ptr: _3 },
                     Sext { rslt: _5, ty: _i16, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Store { ty: _i, val: _5, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Lw {
@@ -431,7 +368,8 @@ impl Translator {
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i32 },
                     Load { rslt: _4, ty: _i32, ptr: _3 },
                     Sext { rslt: _5, ty: _i32, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Store { ty: _i, val: _5, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Lbu {
@@ -466,7 +404,8 @@ impl Translator {
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i8 },
                     Load { rslt: _4, ty: _i8, ptr: _3 },
                     Zext { rslt: _5, ty: _i8, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Store { ty: _i, val: _5, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Lhu {
@@ -501,7 +440,8 @@ impl Translator {
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i16 },
                     Load { rslt: _4, ty: _i16, ptr: _3 },
                     Zext { rslt: _5, ty: _i16, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Store { ty: _i, val: _5, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Sb {
@@ -537,7 +477,8 @@ impl Translator {
                     Add { rslt: _3, ty: _i, op1: _2, op2: imm },
                     Getdataptr { rslt: _4, ty: _i, addr: _3 },
                     Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i8 },
-                    Store { ty: _i8, val: _1, ptr: _5 },
+                    Store { ty: _i8, val: _1, ptr: _5 }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Sh {
@@ -573,7 +514,8 @@ impl Translator {
                     Add { rslt: _3, ty: _i, op1: _2, op2: imm },
                     Getdataptr { rslt: _4, ty: _i, addr: _3 },
                     Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i16 },
-                    Store { ty: _i16, val: _1, ptr: _5 },
+                    Store { ty: _i16, val: _1, ptr: _5 }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Sw {
@@ -609,7 +551,8 @@ impl Translator {
                     Add { rslt: _3, ty: _i, op1: _2, op2: imm },
                     Getdataptr { rslt: _4, ty: _i, addr: _3 },
                     Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i32 },
-                    Store { ty: _i32, val: _1, ptr: _5 },
+                    Store { ty: _i32, val: _1, ptr: _5 }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Addi {
@@ -621,7 +564,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+                Store { ty: _i, val: _1, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Slti {
                 address,
@@ -633,7 +577,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Icmp { rslt: _1, cond: slt, ty: _i, op1: _0, op2: imm },
                 Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Sltiu {
                 address,
@@ -645,7 +590,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Icmp { rslt: _1, cond: ult, ty: _i, op1: _0, op2: imm },
                 Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Xori {
                 address,
@@ -656,7 +602,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Xor { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+                Store { ty: _i, val: _1, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Ori {
                 address,
@@ -667,7 +614,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Or { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+                Store { ty: _i, val: _1, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Andi {
                 address,
@@ -678,7 +626,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 And { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+                Store { ty: _i, val: _1, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Slli {
                 address,
@@ -689,7 +638,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Shl { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+                Store { ty: _i, val: _1, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Srli {
                 address,
@@ -700,7 +650,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Lshr { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+                Store { ty: _i, val: _1, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Srai {
                 address,
@@ -711,7 +662,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Ashr { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+                Store { ty: _i, val: _1, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Add {
                 address,
@@ -723,7 +675,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Add { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Sub {
                 address,
@@ -735,7 +688,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Sub { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Sll {
                 address,
@@ -747,7 +701,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Shl { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Slt {
                 address,
@@ -760,7 +715,8 @@ impl Translator {
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Icmp { rslt: _2, cond: slt, ty: _i, op1: _0, op2: _1 },
                 Zext { rslt: _3, ty: _i1, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+                Store { ty: _i, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Sltu {
                 address,
@@ -773,7 +729,8 @@ impl Translator {
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Icmp { rslt: _2, cond: ult, ty: _i, op1: _0, op2: _1 },
                 Zext { rslt: _3, ty: _i1, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+                Store { ty: _i, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Xor {
                 address,
@@ -785,7 +742,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Xor { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Srl {
                 address,
@@ -797,7 +755,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Lshr { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Sra {
                 address,
@@ -809,7 +768,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Ashr { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Or {
                 address,
@@ -821,7 +781,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Or { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::And {
                 address,
@@ -833,10 +794,12 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 And { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Fence { address, raw, .. } => build_instructions! { address, raw, self.abi,
-                Fence { ord: monotonic },
+                Fence { ord: monotonic }, 
+                UnconBr { addr: next_pc },
             },
             RI::Ecall { address, raw, .. } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: a7 },
@@ -847,7 +810,8 @@ impl Translator {
                 Load { rslt: _5, ty: _i, ptr: a4 },
                 Load { rslt: _6, ty: _i, ptr: a5 },
                 Syscall { rslt: _7, ty: _i, nr: _0, arg1: _1, arg2: _2, arg3: _3, arg4: _4, arg5: _5, arg6: _6 },
-                Store { ty: _i, val: _7, ptr: a0 },
+                Store { ty: _i, val: _7, ptr: a0 }, 
+                UnconBr { addr: next_pc },
             },
             RI::Ebreak { .. } => panic!("`ebreak` is not implemented"),
 
@@ -884,7 +848,8 @@ impl Translator {
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i32 },
                     Load { rslt: _4, ty: _i32, ptr: _3 },
                     Zext { rslt: _5, ty: _i32, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Store { ty: _i, val: _5, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Ld {
@@ -919,7 +884,8 @@ impl Translator {
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i64 },
                     Load { rslt: _4, ty: _i64, ptr: _3 },
                     Sext { rslt: _5, ty: _i64, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Store { ty: _i, val: _5, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Sd {
@@ -955,7 +921,8 @@ impl Translator {
                     Add { rslt: _3, ty: _i, op1: _2, op2: imm },
                     Getdataptr { rslt: _4, ty: _i, addr: _3 },
                     Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
-                    Store { ty: _i64, val: _1, ptr: _5 },
+                    Store { ty: _i64, val: _1, ptr: _5 }, 
+                    UnconBr { addr: next_pc },
                 },
             },
             RI::Addiw {
@@ -969,7 +936,8 @@ impl Translator {
                 Add { rslt: _1, ty: _i, op1: _0, op2: imm },
                 Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
                 Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+                Store { ty: _i, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Slliw {
                 address,
@@ -982,7 +950,8 @@ impl Translator {
                 Shl { rslt: _1, ty: _i, op1: _0, op2: imm },
                 Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
                 Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+                Store { ty: _i, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Srliw {
                 address,
@@ -995,7 +964,8 @@ impl Translator {
                 Lshr { rslt: _1, ty: _i, op1: _0, op2: imm },
                 Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
                 Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+                Store { ty: _i, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Sraiw {
                 address,
@@ -1008,7 +978,8 @@ impl Translator {
                 Ashr { rslt: _1, ty: _i, op1: _0, op2: imm },
                 Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
                 Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+                Store { ty: _i, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Addw {
                 address,
@@ -1022,7 +993,8 @@ impl Translator {
                 Add { rslt: _2, ty: _i, op1: _0, op2: _1 },
                 Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
                 Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+                Store { ty: _i, val: _4, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Subw {
                 address,
@@ -1036,7 +1008,8 @@ impl Translator {
                 Sub { rslt: _2, ty: _i, op1: _0, op2: _1 },
                 Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
                 Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+                Store { ty: _i, val: _4, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Sllw {
                 address,
@@ -1050,7 +1023,8 @@ impl Translator {
                 Shl { rslt: _2, ty: _i, op1: _0, op2: _1 },
                 Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
                 Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+                Store { ty: _i, val: _4, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Srlw {
                 address,
@@ -1064,7 +1038,8 @@ impl Translator {
                 Lshr { rslt: _2, ty: _i, op1: _0, op2: _1 },
                 Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
                 Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+                Store { ty: _i, val: _4, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Sraw {
                 address,
@@ -1078,18 +1053,23 @@ impl Translator {
                 Ashr { rslt: _2, ty: _i, op1: _0, op2: _1 },
                 Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
                 Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+                Store { ty: _i, val: _4, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
 
             // Pseudoinstructions
-            RI::Nop { .. } => Vec::new(),
+            RI::Nop { address,
+                raw } => build_instructions! { address, raw, self.abi,
+                UnconBr { addr: next_pc },
+            },
             RI::Li {
                 address,
                 raw,
                 rd,
                 imm,
             } => build_instructions! { address, raw, self.abi,
-                Store { ty: _i, val: imm, ptr: rd },
+                Store { ty: _i, val: imm, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Mv {
                 address,
@@ -1098,7 +1078,8 @@ impl Translator {
                 rs1,
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
-                Store { ty: _i, val: _0, ptr: rd },
+                Store { ty: _i, val: _0, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Not {
                 address,
@@ -1110,7 +1091,8 @@ impl Translator {
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Xor { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Store { ty: _i, val: _1, ptr: rd },
+                    Store { ty: _i, val: _1, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 }
             }
             RI::Neg {
@@ -1123,7 +1105,8 @@ impl Translator {
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Sub { rslt: _1, ty: _i, op1: imm, op2: _0 },
-                    Store { ty: _i, val: _1, ptr: rd },
+                    Store { ty: _i, val: _1, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 }
             }
             RI::Negw {
@@ -1138,7 +1121,8 @@ impl Translator {
                     Sub { rslt: _1, ty: _i, op1: imm, op2: _0 },
                     Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
                     Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                    Store { ty: _i, val: _3, ptr: rd },
+                    Store { ty: _i, val: _3, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 }
             }
             RI::SextW {
@@ -1148,7 +1132,8 @@ impl Translator {
                 rs1,
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i, ptr: rs1 },
-                Store { ty: _i, val: _0, ptr: rd },
+                Store { ty: _i, val: _0, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Seqz {
                 address,
@@ -1161,7 +1146,8 @@ impl Translator {
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Icmp { rslt: _1, cond: eq, ty: _i, op1: _0, op2: imm },
                     Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                    Store { ty: _i, val: _2, ptr: rd },
+                    Store { ty: _i, val: _2, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 }
             }
             RI::Snez {
@@ -1175,7 +1161,8 @@ impl Translator {
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Icmp { rslt: _1, cond: ne, ty: _i, op1: _0, op2: imm },
                     Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                    Store { ty: _i, val: _2, ptr: rd },
+                    Store { ty: _i, val: _2, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 }
             }
             RI::Sltz {
@@ -1189,7 +1176,8 @@ impl Translator {
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Icmp { rslt: _1, cond: slt, ty: _i, op1: _0, op2: imm },
                     Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                    Store { ty: _i, val: _2, ptr: rd },
+                    Store { ty: _i, val: _2, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 }
             }
             RI::Sgtz {
@@ -1203,7 +1191,8 @@ impl Translator {
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Icmp { rslt: _1, cond: sgt, ty: _i, op1: _0, op2: imm },
                     Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                    Store { ty: _i, val: _2, ptr: rd },
+                    Store { ty: _i, val: _2, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 }
             }
 
@@ -1287,22 +1276,24 @@ impl Translator {
             }
 
             RI::J { address, raw, addr } => build_instructions! { address, raw, self.abi,
-                UnconBr { addr: addr },
+                // UnconBr { addr: addr },
+                Ret { ty: _i, val: addr },
             },
             RI::Jr { address, raw, rs1 } => {
-                let default = Value::Address(Address(0x1));
-                let targets: Vec<_> = self
-                    .intra_targets.get(&func).cloned().unwrap_or_default()
-                    .into_iter()
-                    .map(Value::Address)
-                    // .filter_map(|addr| if &addr > address {Some(Value::Address(addr))} else {None})
-                    .collect();
-                    // if targets.len() >= 300 {
-                    //     println!("jr {:?} - {}", address, targets.len());
-                    // }
+                // let default = Value::Address(Address(0x1));
+                // let targets: Vec<_> = self
+                //     .intra_targets.get(&func).cloned().unwrap_or_default()
+                //     .into_iter()
+                //     .map(Value::Address)
+                //     // .filter_map(|addr| if &addr > address {Some(Value::Address(addr))} else {None})
+                //     .collect();
+                //     // if targets.len() >= 300 {
+                //     //     println!("jr {:?} - {}", address, targets.len());
+                //     // }
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Switch { ty: _i, val: _0, dflt: default, tgts: targets },
+                    // Switch { ty: _i, val: _0, dflt: default, tgts: targets }, 
+                Ret { ty: _i, val: _0 },
                 }
             }
             RI::OffsetJr {
@@ -1311,68 +1302,72 @@ impl Translator {
                 imm,
                 rs1,
             } => {
-                let default = Value::Address(Address(0x1));
-                let targets: Vec<_> = self
-                    .intra_targets.get(&func).cloned().unwrap_or_default()
-                    .into_iter()
-                    .map(Value::Address)
-                    .collect();
-                    // if targets.len() >= 300 {
-                    //     println!("offsetjr {:?}", address);
-                    // }
+                // let default = Value::Address(Address(0x1));
+                // let targets: Vec<_> = self
+                //     .intra_targets.get(&func).cloned().unwrap_or_default()
+                //     .into_iter()
+                //     .map(Value::Address)
+                //     .collect();
+                //     // if targets.len() >= 300 {
+                //     //     println!("offsetjr {:?}", address);
+                //     // }
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Switch { ty: _i, val: _1, dflt: default, tgts: targets },
+                    // Switch { ty: _i, val: _1, dflt: default, tgts: targets }, 
+                Ret { ty: _i, val: _1 },
                 }
             }
             RI::PseudoJalr { address, raw, rs1 } => {
-                let default = Value::Address(Address(0x1));
-                let targets: Vec<_> = self
-                    .inter_targets
-                    .clone()
-                    .into_iter()
-                    .map(Value::Address)
-                    .collect();
+                // let default = Value::Address(Address(0x1));
+                // let targets: Vec<_> = self
+                //     .inter_targets
+                //     .clone()
+                //     .into_iter()
+                //     .map(Value::Address)
+                //     .collect();
                 
-                    // if targets.len() >= 300 {
-                    //     println!("PseudoJalr {:?}", address);
-                    // }
+                //     // if targets.len() >= 300 {
+                //     //     println!("PseudoJalr {:?}", address);
+                //     // }
                 let imm = &Immediate(0);
                 let rs2 = &Register::Ra;
                 build_instructions! { address, raw, self.abi,
                     Store { ty: _i, val: next_pc, ptr: rs2 },
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Switch { ty: _i, val: _1, dflt: default, tgts: targets },
+                    // Switch { ty: _i, val: _1, dflt: default, tgts: targets }, 
+                Ret { ty: _i, val: _1 },
                 }
             }
             RI::Ret { address, raw } => {
-                let default = Value::Address(Address(0x1));
-                let mut targets: Vec<_> = self
-                    .ret_targets.get(&func).cloned().unwrap_or_default();
-                let rel_targets: Vec<_> = self
-                    .rel_ret_targets
-                    .clone();
-                targets.extend(rel_targets);
+                // let default = Value::Address(Address(0x1));
+                // let mut targets: Vec<_> = self
+                //     .ret_targets.get(&func).cloned().unwrap_or_default();
+                // let rel_targets: Vec<_> = self
+                //     .rel_ret_targets
+                //     .clone();
+                // targets.extend(rel_targets);
 
-                self.inherit(&func, &mut targets);
+                // self.inherit(&func, &mut targets);
                 
-                targets.sort_unstable();
-                targets.dedup();
-                let targets:Vec<_> =     targets.into_iter()
-                    .map(Value::Address)
-                    .collect();
+                // targets.sort_unstable();
+                // targets.dedup();
+                // let targets:Vec<_> =     targets.into_iter()
+                //     .map(Value::Address)
+                //     .collect();
 
                 let rs1 = &Register::Ra;
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Switch { ty: _i, val: _0, dflt: default, tgts: targets },
+                    // Switch { ty: _i, val: _0, dflt: default, tgts: targets }, 
+                Ret { ty: _i, val: _0 },
                 }
             }
 
             RI::PseudoFence { address, raw } => build_instructions! { address, raw, self.abi,
-                Fence { ord: monotonic },
+                Fence { ord: monotonic }, 
+                UnconBr { addr: next_pc },
             },
 
             // Misc
@@ -1390,7 +1385,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Mul { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Mulw {
                 address,
@@ -1404,7 +1400,8 @@ impl Translator {
                 Mul { rslt: _2, ty: _i, op1: _0, op2: _1 },
                 Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
                 Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+                Store { ty: _i, val: _4, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Divw {
                 address,
@@ -1418,7 +1415,8 @@ impl Translator {
                 Sdiv { rslt: _2, ty: _i, op1: _0, op2: _1 },
                 Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
                 Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+                Store { ty: _i, val: _4, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Divu {
                 address,
@@ -1430,7 +1428,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Udiv { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Divuw {
                 address,
@@ -1442,7 +1441,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Udiv { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Remu {
                 address,
@@ -1454,7 +1454,8 @@ impl Translator {
                 Load { rslt: _0, ty: _i, ptr: rs1 },
                 Load { rslt: _1, ty: _i, ptr: rs2 },
                 Urem { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+                Store { ty: _i, val: _2, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Remw {
                 address,
@@ -1468,7 +1469,8 @@ impl Translator {
                 Srem { rslt: _2, ty: _i, op1: _0, op2: _1 },
                 Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
                 Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+                Store { ty: _i, val: _4, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Mulhu {
                 address,
@@ -1486,7 +1488,8 @@ impl Translator {
                     Mul { rslt: _4, ty: _i128, op1: _1, op2: _3 },
                     Lshr { rslt: _5, ty: _i128, op1: _4, op2: imm },
                     Trunc { rslt: _6, ty: _i128, val: _5, ty2: _i64 },
-                    Store { ty: _i64, val: _6, ptr: rd },
+                    Store { ty: _i64, val: _6, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 }
             }
 
@@ -1503,7 +1506,8 @@ impl Translator {
                 Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i64 },
                 Load { rslt: _4, ty: _i64, ptr: _3 },
                 Bitcast { rslt: _5, ty: _i64, val: _4, ty2: _d },
-                Store { ty: _d, val: _5, ptr: frd },
+                Store { ty: _d, val: _5, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Fsd {
                 address,
@@ -1518,7 +1522,8 @@ impl Translator {
                 Add { rslt: _3, ty: _i, op1: _2, op2: imm },
                 Getdataptr { rslt: _4, ty: _i, addr: _3 },
                 Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
-                Store { ty: _i64, val: _1, ptr: _5 },
+                Store { ty: _i64, val: _1, ptr: _5 }, 
+                UnconBr { addr: next_pc },
             },
             RI::Flw {
                 address,
@@ -1534,7 +1539,8 @@ impl Translator {
                 Load { rslt: _4, ty: _i32, ptr: _3 },
                 Bitcast { rslt: _5, ty: _i32, val: _4, ty2: _f },
                 Fpext { rslt: _6, ty: _f, val: _5, ty2: _d },
-                Store { ty: _d, val: _6, ptr: frd },
+                Store { ty: _d, val: _6, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::Fsw {
                 address,
@@ -1550,7 +1556,8 @@ impl Translator {
                 Add { rslt: _4, ty: _i, op1: _3, op2: imm },
                 Getdataptr { rslt: _5, ty: _i, addr: _4 },
                 Bitcast { rslt: _6, ty: _i8, val: _5, ty2: _i32 },
-                Store { ty: _i32, val: _2, ptr: _6 },
+                Store { ty: _i32, val: _2, ptr: _6 }, 
+                UnconBr { addr: next_pc },
             },
             RI::FmvXD {
                 address,
@@ -1560,7 +1567,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Bitcast { rslt: _1, ty: _d, val: _0, ty2: _i64 },
-                Store { ty: _i64, val: _1, ptr: rd },
+                Store { ty: _i64, val: _1, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FmvDX {
                 address,
@@ -1570,7 +1578,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Bitcast { rslt: _1, ty: _i64, val: _0, ty2: _d },
-                Store { ty: _d, val: _1, ptr: frd },
+                Store { ty: _d, val: _1, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FmvXW {
                 address,
@@ -1580,7 +1589,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Bitcast { rslt: _1, ty: _d, val: _0, ty2: _i64 },
-                Store { ty: _i64, val: _1, ptr: rd },
+                Store { ty: _i64, val: _1, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FmvWX {
                 address,
@@ -1590,7 +1600,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Bitcast { rslt: _1, ty: _i64, val: _0, ty2: _d },
-                Store { ty: _d, val: _1, ptr: frd },
+                Store { ty: _d, val: _1, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FmulD {
                 address,
@@ -1603,7 +1614,8 @@ impl Translator {
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fmul { rslt: _2, ty: _d, op1: _0, op2: _1 },
-                Store { ty: _d, val: _2, ptr: frd },
+                Store { ty: _d, val: _2, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FsubD {
                 address,
@@ -1616,7 +1628,8 @@ impl Translator {
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fsub { rslt: _2, ty: _d, op1: _0, op2: _1 },
-                Store { ty: _d, val: _2, ptr: frd },
+                Store { ty: _d, val: _2, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FaddD {
                 address,
@@ -1629,7 +1642,8 @@ impl Translator {
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fadd { rslt: _2, ty: _d, op1: _0, op2: _1 },
-                Store { ty: _d, val: _2, ptr: frd },
+                Store { ty: _d, val: _2, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FnegD {
                 address,
@@ -1639,7 +1653,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Fneg { rslt: _1, ty: _d, op1: _0 },
-                Store { ty: _d, val: _1, ptr: frd },
+                Store { ty: _d, val: _1, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FmaddD {
                 address,
@@ -1655,7 +1670,8 @@ impl Translator {
                 Load { rslt: _2, ty: _d, ptr: frs3 },
                 Fmul { rslt: _3, ty: _d, op1: _0, op2: _1 },
                 Fadd { rslt: _4, ty: _d, op1: _3, op2: _2 },
-                Store { ty: _d, val: _4, ptr: frd },
+                Store { ty: _d, val: _4, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FmsubD {
                 address,
@@ -1671,7 +1687,8 @@ impl Translator {
                 Load { rslt: _2, ty: _d, ptr: frs3 },
                 Fmul { rslt: _3, ty: _d, op1: _0, op2: _1 },
                 Fsub { rslt: _4, ty: _d, op1: _3, op2: _2 },
-                Store { ty: _d, val: _4, ptr: frd },
+                Store { ty: _d, val: _4, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FnmsubD {
                 address,
@@ -1688,7 +1705,8 @@ impl Translator {
                 Fmul { rslt: _3, ty: _d, op1: _0, op2: _1 },
                 Fneg { rslt: _4, ty: _d, op1: _3 },
                 Fadd { rslt: _5, ty: _d, op1: _4, op2: _2 },
-                Store { ty: _d, val: _5, ptr: frd },
+                Store { ty: _d, val: _5, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FmulS {
                 address,
@@ -1701,7 +1719,8 @@ impl Translator {
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fmul { rslt: _2, ty: _d, op1: _0, op2: _1 },
-                Store { ty: _d, val: _2, ptr: frd },
+                Store { ty: _d, val: _2, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FdivD {
                 address,
@@ -1714,7 +1733,8 @@ impl Translator {
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fdiv { rslt: _2, ty: _d, op1: _0, op2: _1 },
-                Store { ty: _d, val: _2, ptr: frd },
+                Store { ty: _d, val: _2, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FdivS {
                 address,
@@ -1727,7 +1747,8 @@ impl Translator {
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fdiv { rslt: _2, ty: _d, op1: _0, op2: _1 },
-                Store { ty: _d, val: _2, ptr: frd },
+                Store { ty: _d, val: _2, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
 
             RI::FcvtSL {
@@ -1739,7 +1760,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
-                Store { ty: _d, val: _1, ptr: frd },
+                Store { ty: _d, val: _1, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FcvtDWu {
                 address,
@@ -1750,7 +1772,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Uitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
-                Store { ty: _d, val: _1, ptr: frd },
+                Store { ty: _d, val: _1, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FcvtDW {
                 address,
@@ -1761,7 +1784,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
-                Store { ty: _d, val: _1, ptr: frd },
+                Store { ty: _d, val: _1, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FcvtWD {
                 address,
@@ -1772,7 +1796,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Fptosi { rslt: _1, ty: _d, val: _0, ty2: _i64 },
-                Store { ty: _i64, val: _1, ptr: rd },
+                Store { ty: _i64, val: _1, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FcvtSW {
                 address,
@@ -1783,7 +1808,8 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
-                Store { ty: _d, val: _1, ptr: frd },
+                Store { ty: _d, val: _1, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FcvtDS {
                 address,
@@ -1793,7 +1819,8 @@ impl Translator {
                 rm,
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
-                Store { ty: _d, val: _0, ptr: frd },
+                Store { ty: _d, val: _0, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FcvtSD {
                 address,
@@ -1803,7 +1830,8 @@ impl Translator {
                 rm,
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
-                Store { ty: _d, val: _0, ptr: frd },
+                Store { ty: _d, val: _0, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
 
             RI::FmvD {
@@ -1813,7 +1841,8 @@ impl Translator {
                 frs1,
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
-                Store { ty: _d, val: _0, ptr: frd },
+                Store { ty: _d, val: _0, ptr: frd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FeqD {
                 address,
@@ -1826,7 +1855,8 @@ impl Translator {
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: oeq, ty: _d, op1: _0, op2: _1 },
                 Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-                Store { ty: _i64, val: _3, ptr: rd },
+                Store { ty: _i64, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FltD {
                 address,
@@ -1839,7 +1869,8 @@ impl Translator {
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: olt, ty: _d, op1: _0, op2: _1 },
                 Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-                Store { ty: _i64, val: _3, ptr: rd },
+                Store { ty: _i64, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FleD {
                 address,
@@ -1852,7 +1883,8 @@ impl Translator {
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: ole, ty: _d, op1: _0, op2: _1 },
                 Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-                Store { ty: _i64, val: _3, ptr: rd },
+                Store { ty: _i64, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FeqS {
                 address,
@@ -1865,7 +1897,8 @@ impl Translator {
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: oeq, ty: _d, op1: _0, op2: _1 },
                 Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-                Store { ty: _i64, val: _3, ptr: rd },
+                Store { ty: _i64, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FltS {
                 address,
@@ -1878,7 +1911,8 @@ impl Translator {
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: olt, ty: _d, op1: _0, op2: _1 },
                 Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-                Store { ty: _i64, val: _3, ptr: rd },
+                Store { ty: _i64, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
             RI::FleS {
                 address,
@@ -1891,17 +1925,42 @@ impl Translator {
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: ole, ty: _d, op1: _0, op2: _1 },
                 Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-                Store { ty: _i64, val: _3, ptr: rd },
+                Store { ty: _i64, val: _3, ptr: rd }, 
+                UnconBr { addr: next_pc },
             },
 
-            RI::Frrm { .. } => vec![],
-            RI::Csrs { .. } => vec![],
-            RI::Csrrw { .. } => vec![],
-            RI::Csrr { .. } => vec![],
-            RI::Csrsi { .. } => vec![],
-            RI::Csrrsi { .. } => vec![],
-            RI::Csrrci { .. } => vec![],
-            RI::Csrrs { .. } => vec![],
+            RI::Frrm { address,
+                raw, .. } => build_instructions! { address, raw, self.abi,
+                UnconBr { addr: next_pc },
+            },
+            RI::Csrs { address,
+                raw, .. } => build_instructions! { address, raw, self.abi,
+                UnconBr { addr: next_pc },
+            },
+            RI::Csrrw { address,
+                raw , ..} => build_instructions! { address, raw, self.abi,
+                UnconBr { addr: next_pc },
+            },
+            RI::Csrr { address,
+                raw , ..} => build_instructions! { address, raw, self.abi,
+                UnconBr { addr: next_pc },
+            },
+            RI::Csrsi { address,
+                raw, .. } => build_instructions! { address, raw, self.abi,
+                UnconBr { addr: next_pc },
+            },
+            RI::Csrrsi { address,
+                raw, .. } => build_instructions! { address, raw, self.abi,
+                UnconBr { addr: next_pc },
+            },
+            RI::Csrrci { address,
+                raw , ..} => build_instructions! { address, raw, self.abi,
+                UnconBr { addr: next_pc },
+            },
+            RI::Csrrs { address,
+                raw , ..} => build_instructions! { address, raw, self.abi,
+                UnconBr { addr: next_pc },
+            },
 
             RI::ZextB {
                 address,
@@ -1913,7 +1972,8 @@ impl Translator {
                 build_instructions! { address, raw, self.abi,
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     And { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Store { ty: _i, val: _1, ptr: rd },
+                    Store { ty: _i, val: _1, ptr: rd }, 
+                    UnconBr { addr: next_pc },
                 }
             }
 
