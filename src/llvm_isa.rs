@@ -338,8 +338,16 @@ fallback:
                 let b_s = b.iter()
                 .fold(String::new(), |s, b| s + &format!("{}\n", b));
                 s + &format!("
-                define i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg) {{
+                define i64 @func_{}(%struct.reg* %greg, %struct.freg* %gfreg) {{
                     entry:
+                        %reg = alloca %struct.reg
+                        %freg = alloca %struct.freg
+                        %reg_p = bitcast %struct.reg* %reg to i8*
+                        %freg_p = bitcast %struct.freg* %freg to i8*
+                        %greg_p = bitcast %struct.reg* %greg to i8*
+                        %gfreg_p = bitcast %struct.freg* %gfreg to i8*
+                        call void @llvm.memcpy.p0i8.p0i8.i64(i8* %reg_p, i8* %greg_p, i64 256, i1 false)
+                        call void @llvm.memcpy.p0i8.p0i8.i64(i8* %freg_p, i8* %gfreg_p, i64 256, i1 false)
                     br label %label_{}
                     {}
                     label_1:
@@ -377,6 +385,7 @@ fallback:
 %struct.reg = type {{ i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64 }}
 %struct.freg = type {{ double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double }}
 declare void @llvm.memset.p0i8.i64(i8* nocapture writeonly, i8, i64, i1 immarg)
+declare void @llvm.memcpy.p0i8.p0i8.i64(i8* noalias nocapture writeonly, i8* noalias nocapture readonly, i64, i1 immarg)
 declare dso_local void @exit(i32)
 declare dso_local i32 @printf(i8*, ...)
 @.str.d = private unnamed_addr constant [14 x i8] c\"#value: %ld#\\0A\\00\", align 1
@@ -1388,7 +1397,12 @@ impl Display for Instruction {
             }
 
             Call { addr } => {
-                write!(f, "call i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg)", addr)
+                write!(f, "
+                call void @llvm.memcpy.p0i8.p0i8.i64(i8* %greg_p, i8* %reg_p, i64 256, i1 false)
+                call void @llvm.memcpy.p0i8.p0i8.i64(i8* %gfreg_p, i8* %freg_p, i64 256, i1 false)
+                call i64 @func_{}(%struct.reg* %greg, %struct.freg* %gfreg)
+                call void @llvm.memcpy.p0i8.p0i8.i64(i8* %reg_p, i8* %greg_p, i64 256, i1 false)
+                call void @llvm.memcpy.p0i8.p0i8.i64(i8* %freg_p, i8* %gfreg_p, i64 256, i1 false)", addr)
             }
 
             SwitchCall {
@@ -1398,19 +1412,29 @@ impl Display for Instruction {
                 tgts,
                 next_pc,
             } => {
-                let mut s = format!("switch {} {}, label %label_{} [", ty, val, dflt);
+                let mut s = format!("
+                call void @llvm.memcpy.p0i8.p0i8.i64(i8* %greg_p, i8* %reg_p, i64 256, i1 false)
+                call void @llvm.memcpy.p0i8.p0i8.i64(i8* %gfreg_p, i8* %freg_p, i64 256, i1 false)
+                switch {} {}, label %label_{} [", ty, val, dflt);
                 for target in tgts {
                     s += &format!("{} {}, label %call_{next_pc}_{} ", ty, target, target);
                 }
                 s += "]\n";
                 for target in tgts {
-                    s += &format!("call_{next_pc}_{}:\n  call i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg)\n  br label %label_{}\n", target, target, next_pc);
+                    s += &format!("call_{next_pc}_{}:
+                call i64 @func_{}(%struct.reg* %greg, %struct.freg* %gfreg)
+                call void @llvm.memcpy.p0i8.p0i8.i64(i8* %reg_p, i8* %greg_p, i64 256, i1 false)
+                call void @llvm.memcpy.p0i8.p0i8.i64(i8* %freg_p, i8* %gfreg_p, i64 256, i1 false)
+                br label %label_{}\n", target, target, next_pc);
                 }
                 write!(f, "{}", s)
             }
 
             Ret { ty, val } => {
-                write!(f, "ret {} {}", ty, val)
+                write!(f, "
+                call void @llvm.memcpy.p0i8.p0i8.i64(i8* %greg_p, i8* %reg_p, i64 256, i1 false)
+                call void @llvm.memcpy.p0i8.p0i8.i64(i8* %gfreg_p, i8* %freg_p, i64 256, i1 false)
+                ret {} {}", ty, val)
             }
             Unreachable {addr}  => {
                 write!(f, "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {addr})\nunreachable")
