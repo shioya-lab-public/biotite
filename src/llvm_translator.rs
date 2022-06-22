@@ -8,6 +8,7 @@ use crate::riscv_isa::{
     Instruction as RiscvInstruction, Program as RiscvProgram, Raw, Register,
 };
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::mem;
 
 pub struct Translator {
@@ -62,11 +63,176 @@ impl Translator {
             code_blocks.extend(blocks);
         }
 
+        let mut func_targets = HashMap::new();
+        let mut func_name = "";
+        let mut func_addr = code_blocks[0].address;
+        for block in &code_blocks {
+            if !block.symbol.is_empty() && block.symbol != func_name {
+                func_targets.insert(block.address, Vec::new());
+                func_name = block.symbol.as_str();
+                func_addr = block.address;
+                // println!("{} - {}", func_name, func_addr);
+            }
+            func_targets.get_mut(&func_addr).unwrap().push(block.address);
+        }
+        for (_, v) in func_targets.iter_mut() {
+            v.sort();
+            v.dedup();
+        }
+        let mut func_name = code_blocks[0].symbol.clone();
+        let mut func_addr = code_blocks[0].address;
+        let mut funcs = Vec::new();
+        let mut func_blocks = Vec::new();
+        for mut block in code_blocks {
+            use RiscvInstruction as RI;
+            use Instruction::*;
+
+            if !block.symbol.is_empty() && block.symbol != func_name {
+                funcs.push(func_blocks);
+                func_blocks = Vec::new();
+                func_name = block.symbol.clone();
+                func_addr = block.address;
+            }
+
+            let insts = match &block.instruction_blocks[0].riscv_instruction {
+                RI::Jal {
+                    address,
+                    raw,
+                    rd,
+                    addr,
+                } => build_instructions! { address, raw, self.abi,
+                    Store { ty: _i, val: next_pc, ptr: rd },
+                    Call { addr: addr },
+                    UnconBr { addr: next_pc },
+                },
+                RI::Jalr {
+                    address,
+                    raw,
+                    rd,
+                    imm,
+                    rs1,
+                } => {
+                    let default = Value::Address(Address(0x1));
+                    let targets: Vec<_>= func_targets
+                        .clone()
+                        .into_keys()
+                        .map(Value::Address)
+                        .collect();
+                    build_instructions! { address, raw, self.abi,
+                        Store { ty: _i, val: next_pc, ptr: rd },
+                        Load { rslt: _0, ty: _i, ptr: rs1 },
+                        Add { rslt: _1, ty: _i, op1: _0, op2: imm },
+                        SwitchCall { ty: _i, val: _1, dflt: default, tgts: targets, next_pc: next_pc }, 
+                    }
+                }
+                RI::ImplicitJalr {
+                    address,
+                    raw,
+                    imm,
+                    rs1,
+                } => {
+                    let default = Value::Address(Address(0x1));
+                    let targets: Vec<_>= func_targets
+                        .clone()
+                        .into_keys()
+                        .map(Value::Address)
+                        .collect();
+                    let rs2 = &Register::Ra;
+                    build_instructions! { address, raw, self.abi,
+                        Store { ty: _i, val: next_pc, ptr: rs2 },
+                        Load { rslt: _0, ty: _i, ptr: rs1 },
+                        Add { rslt: _1, ty: _i, op1: _0, op2: imm },
+                        SwitchCall { ty: _i, val: _1, dflt: default, tgts: targets, next_pc: next_pc }, 
+                    }
+                }
+                RI::J { address, raw, addr } => {
+                    if address == &Address(0) {
+                        continue
+                    } else if func_targets.contains_key(&addr) {
+                        build_instructions! { address, raw, self.abi,
+                            Call { addr: addr },
+                            // Unreachable {addr: address},
+                            Ret{ty: _i64, val: addr},
+                        }
+                    } else {
+                        build_instructions! { address, raw, self.abi,
+                            UnconBr { addr: addr },
+                        }
+                    }
+                }
+                RI::Jr { address, raw, rs1 } => {
+                    let default = Value::Address(Address(0x1));
+                    let targets: Vec<_> = func_targets.get(&func_addr).cloned().unwrap()
+                    .into_iter().map(Value::Address)
+                    .collect();
+                    build_instructions! { address, raw, self.abi,
+                        Load { rslt: _0, ty: _i, ptr: rs1 },
+                        Switch { ty: _i, val: _0, dflt: default, tgts: targets }, 
+                    }
+                }
+                RI::OffsetJr {
+                    address,
+                    raw,
+                    imm,
+                    rs1,
+                } => {
+                    let default = Value::Address(Address(0x1));
+                    let targets: Vec<_> = func_targets.get(&func_addr).cloned().unwrap()
+                    .into_iter().map(Value::Address)
+                    .collect();
+                    build_instructions! { address, raw, self.abi,
+                        Load { rslt: _0, ty: _i, ptr: rs1 },
+                        Add { rslt: _1, ty: _i, op1: _0, op2: imm },
+                        Switch { ty: _i, val: _1, dflt: default, tgts: targets }, 
+                    }
+                }
+                RI::PseudoJalr { address, raw, rs1 } => {
+                    let default = Value::Address(Address(0x1));
+                    let targets: Vec<_>= func_targets
+                        .clone()
+                        .into_keys()
+                        .map(Value::Address)
+                        .collect();
+                    let imm = &Immediate(0);
+                    let rs2 = &Register::Ra;
+                    build_instructions! { address, raw, self.abi,
+                        Store { ty: _i, val: next_pc, ptr: rs2 },
+                        Load { rslt: _0, ty: _i, ptr: rs1 },
+                        Add { rslt: _1, ty: _i, op1: _0, op2: imm },
+                        SwitchCall { ty: _i, val: _1, dflt: default, tgts: targets, next_pc: next_pc },
+                    }
+                }
+                RI::Ret { address, raw } => {
+                    let rs1 = &Register::Ra;
+                    build_instructions! { address, raw, self.abi,
+                        Load { rslt: _0, ty: _i, ptr: rs1 },
+                        Ret { ty: _i, val: _0 },
+                    }
+                }
+                _ => block.instruction_blocks[0].instructions.clone(),
+            };
+            block.instruction_blocks[0].instructions = insts;
+            
+            
+            func_blocks.push(block);
+        }
+        funcs.push(func_blocks);
+
+        for func in funcs.iter_mut() {
+            if let Instruction::UnconBr{addr: Value::Address(addr)} =  func.last().unwrap().instruction_blocks[0].instructions.last().unwrap() {
+                let pc = func.last().unwrap().instruction_blocks[0].riscv_instruction.address();
+                if pc < *addr {
+                    func.last_mut().unwrap().instruction_blocks[0].instructions.pop();
+                    func.last_mut().unwrap().instruction_blocks[0].instructions.push(Instruction::Unreachable{addr: Value::Address(pc)});
+                }
+            }
+        }
+
         Program {
             abi: self.abi,
             entry: self.entry,
             data_blocks: mem::take(&mut self.data_blocks),
-            code_blocks,
+            functions: funcs,
             targets,
         }
     }

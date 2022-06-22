@@ -223,7 +223,8 @@ pub struct Program {
     pub abi: Abi,
     pub entry: Address,
     pub data_blocks: Vec<DataBlock>,
-    pub code_blocks: Vec<CodeBlock>,
+    // pub code_blocks: Vec<CodeBlock>,
+    pub functions: Vec<Vec<CodeBlock>>,
     // pub stack: HashMap<Address, HashSet<Type>>,
     pub targets: Vec<Address>,
 }
@@ -330,10 +331,26 @@ fallback:
         //     }
         // }
         let entry = format!("  %rslt = call i64 @code(i64 {}, %struct.reg* %reg, %struct.freg* %freg)", self.entry);
-        let code_blocks = self
-            .code_blocks
+        let funcs = self
+            .functions
             .iter()
-            .fold(String::new(), |s, b| s + &format!("{}\n", b));
+            .fold(String::new(), |s, b| {
+                let b_s = b.iter()
+                .fold(String::new(), |s, b| s + &format!("{}\n", b));
+                s + &format!("
+                define i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg) {{
+                    entry:
+                    br label %label_{}
+                    {}
+                    label_1:
+                    call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {})
+                        unreachable
+                    label_0:
+                        call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {})
+                            unreachable
+                }}\n", b[0].address, b[0].address, b_s, b[0].address, b[0].address)
+                
+            });
 
         // let mut targets: Vec<_> = Vec::new();
         // for block in self.code_blocks.iter() {
@@ -375,40 +392,18 @@ define i{xlen} @main(i32 %argc, i8** %argv) {{
 
 {}
 
-  %entry_p= alloca i64
-  store i64 {}, i64* %entry_p
-  br label %loop
-loop:
-  %entry = load i64, i64* %entry_p
-  %target = call i64 @code(i64 %entry, %struct.reg* %reg, %struct.freg* %freg)
-  ; %addr = call i64 @interpret(i64 %target, %struct.reg* %reg, %struct.freg* %freg)
-  store i64 %target, i64* %entry_p
-  br label %loop
+%target = call i64 @func_65730(%struct.reg* %reg, %struct.freg* %freg)
+call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 0)
+unreachable
 }}
 
 define i64 @interpret(i64 %addr, %struct.reg* %reg, %struct.freg* %freg) {{
     ret i64 %addr
 }}
 
-define i{xlen} @code(i64 %entry, %struct.reg* %reg, %struct.freg* %freg) {{
-  %switch_address = alloca i64
-  %switch_target = alloca i64
-  {dispatch}
-label_1:
-  %switch_address_value = load i64, i64* %switch_address
-  %switch_target_value = load i64, i64* %switch_target
-  ;call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_address_value)
-  ;call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_target_value)
-  ;call void @exit(i32 2)
-  ret i64 %switch_target_value
-  
 
 {}
 
-label_0:
-  ; %ret = load i{xlen}, i{xlen}* %a0
-  ret i{xlen} 101
-}}
 ",
             abi,
             syscall,
@@ -418,8 +413,7 @@ label_0:
             registers,
             fpregisters,
             stack,
-            self.entry,
-            code_blocks
+            funcs
         )
     }
 }
@@ -436,7 +430,7 @@ impl Display for CodeBlock {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let mut code_block = format!("; {}: {} <{}>\n", self.address, self.section, self.symbol);
         code_block += &format!("label_{}:
-  ;call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {})\n", self.address, self.address);
+  ; call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {})\n", self.address, self.address);
         for inst_block in self.instruction_blocks.iter() {
             code_block += &format!("{}", inst_block);
         }
@@ -487,7 +481,7 @@ impl Display for Value {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Type {
     I1,
     I8,
@@ -528,7 +522,7 @@ impl Type {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Ordering {
     Monotonic,
     Acquire,
@@ -549,7 +543,7 @@ impl Display for Ordering {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Operation {
     Xchg,
     Add,
@@ -580,7 +574,7 @@ impl Display for Operation {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Condition {
     Eq,
     Ne,
@@ -609,7 +603,7 @@ impl Display for Condition {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum FPCondition {
     Oeq,
     Olt,
@@ -628,7 +622,7 @@ impl Display for FPCondition {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Instruction {
     // Terminator Instructions
     ConBr {
@@ -945,10 +939,23 @@ pub enum Instruction {
         addr: Value,
     },
 
+    Call {
+        addr: Value,
+    },
+    SwitchCall {
+        ty: Type,
+        val: Value,
+        dflt: Value,
+        tgts: Vec<Value>,
+        next_pc: Value,
+    },
     Ret {
         ty: Type,
         val: Value,
-    }
+    },
+    Unreachable {
+        addr: Value,
+    },
 }
 
 static mut T: usize = 1000;
@@ -964,22 +971,22 @@ impl Display for Instruction {
                 iftrue,
                 iffalse,
             } =>
-            // write!(
-            //     f,
-            //     "br i1 {}, label %label_{}, label %label_{}",
-            //     cond, iftrue, iffalse
-            // ),
-            {
-                let c = &format!("{cond}")[1..];
-                write!(
-                    f,
-                    "br i1 {cond}, label {cond}_t, label {cond}_f
-                    {c}_t:
-                      ret i64 {iftrue}
-                    {c}_f:
-                      ret i64 {iffalse}"
-                )
-            }
+            write!(
+                f,
+                "br i1 {}, label %label_{}, label %label_{}",
+                cond, iftrue, iffalse
+            ),
+            // {
+            //     let c = &format!("{cond}")[1..];
+            //     write!(
+            //         f,
+            //         "br i1 {cond}, label {cond}_t, label {cond}_f
+            //         {c}_t:
+            //           ret i64 {iftrue}
+            //         {c}_f:
+            //           ret i64 {iffalse}"
+            //     )
+            // }
             UnconBr { addr } => write!(f, "br label %label_{}", addr),
             Switch {
                 ty,
@@ -987,12 +994,12 @@ impl Display for Instruction {
                 dflt,
                 tgts,
             } => {
-                // let mut s = format!("store i64 {}, i64* %switch_target\nswitch {} {}, label %label_{} [", val, ty, val, dflt);
-                // for target in tgts {
-                //     s += &format!("{} {}, label %label_{} ", ty, target, target);
-                // }
-                // s += "]";
-                let s = format!("store i64 {}, i64* %switch_target\n  br label %label_1", val);
+                let mut s = format!("switch {} {}, label %label_{} [", ty, val, dflt);
+                for target in tgts {
+                    s += &format!("{} {}, label %label_{} ", ty, target, target);
+                }
+                s += "]";
+                // let s = format!("store i64 {}, i64* %switch_target\n  br label %label_1", val);
                 write!(f, "{}", s)
             }
 
@@ -1380,8 +1387,33 @@ impl Display for Instruction {
                 write!(f, "{} = call i8* @get_data_ptr({} {})", rslt, ty, addr)
             }
 
+            Call { addr } => {
+                write!(f, "call i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg)", addr)
+            }
+
+            SwitchCall {
+                ty,
+                val,
+                dflt,
+                tgts,
+                next_pc,
+            } => {
+                let mut s = format!("switch {} {}, label %label_{} [", ty, val, dflt);
+                for target in tgts {
+                    s += &format!("{} {}, label %call_{next_pc}_{} ", ty, target, target);
+                }
+                s += "]\n";
+                for target in tgts {
+                    s += &format!("call_{next_pc}_{}:\n  call i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg)\n  br label %label_{}\n", target, target, next_pc);
+                }
+                write!(f, "{}", s)
+            }
+
             Ret { ty, val } => {
                 write!(f, "ret {} {}", ty, val)
+            }
+            Unreachable {addr}  => {
+                write!(f, "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {addr})\nunreachable")
             }
         }
     }
