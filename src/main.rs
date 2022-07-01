@@ -1,24 +1,31 @@
+use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
-use structopt::StructOpt;
 
-#[derive(StructOpt)]
-#[structopt(name = "riscv2llvm")]
-struct Opt {
-    #[structopt(parse(from_os_str))]
+#[derive(Parser)]
+#[clap(version)]
+struct Arguments {
     input: PathBuf,
 
-    #[structopt(short, long, parse(from_os_str))]
+    #[clap(short, long)]
     output: Option<PathBuf>,
 
-    #[structopt(name = "mabi", short, long)]
-    abi: Option<String>,
+    #[clap(long, name = "auto-split-functions")]
+    auto_split_functions: bool,
+
+    #[clap(long)]
+    elf: Option<PathBuf>,
 }
 
 fn main() {
-    let opt = Opt::from_args();
-    let rv_source = fs::read_to_string(&opt.input).expect("Unable to read the input file");
-    let ll_source = riscv2llvm::run(&rv_source, &opt.abi);
-    let path = opt.output.unwrap_or_else(|| opt.input.with_extension("ll"));
-    fs::write(path, ll_source).expect("Unable to write the output file");
+    let arguments = Arguments::parse();
+    let source = fs::read_to_string(&arguments.input).expect("Unable to read the input file");
+    let elf = arguments.elf.map(|path| {
+        fs::read_to_string(&path).expect("Unable to read the ELF information of the input file")
+    });
+    let source = riscv2llvm::run(&source, arguments.auto_split_functions, &elf);
+    let path = arguments
+        .output
+        .unwrap_or_else(|| arguments.input.with_extension("ll"));
+    fs::write(&path, &source).expect("Unable to write the output file");
 }

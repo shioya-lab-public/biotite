@@ -347,7 +347,8 @@ macro_rules! build_instructions {
 }
 
 pub(crate) use {
-    _i, _i1, _i16, _i32, _i64, _i8, a0, a1, a2, a3, a4, a5, a7, acquire, addr, address, frs3,
-    build_instructions, default, eq, imm, imm_12, monotonic, ne, next_pc, rd, release, rs1, rs2,
-    seq_cst, sge, sgt, sle, slt, stk, targets, uge, ult, _0, _1, _2, _3, _4, _5, _6, _7, frd, _d, frs2, frs1, _i128, _f, oeq, olt, ole
+    _d, _f, _i, _i1, _i128, _i16, _i32, _i64, _i8, a0, a1, a2, a3, a4, a5, a7, acquire, addr,
+    address, build_instructions, default, eq, frd, frs1, frs2, frs3, imm, imm_12, monotonic, ne,
+    next_pc, oeq, ole, olt, rd, release, rs1, rs2, seq_cst, sge, sgt, sle, slt, stk, targets, uge,
+    ult, _0, _1, _2, _3, _4, _5, _6, _7,
 };

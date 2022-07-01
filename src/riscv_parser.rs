@@ -90,12 +90,12 @@ impl Parser {
             let Address(head) = data_block.address;
             let len = data_block.bytes.len();
             if head as usize + len > end {
-                end = head as usize+ len;
+                end = head as usize + len;
             }
         }
-        let mut bytes = vec![0;end];
+        let mut bytes = vec![0; end];
         for data_block in &self.data_blocks {
-            let Address(head ) = data_block.address;
+            let Address(head) = data_block.address;
             for (i, byte) in data_block.bytes.iter().enumerate() {
                 bytes[head as usize + i] = *byte;
             }
@@ -268,7 +268,7 @@ impl Parser {
                         let mut i = 0;
                         let mut bs = Vec::new();
                         while i < bytes_str.len() {
-                            match u8::from_str_radix(&bytes_str[i..i+2], 16) {
+                            match u8::from_str_radix(&bytes_str[i..i + 2], 16) {
                                 Ok(b) => bs.push(b),
                                 Err(e) => panic!("{}: {:?}", e, inst),
                             }

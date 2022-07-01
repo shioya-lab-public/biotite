@@ -413,7 +413,6 @@ pub enum Csr {
     Timeh,
     Instreth,
     UnknownCsr(String),
-    
 }
 
 impl Csr {
