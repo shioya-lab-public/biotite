@@ -9,8 +9,7 @@ use llvm_translator::Translator;
 use riscv_parser::Parser;
 
 pub fn run(rv_source: &str, auto_split_functions: bool, elf: &Option<String>) -> String {
-    // let rv_program = Parser::new().run(rv_source, abi);
-    // let ll_program = Translator::new().run(rv_program);
-    // format!("{}", ll_program)
-    String::new()
+    let rv_program = Parser::new().run(rv_source);
+    let ll_program = Translator::new().run(rv_program);
+    format!("{}", ll_program)
 }

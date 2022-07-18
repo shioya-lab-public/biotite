@@ -19,13 +19,13 @@ struct Arguments {
 
 fn main() {
     let arguments = Arguments::parse();
-    let source = fs::read_to_string(&arguments.input).expect("Unable to read the input file");
+    let rv_source = fs::read_to_string(&arguments.input).expect("Unable to read the input file");
     let elf = arguments.elf.map(|path| {
         fs::read_to_string(&path).expect("Unable to read the ELF information of the input file")
     });
-    let source = riscv2llvm::run(&source, arguments.auto_split_functions, &elf);
-    let path = arguments
+    let ll_source = riscv2llvm::run(&rv_source, arguments.auto_split_functions, &elf);
+    let ll_path = arguments
         .output
         .unwrap_or_else(|| arguments.input.with_extension("ll"));
-    fs::write(&path, &source).expect("Unable to write the output file");
+    fs::write(&ll_path, &ll_source).expect("Unable to write the output file");
 }

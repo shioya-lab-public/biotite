@@ -8,7 +8,21 @@ A binary translator that translates RISC-V to LLVM IR.
 - Little-endian statically-linked executable files
 - Arch: RV64GC, ABI: LP64D
 
-### RISC-V Notes
+## Testing Commands
+
+``` Bash
+
+riscv64-unknown-linux-gnu-gcc -static test.c -o test
+riscv64-unknown-linux-gnu-strip -g test -o test.stripped
+llvm-objdump --disassemble-all --disassemble-zeroes test.stripped > test.dump
+
+llvm-objdump
+--all-headers
+--section-headers
+--syms
+```
+
+## RISC-V Notes
 
 - The base integer instruction sets use a two’s-complement representation for signed integer values.
 - RV32I: 40 insts including `ecall`, `ebreak`, and `fence`
@@ -30,7 +44,7 @@ Counter
 - RDCYCLE: The execution environment should provide a means to determine the current rate (cycles/second) at which the cycle counter is incrementing.
 - RDTIME: The execution environment should provide a means of determining the period of the real-time counter (seconds/tick). The environment should provide a means to determine the accuracy of the clock.
 
-### Todo
+## Todo
 
 - Trap `argv` in address 1?
 
@@ -56,21 +70,7 @@ Counter
 
 - `1c6b6:	8e1bc9bf 00004034 	0x40348e1bc9bf`
 
-### Testing Commands
-
-``` Bash
-clang -S -emit-llvm test.c -o reference.ll
-
-riscv64-unknown-elf-gcc -static test.c -o test
-# riscv64-unknown-elf-strip -g test -o test.stripped
-riscv64-unknown-elf-objdump -D -z test > test.dump
-
-cargo run -- test.dump -o test.ll
-lli test.ll
-echo $?
-```
-
-### Reference
+## Reference
 
 ``` llvm
 declare dso_local void @exit(i32)
@@ -92,7 +92,7 @@ call void @exit(i32 0)
 opt --mem2reg -S dry2.ll -o dry2.o.ll
 ```
 
-### syscall
+## syscall
 
 The Linux system call number is different for each architecture.
     - `SYS_write` in spike pk is 64, but in x64 is 1.
@@ -100,7 +100,7 @@ The Linux system call number is different for each architecture.
     - <https://chromium.googlesource.com/chromiumos/docs/+/refs/heads/main/constants/syscalls.md>
 To call a generic `syscall` in LLVM IR, we must recover the type for each argument, possibly with some other processing, in each system call.
 
-### Endianness
+## Endianness
 
 ```
 000000000001c2e0 <etens>:

@@ -37,7 +37,7 @@ impl Parser {
         }
     }
 
-    pub fn run(&mut self, source: &str, abi: &Option<String>) -> Program {
+    pub fn run(&mut self, source: &str) -> Program {
         self.lines = source
             .lines()
             .map(|l| l.trim())
@@ -46,7 +46,7 @@ impl Parser {
             .map(|l| self.parse_line(l))
             .collect();
         self.jump_targets.clear();
-        self.abi = Abi::new(abi);
+        self.abi = Abi::new(&None);
 
         assert!(!self.lines.is_empty(), "No disassembly");
 
