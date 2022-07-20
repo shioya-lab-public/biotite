@@ -392,7 +392,7 @@ define i{xlen} @main(i32 %argc, i8** %argv) {{
 
 {}
 
-%target = call i64 @func_65730(%struct.reg* %reg, %struct.freg* %freg)
+%target = call i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg)
 call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 0)
 unreachable
 }}
@@ -413,6 +413,7 @@ define i64 @interpret(i64 %addr, %struct.reg* %reg, %struct.freg* %freg) {{
             registers,
             fpregisters,
             stack,
+            self.entry,
             funcs
         )
     }

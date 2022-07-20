@@ -79,7 +79,8 @@ declare dso_local i32 @printf(i8*, ...)
 @.str.f = private unnamed_addr constant [13 x i8] c"#value: %f#\0A\00", align 1
 @.str.s = private unnamed_addr constant [13 x i8] c"#value: %s#\0A\00", align 1
 
-%val_a0 = load i64, i64* %a0
+%ptr_a0 = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 10
+%val_a0 = load i64, i64* %ptr_a0
 call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %val_a0)
 %val_fa0 = load double, double* %fa0
 call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str.f, i64 0, i64 0), double %val_fa0)
