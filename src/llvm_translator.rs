@@ -992,7 +992,7 @@ impl Translator {
                 UnconBr { addr: next_pc },
             },
             RI::Fence { address, raw, .. } => build_instructions! { address, raw, self.abi,
-                Fence { ord: monotonic },
+                Fence { ord: acq_rel },
                 UnconBr { addr: next_pc },
             },
             RI::Ecall { address, raw, .. } => build_instructions! { address, raw, self.abi,
@@ -1559,7 +1559,7 @@ impl Translator {
             }
 
             RI::PseudoFence { address, raw } => build_instructions! { address, raw, self.abi,
-                Fence { ord: monotonic },
+                Fence { ord: acq_rel },
                 UnconBr { addr: next_pc },
             },
 
@@ -1637,6 +1637,19 @@ impl Translator {
                 Store { ty: _i, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
+            RI::Div {
+                address,
+                raw,
+                rd,
+                rs1,
+                rs2,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Load { rslt: _1, ty: _i, ptr: rs2 },
+                Sdiv { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                Store { ty: _i, val: _2, ptr: rd },
+                UnconBr { addr: next_pc },
+            },
             RI::Remu {
                 address,
                 raw,
@@ -1663,6 +1676,19 @@ impl Translator {
                 Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
                 Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
                 Store { ty: _i, val: _4, ptr: rd },
+                UnconBr { addr: next_pc },
+            },
+            RI::Rem {
+                address,
+                raw,
+                rd,
+                rs1,
+                rs2,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i, ptr: rs1 },
+                Load { rslt: _1, ty: _i, ptr: rs2 },
+                Srem { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                Store { ty: _i, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Mulhu {
@@ -1980,6 +2006,18 @@ impl Translator {
                 Store { ty: _d, val: _1, ptr: frd },
                 UnconBr { addr: next_pc },
             },
+            RI::FcvtDL {
+                address,
+                raw,
+                frd,
+                rs1,
+                rm,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
+                Store { ty: _d, val: _1, ptr: frd },
+                UnconBr { addr: next_pc },
+            },
             RI::FcvtWD {
                 address,
                 raw,
@@ -1989,6 +2027,30 @@ impl Translator {
             } => build_instructions! { address, raw, self.abi,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Fptosi { rslt: _1, ty: _d, val: _0, ty2: _i64 },
+                Store { ty: _i64, val: _1, ptr: rd },
+                UnconBr { addr: next_pc },
+            },
+            RI::FcvtLD {
+                address,
+                raw,
+                rd,
+                frs1,
+                rm,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _d, ptr: frs1 },
+                Fptosi { rslt: _1, ty: _d, val: _0, ty2: _i64 },
+                Store { ty: _i64, val: _1, ptr: rd },
+                UnconBr { addr: next_pc },
+            },
+            RI::FcvtWuD {
+                address,
+                raw,
+                rd,
+                frs1,
+                rm,
+            } => build_instructions! { address, raw, self.abi,
+                Load { rslt: _0, ty: _d, ptr: frs1 },
+                Fptoui { rslt: _1, ty: _d, val: _0, ty2: _i64 },
                 Store { ty: _i64, val: _1, ptr: rd },
                 UnconBr { addr: next_pc },
             },
@@ -2158,6 +2220,48 @@ impl Translator {
                     Load { rslt: _0, ty: _i, ptr: rs1 },
                     And { rslt: _1, ty: _i, op1: _0, op2: imm },
                     Store { ty: _i, val: _1, ptr: rd },
+                    UnconBr { addr: next_pc },
+                }
+            }
+
+            RI::AmoswapD {
+                address,
+                raw,
+                rd,
+                rs2,
+                rs1,
+                ..
+            } => {
+                let imm = &Immediate(255);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Store { ty: _i, val: _0, ptr: rd },
+                    Store { ty: _i, val: _0, ptr: rs1 },
+                    UnconBr { addr: next_pc },
+                }
+            }
+            RI::AmoaddD {
+                address,
+                raw,
+                rd,
+                rs2,
+                rs1,
+                ..
+            } |RI::AmoaddW {
+                address,
+                raw,
+                rd,
+                rs2,
+                rs1,
+                ..
+            } => {
+                let imm = &Immediate(255);
+                build_instructions! { address, raw, self.abi,
+                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                    Store { ty: _i, val: _0, ptr: rd }, 
+                    Load { rslt: _1, ty: _i, ptr: rs2 },
+                    Add { rslt: _2, ty: _i, op1: _0, op2: _1 },
+                    Store { ty: _i, val: _2, ptr: rs1 }, 
                     UnconBr { addr: next_pc },
                 }
             }

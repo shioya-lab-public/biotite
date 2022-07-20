@@ -528,6 +528,7 @@ pub enum Ordering {
     Monotonic,
     Acquire,
     Release,
+    AcqRel,
     SeqCst,
 }
 
@@ -539,6 +540,7 @@ impl Display for Ordering {
             Monotonic => write!(f, "monotonic"),
             Acquire => write!(f, "acquire"),
             Release => write!(f, "release"),
+            AcqRel => write!(f, "acq_rel"),
             SeqCst => write!(f, "seq_cst"),
         }
     }
