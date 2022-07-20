@@ -4,57 +4,8 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
-    pub abi: Abi,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Abi {
-    Ilp32,
-    Ilp32f,
-    Ilp32d,
-    Lp64,
-    Lp64f,
-    Lp64d,
-}
-
-impl Abi {
-    pub fn new(s: &Option<String>) -> Self {
-        use Abi::*;
-
-        match s.as_ref().map(|s| s.as_str()) {
-            None => Abi::default(),
-            Some("ilp32") => Ilp32,
-            Some("ilp32f") => Ilp32f,
-            Some("ilp32d") => Ilp32d,
-            Some("lp64") => Lp64,
-            Some("lp64f") => Lp64f,
-            Some("lp64d") => Lp64d,
-            Some(abi) => panic!("Unknown ABI: `{}`", abi),
-        }
-    }
-}
-
-impl Default for Abi {
-    fn default() -> Self {
-        Abi::Lp64d
-    }
-}
-
-impl Display for Abi {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use Abi::*;
-
-        match self {
-            Ilp32 => write!(f, "ilp32"),
-            Ilp32f => write!(f, "ilp32f"),
-            Ilp32d => write!(f, "ilp32d"),
-            Lp64 => write!(f, "lp64"),
-            Lp64f => write!(f, "lp64f"),
-            Lp64d => write!(f, "lp64d"),
-        }
-    }
 }
 
 #[derive(Debug, PartialEq)]

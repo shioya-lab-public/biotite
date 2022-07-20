@@ -1,14 +1,13 @@
-use crate::riscv_isa::{Abi, Address, CodeBlock, DataBlock, Instruction, Program, Raw};
+use crate::riscv_isa::{Address, CodeBlock, DataBlock, Instruction, Program, Raw};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::mem;
 
 lazy_static! {
     static ref CODE: Regex = Regex::new(r"\.text.*").unwrap();
-    static ref NOT_DATA: Regex = Regex::new(r"(\.rodata)|(\.comment)|(\.debug.*)").unwrap();
+    static ref NOT_DATA: Regex = Regex::new(r"(\.comment)|(\.debug.*)").unwrap();
     static ref SECTION: Regex = Regex::new(r"Disassembly of section (.+):").unwrap();
     static ref SYMBOL: Regex = Regex::new(r"([[:xdigit:]]+) <(.*)>:").unwrap();
-    static ref RODATA: Regex = Regex::new(r"Disassembly of section \.rodata:").unwrap();
 }
 
 #[derive(Clone)]
@@ -17,11 +16,8 @@ enum Line {
     Symbol(Address, String),
     Instruction(Instruction),
 }
-
 pub struct Parser {
     lines: Vec<Line>,
-    jump_targets: Vec<Address>,
-    abi: Abi,
     data_blocks: Vec<DataBlock>,
     code_blocks: Vec<CodeBlock>,
 }
@@ -30,8 +26,6 @@ impl Parser {
     pub fn new() -> Self {
         Parser {
             lines: Vec::new(),
-            jump_targets: Vec::new(),
-            abi: Abi::default(),
             data_blocks: Vec::new(),
             code_blocks: Vec::new(),
         }
@@ -45,13 +39,8 @@ impl Parser {
             .skip_while(|l| !SECTION.is_match(l))
             .map(|l| self.parse_line(l))
             .collect();
-        self.jump_targets.clear();
-        self.abi = Abi::new(&None);
 
         assert!(!self.lines.is_empty(), "No disassembly");
-
-        self.find_direct_jump_targets();
-        self.find_indirect_jump_targets();
 
         if !self.lines.is_empty() {
             let mut end = self.lines[1..]
@@ -85,32 +74,8 @@ impl Parser {
             }
         }
 
-        let mut end = 0;
-        for data_block in &self.data_blocks {
-            let Address(head) = data_block.address;
-            let len = data_block.bytes.len();
-            if head as usize + len > end {
-                end = head as usize + len;
-            }
-        }
-        let mut bytes = vec![0; end];
-        for data_block in &self.data_blocks {
-            let Address(head) = data_block.address;
-            for (i, byte) in data_block.bytes.iter().enumerate() {
-                bytes[head as usize + i] = *byte;
-            }
-        }
-        let data_blocks = vec![DataBlock {
-            address: Address(0),
-            section: String::new(),
-            symbol: String::new(),
-            bytes,
-        }];
-
         Program {
-            abi: mem::take(&mut self.abi),
-            // data_blocks: mem::take(&mut self.data_blocks),
-            data_blocks,
+            data_blocks: mem::take(&mut self.data_blocks),
             code_blocks: mem::take(&mut self.code_blocks),
         }
     }
@@ -122,93 +87,6 @@ impl Parser {
             Line::Symbol(Address::new(&caps[1]), caps[2].to_string())
         } else {
             Line::Instruction(Instruction::new(line))
-        }
-    }
-
-    fn find_direct_jump_targets(&mut self) {
-        use Instruction::*;
-
-        for line in self.lines.iter() {
-            if let Line::Instruction(inst) = line {
-                if let Jal { addr, .. }
-                | Beq { addr, .. }
-                | Bne { addr, .. }
-                | Blt { addr, .. }
-                | Bge { addr, .. }
-                | Bltu { addr, .. }
-                | Bgeu { addr, .. }
-                | Beqz { addr, .. }
-                | Bnez { addr, .. }
-                | Blez { addr, .. }
-                | Bgez { addr, .. }
-                | Bltz { addr, .. }
-                | Bgtz { addr, .. }
-                | J { addr, .. } = inst
-                {
-                    self.jump_targets.push(*addr)
-                }
-            }
-        }
-    }
-
-    fn find_indirect_jump_targets(&mut self) {
-        // rodata
-        if let Some(start) = self.lines.iter().position(|l| {
-            if let Line::Section(s) = l {
-                s.as_str() == ".rodata"
-            } else {
-                false
-            }
-        }) {
-            let end = self.lines[start + 1..]
-                .iter()
-                .position(|l| matches!(l, Line::Section(_)))
-                .map(|e| e + start + 1)
-                .unwrap_or(self.lines.len());
-            let rodata = self.lines.drain(start..end).collect();
-            let data_blocks = self.parse_data_section(rodata);
-            let addr_lens = match self.abi {
-                Abi::Ilp32 | Abi::Ilp32f | Abi::Ilp32d => vec![4],
-                Abi::Lp64 | Abi::Lp64f | Abi::Lp64d => vec![4, 8],
-            };
-            for addr_len in addr_lens {
-                for data_block in data_blocks.iter() {
-                    let mut i = 0;
-                    while i + addr_len <= data_block.bytes.len() {
-                        let mut bytes = data_block.bytes[i..i + addr_len].to_vec();
-                        if addr_len == 4 {
-                            bytes.extend(vec![0; 4]);
-                        }
-                        let address = Address(u64::from_le_bytes(bytes.try_into().unwrap()));
-                        self.jump_targets.push(address);
-                        i += 2;
-                    }
-                }
-            }
-            self.data_blocks.extend(data_blocks);
-        }
-
-        // memset
-        if let Some(start) = self.lines.iter().position(|l| {
-            if let Line::Symbol(_, s) = l {
-                s.as_str() == "memset"
-            } else {
-                false
-            }
-        }) {
-            let end = self.lines[start + 1..]
-                .iter()
-                .position(|l| matches!(l, Line::Section(_) | Line::Symbol(..)))
-                .map(|e| e + start + 1)
-                .unwrap_or(self.lines.len());
-            let mut memset = vec![Line::Section(String::from(".text"))];
-            memset.extend(self.lines.clone()[start..end].to_vec());
-            let code_blocks = self.parse_code_section(memset);
-            for code_block in &code_blocks {
-                for inst in &code_block.instructions {
-                    self.jump_targets.push(inst.address());
-                }
-            }
         }
     }
 
@@ -241,25 +119,6 @@ impl Parser {
                 }
                 Line::Instruction(inst) => {
                     let bytes_strs = inst.raw().split_ascii_whitespace().collect::<Vec<_>>();
-                    // bytes.extend(match bytes_str.len() {
-                    //     // 0 => vec![0x0],
-                    //     2 => vec![u8::from_str_radix(&bytes_str, 16)
-                    //         .unwrap()],
-                    //     4 => u16::from_str_radix(&bytes_str, 16)
-                    //         .unwrap()
-                    //         .to_le_bytes()
-                    //         .to_vec(),
-                    //     8 => u32::from_str_radix(&bytes_str, 16)
-                    //         .unwrap()
-                    //         .to_le_bytes()
-                    //         .to_vec(),
-                    //     16 => u64::from_str_radix(&bytes_str, 16)
-                    //         .unwrap()
-                    //         .to_le_bytes()
-                    //         .to_vec(),
-                    //     _ => panic!("{:?}", inst),
-                    //     // _ => unreachable!()
-                    // });
                     if bytes_strs.is_empty() {
                         bytes.push(0);
                         continue;
@@ -305,20 +164,11 @@ impl Parser {
             _ => unreachable!(),
         };
         let mut instructions = Vec::new();
-        let mut branch_split = false;
 
         for line in lines {
             match line {
                 Line::Section(_) => unreachable!(),
                 Line::Symbol(addr, sym) => {
-                    if !branch_split {
-                        instructions.push(Instruction::J {
-                            address: Address(0x0),
-                            raw: Raw::new(""),
-                            addr,
-                        });
-                    }
-                    branch_split = false;
                     let symbol = mem::replace(&mut symbol, sym);
                     let address = mem::replace(&mut address, addr);
                     let instructions = mem::take(&mut instructions);
@@ -329,57 +179,7 @@ impl Parser {
                         instructions,
                     });
                 }
-                Line::Instruction(inst) => {
-                    let addr = inst.address();
-                    if branch_split
-                        || (!instructions.is_empty()
-                            && self.jump_targets.iter().any(|a| *a == addr))
-                    {
-                        if !branch_split {
-                            instructions.push(Instruction::J {
-                                address: Address(0x0),
-                                raw: Raw::new(""),
-                                addr,
-                            });
-                        }
-                        branch_split = false;
-                        let symbol = mem::take(&mut symbol);
-                        let address = mem::replace(&mut address, addr);
-                        let instructions = mem::take(&mut instructions);
-                        code_blocks.push(CodeBlock {
-                            section: section.clone(),
-                            symbol,
-                            address,
-                            instructions,
-                        });
-                    }
-
-                    if let Jal { .. }
-                    | Jalr { .. }
-                    | ImplicitJalr { .. }
-                    | Beq { .. }
-                    | Bne { .. }
-                    | Blt { .. }
-                    | Bge { .. }
-                    | Bltu { .. }
-                    | Bgeu { .. }
-                    | Beqz { .. }
-                    | Bnez { .. }
-                    | Blez { .. }
-                    | Bgez { .. }
-                    | Bltz { .. }
-                    | Bgtz { .. }
-                    | J { .. }
-                    | Jr { .. }
-                    | OffsetJr { .. }
-                    | PseudoJalr { .. }
-                    | Ret { .. } = inst
-                    {
-                        branch_split = true;
-                    }
-
-                    instructions.push(inst);
-                }
+                Line::Instruction(inst) => instructions.push(inst),
             }
         }
 

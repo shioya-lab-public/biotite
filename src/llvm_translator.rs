@@ -4,15 +4,12 @@ use crate::llvm_isa::{
 };
 use crate::llvm_macro::*;
 use crate::riscv_isa::{
-    Abi, Address, CodeBlock as RiscvCodeBlock, DataBlock, Immediate,
+    Address, CodeBlock as RiscvCodeBlock, DataBlock, Immediate,
     Instruction as RiscvInstruction, Program as RiscvProgram, Raw, Register,
 };
-use std::collections::{HashMap, HashSet};
-use std::hash::Hash;
 use std::mem;
 
 pub struct Translator {
-    abi: Abi,
     entry: Address,
     data_blocks: Vec<DataBlock>,
 }
@@ -20,24 +17,36 @@ pub struct Translator {
 impl Translator {
     pub fn new() -> Self {
         Translator {
-            abi: Abi::default(),
             entry: Address(0x0),
             data_blocks: Vec::new(),
         }
     }
 
     pub fn run(&mut self, rv_program: RiscvProgram) -> Program {
-        self.abi = rv_program.abi;
         self.entry = Address(0x0);
-        self.data_blocks = rv_program.data_blocks;
 
-        // let stack = DataBlock {
-        //     section: String::from(".stack"),
-        //     symbol: String::from("stack"),
-        //     address: Address(1),
-        //     bytes: vec![0; 10240],
-        // };
-        // self.data_blocks.push(stack);
+        let mut end = 0;
+        for data_block in &rv_program.data_blocks {
+            let Address(head) = data_block.address;
+            let len = data_block.bytes.len();
+            if head as usize + len > end {
+                end = head as usize + len;
+            }
+        }
+        let mut bytes = vec![0; end];
+        for data_block in &rv_program.data_blocks {
+            let Address(head) = data_block.address;
+            for (i, byte) in data_block.bytes.iter().enumerate() {
+                bytes[head as usize + i] = *byte;
+            }
+        }
+        let data_blocks = vec![DataBlock {
+            address: Address(0),
+            section: String::new(),
+            symbol: String::new(),
+            bytes,
+        }];
+        self.data_blocks = data_blocks;
 
         let mut targets: Vec<_> = Vec::new();
         for block in &rv_program.code_blocks {
@@ -63,200 +72,200 @@ impl Translator {
             code_blocks.extend(blocks);
         }
 
-        let mut func_targets = HashMap::new();
-        let mut func_name = "";
-        let mut func_addr = code_blocks[0].address;
-        for block in &code_blocks {
-            if !block.symbol.is_empty() && block.symbol != func_name {
-                func_targets.insert(block.address, Vec::new());
-                func_name = block.symbol.as_str();
-                func_addr = block.address;
-                // println!("{} - {}", func_name, func_addr);
-            }
-            func_targets
-                .get_mut(&func_addr)
-                .unwrap()
-                .push(block.address);
-        }
-        for (_, v) in func_targets.iter_mut() {
-            v.sort();
-            v.dedup();
-        }
-        let mut func_name = code_blocks[0].symbol.clone();
-        let mut func_addr = code_blocks[0].address;
-        let mut funcs = Vec::new();
-        let mut func_blocks = Vec::new();
-        for mut block in code_blocks {
-            use Instruction::*;
-            use RiscvInstruction as RI;
+        // let mut func_targets = HashMap::new();
+        // let mut func_name = "";
+        // let mut func_addr = code_blocks[0].address;
+        // for block in &code_blocks {
+        //     if !block.symbol.is_empty() && block.symbol != func_name {
+        //         func_targets.insert(block.address, Vec::new());
+        //         func_name = block.symbol.as_str();
+        //         func_addr = block.address;
+        //         // println!("{} - {}", func_name, func_addr);
+        //     }
+        //     func_targets
+        //         .get_mut(&func_addr)
+        //         .unwrap()
+        //         .push(block.address);
+        // }
+        // for (_, v) in func_targets.iter_mut() {
+        //     v.sort();
+        //     v.dedup();
+        // }
+        // let mut func_name = code_blocks[0].symbol.clone();
+        // let mut func_addr = code_blocks[0].address;
+        // let mut funcs = Vec::new();
+        // let mut func_blocks = Vec::new();
+        // for mut block in code_blocks {
+        //     use Instruction::*;
+        //     use RiscvInstruction as RI;
 
-            if !block.symbol.is_empty() && block.symbol != func_name {
-                funcs.push(func_blocks);
-                func_blocks = Vec::new();
-                func_name = block.symbol.clone();
-                func_addr = block.address;
-            }
+        //     if !block.symbol.is_empty() && block.symbol != func_name {
+        //         funcs.push(func_blocks);
+        //         func_blocks = Vec::new();
+        //         func_name = block.symbol.clone();
+        //         func_addr = block.address;
+        //     }
 
-            let insts = match &block.instruction_blocks[0].riscv_instruction {
-                RI::Jal {
-                    address,
-                    raw,
-                    rd,
-                    addr,
-                } => build_instructions! { address, raw, self.abi,
-                    Store { ty: _i, val: next_pc, ptr: rd },
-                    Call { addr: addr },
-                    UnconBr { addr: next_pc },
-                },
-                RI::Jalr {
-                    address,
-                    raw,
-                    rd,
-                    imm,
-                    rs1,
-                } => {
-                    let default = Value::Address(Address(0x1));
-                    let targets: Vec<_> = func_targets
-                        .clone()
-                        .into_keys()
-                        .map(Value::Address)
-                        .collect();
-                    build_instructions! { address, raw, self.abi,
-                        Store { ty: _i, val: next_pc, ptr: rd },
-                        Load { rslt: _0, ty: _i, ptr: rs1 },
-                        Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                        SwitchCall { ty: _i, val: _1, dflt: default, tgts: targets, next_pc: next_pc },
-                    }
-                }
-                RI::ImplicitJalr {
-                    address,
-                    raw,
-                    imm,
-                    rs1,
-                } => {
-                    let default = Value::Address(Address(0x1));
-                    let targets: Vec<_> = func_targets
-                        .clone()
-                        .into_keys()
-                        .map(Value::Address)
-                        .collect();
-                    let rs2 = &Register::Ra;
-                    build_instructions! { address, raw, self.abi,
-                        Store { ty: _i, val: next_pc, ptr: rs2 },
-                        Load { rslt: _0, ty: _i, ptr: rs1 },
-                        Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                        SwitchCall { ty: _i, val: _1, dflt: default, tgts: targets, next_pc: next_pc },
-                    }
-                }
-                RI::J { address, raw, addr } => {
-                    if address == &Address(0) {
-                        continue;
-                    } else if func_targets.contains_key(&addr) {
-                        build_instructions! { address, raw, self.abi,
-                            Call { addr: addr },
-                            // Unreachable {addr: address},
-                            Ret{ty: _i64, val: addr},
-                        }
-                    } else {
-                        build_instructions! { address, raw, self.abi,
-                            UnconBr { addr: addr },
-                        }
-                    }
-                }
-                RI::Jr { address, raw, rs1 } => {
-                    let default = Value::Address(Address(0x1));
-                    let targets: Vec<_> = func_targets
-                        .get(&func_addr)
-                        .cloned()
-                        .unwrap()
-                        .into_iter()
-                        .map(Value::Address)
-                        .collect();
-                    build_instructions! { address, raw, self.abi,
-                        Load { rslt: _0, ty: _i, ptr: rs1 },
-                        Switch { ty: _i, val: _0, dflt: default, tgts: targets },
-                    }
-                }
-                RI::OffsetJr {
-                    address,
-                    raw,
-                    imm,
-                    rs1,
-                } => {
-                    let default = Value::Address(Address(0x1));
-                    let targets: Vec<_> = func_targets
-                        .get(&func_addr)
-                        .cloned()
-                        .unwrap()
-                        .into_iter()
-                        .map(Value::Address)
-                        .collect();
-                    build_instructions! { address, raw, self.abi,
-                        Load { rslt: _0, ty: _i, ptr: rs1 },
-                        Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                        Switch { ty: _i, val: _1, dflt: default, tgts: targets },
-                    }
-                }
-                RI::PseudoJalr { address, raw, rs1 } => {
-                    let default = Value::Address(Address(0x1));
-                    let targets: Vec<_> = func_targets
-                        .clone()
-                        .into_keys()
-                        .map(Value::Address)
-                        .collect();
-                    let imm = &Immediate(0);
-                    let rs2 = &Register::Ra;
-                    build_instructions! { address, raw, self.abi,
-                        Store { ty: _i, val: next_pc, ptr: rs2 },
-                        Load { rslt: _0, ty: _i, ptr: rs1 },
-                        Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                        SwitchCall { ty: _i, val: _1, dflt: default, tgts: targets, next_pc: next_pc },
-                    }
-                }
-                RI::Ret { address, raw } => {
-                    let rs1 = &Register::Ra;
-                    build_instructions! { address, raw, self.abi,
-                        Load { rslt: _0, ty: _i, ptr: rs1 },
-                        Ret { ty: _i, val: _0 },
-                    }
-                }
-                _ => block.instruction_blocks[0].instructions.clone(),
-            };
-            block.instruction_blocks[0].instructions = insts;
+        //     let insts = match &block.instruction_blocks[0].riscv_instruction {
+        //         RI::Jal {
+        //             address,
+        //             raw,
+        //             rd,
+        //             addr,
+        //         } => build_instructions! { address, raw,
+        //             Store { ty: _i64, val: next_pc, ptr: rd },
+        //             Call { addr: addr },
+        //             UnconBr { addr: next_pc },
+        //         },
+        //         RI::Jalr {
+        //             address,
+        //             raw,
+        //             rd,
+        //             imm,
+        //             rs1,
+        //         } => {
+        //             let default = Value::Address(Address(0x1));
+        //             let targets: Vec<_> = func_targets
+        //                 .clone()
+        //                 .into_keys()
+        //                 .map(Value::Address)
+        //                 .collect();
+        //             build_instructions! { address, raw,
+        //                 Store { ty: _i64, val: next_pc, ptr: rd },
+        //                 Load { rslt: _0, ty: _i64, ptr: rs1 },
+        //                 Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+        //                 SwitchCall { ty: _i64, val: _1, dflt: default, tgts: targets, next_pc: next_pc },
+        //             }
+        //         }
+        //         RI::ImplicitJalr {
+        //             address,
+        //             raw,
+        //             imm,
+        //             rs1,
+        //         } => {
+        //             let default = Value::Address(Address(0x1));
+        //             let targets: Vec<_> = func_targets
+        //                 .clone()
+        //                 .into_keys()
+        //                 .map(Value::Address)
+        //                 .collect();
+        //             let rs2 = &Register::Ra;
+        //             build_instructions! { address, raw,
+        //                 Store { ty: _i64, val: next_pc, ptr: rs2 },
+        //                 Load { rslt: _0, ty: _i64, ptr: rs1 },
+        //                 Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+        //                 SwitchCall { ty: _i64, val: _1, dflt: default, tgts: targets, next_pc: next_pc },
+        //             }
+        //         }
+        //         RI::J { address, raw, addr } => {
+        //             if address == &Address(0) {
+        //                 continue;
+        //             } else if func_targets.contains_key(&addr) {
+        //                 build_instructions! { address, raw,
+        //                     Call { addr: addr },
+        //                     // Unreachable {addr: address},
+        //                     Ret{ty: _i64, val: addr},
+        //                 }
+        //             } else {
+        //                 build_instructions! { address, raw,
+        //                     UnconBr { addr: addr },
+        //                 }
+        //             }
+        //         }
+        //         RI::Jr { address, raw, rs1 } => {
+        //             let default = Value::Address(Address(0x1));
+        //             let targets: Vec<_> = func_targets
+        //                 .get(&func_addr)
+        //                 .cloned()
+        //                 .unwrap()
+        //                 .into_iter()
+        //                 .map(Value::Address)
+        //                 .collect();
+        //             build_instructions! { address, raw,
+        //                 Load { rslt: _0, ty: _i64, ptr: rs1 },
+        //                 Switch { ty: _i64, val: _0, dflt: default, tgts: targets },
+        //             }
+        //         }
+        //         RI::OffsetJr {
+        //             address,
+        //             raw,
+        //             imm,
+        //             rs1,
+        //         } => {
+        //             let default = Value::Address(Address(0x1));
+        //             let targets: Vec<_> = func_targets
+        //                 .get(&func_addr)
+        //                 .cloned()
+        //                 .unwrap()
+        //                 .into_iter()
+        //                 .map(Value::Address)
+        //                 .collect();
+        //             build_instructions! { address, raw,
+        //                 Load { rslt: _0, ty: _i64, ptr: rs1 },
+        //                 Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+        //                 Switch { ty: _i64, val: _1, dflt: default, tgts: targets },
+        //             }
+        //         }
+        //         RI::PseudoJalr { address, raw, rs1 } => {
+        //             let default = Value::Address(Address(0x1));
+        //             let targets: Vec<_> = func_targets
+        //                 .clone()
+        //                 .into_keys()
+        //                 .map(Value::Address)
+        //                 .collect();
+        //             let imm = &Immediate(0);
+        //             let rs2 = &Register::Ra;
+        //             build_instructions! { address, raw,
+        //                 Store { ty: _i64, val: next_pc, ptr: rs2 },
+        //                 Load { rslt: _0, ty: _i64, ptr: rs1 },
+        //                 Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+        //                 SwitchCall { ty: _i64, val: _1, dflt: default, tgts: targets, next_pc: next_pc },
+        //             }
+        //         }
+        //         RI::Ret { address, raw } => {
+        //             let rs1 = &Register::Ra;
+        //             build_instructions! { address, raw,
+        //                 Load { rslt: _0, ty: _i64, ptr: rs1 },
+        //                 Ret { ty: _i64, val: _0 },
+        //             }
+        //         }
+        //         _ => block.instruction_blocks[0].instructions.clone(),
+        //     };
+        //     block.instruction_blocks[0].instructions = insts;
 
-            func_blocks.push(block);
-        }
-        funcs.push(func_blocks);
+        //     func_blocks.push(block);
+        // }
+        // funcs.push(func_blocks);
 
-        for func in funcs.iter_mut() {
-            if let Instruction::UnconBr {
-                addr: Value::Address(addr),
-            } = func.last().unwrap().instruction_blocks[0]
-                .instructions
-                .last()
-                .unwrap()
-            {
-                let pc = func.last().unwrap().instruction_blocks[0]
-                    .riscv_instruction
-                    .address();
-                if pc < *addr {
-                    func.last_mut().unwrap().instruction_blocks[0]
-                        .instructions
-                        .pop();
-                    func.last_mut().unwrap().instruction_blocks[0]
-                        .instructions
-                        .push(Instruction::Unreachable {
-                            addr: Value::Address(pc),
-                        });
-                }
-            }
-        }
+        // for func in funcs.iter_mut() {
+        //     if let Instruction::UnconBr {
+        //         addr: Value::Address(addr),
+        //     } = func.last().unwrap().instruction_blocks[0]
+        //         .instructions
+        //         .last()
+        //         .unwrap()
+        //     {
+        //         let pc = func.last().unwrap().instruction_blocks[0]
+        //             .riscv_instruction
+        //             .address();
+        //         if pc < *addr {
+        //             func.last_mut().unwrap().instruction_blocks[0]
+        //                 .instructions
+        //                 .pop();
+        //             func.last_mut().unwrap().instruction_blocks[0]
+        //                 .instructions
+        //                 .push(Instruction::Unreachable {
+        //                     addr: Value::Address(pc),
+        //                 });
+        //         }
+        //     }
+        // }
 
         Program {
-            abi: self.abi,
             entry: self.entry,
             data_blocks: mem::take(&mut self.data_blocks),
-            functions: funcs,
+            // functions: funcs,
+            code_blocks,
             targets,
         }
     }
@@ -286,14 +295,6 @@ impl Translator {
             .collect()
     }
 
-    // fn inherit(&self, func: &Address, targets: &mut Vec<Address>) {
-    //     for f in self.inherit_ret_targets.get(func).cloned().unwrap_or_default() {
-    //         self.inherit(&f, targets);
-    //         let tgts = self.ret_targets.get(&f).cloned().unwrap_or_default();
-    //         targets.extend(tgts);
-    //     }
-    // }
-
     #[allow(unused_variables)]
     fn translate_instruction(
         &mut self,
@@ -310,10 +311,10 @@ impl Translator {
                 raw,
                 rd,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Shl { rslt: _0, ty: _i32, op1: imm, op2: imm_12 },
-                Sext { rslt: _1, ty: _i32, val: _0, ty2: _i },
-                Store { ty: _i, val: _1, ptr: rd },
+                Sext { rslt: _1, ty: _i32, val: _0, ty2: _i64 },
+                Store { ty: _i64, val: _1, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Auipc {
@@ -321,10 +322,10 @@ impl Translator {
                 raw,
                 rd,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Shl { rslt: _0, ty: _i, op1: imm, op2: imm_12 },
-                Add { rslt: _1, ty: _i, op1: _0, op2: address },
-                Store { ty: _i, val: _1, ptr: rd },
+            } => build_instructions! { address, raw,
+                Shl { rslt: _0, ty: _i64, op1: imm, op2: imm_12 },
+                Add { rslt: _1, ty: _i64, op1: _0, op2: address },
+                Store { ty: _i64, val: _1, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Jal {
@@ -332,9 +333,9 @@ impl Translator {
                 raw,
                 rd,
                 addr,
-            } => build_instructions! { address, raw, self.abi,
-                Store { ty: _i, val: next_pc, ptr: rd },
-                Ret { ty: _i, val: addr },
+            } => build_instructions! { address, raw,
+                Store { ty: _i64, val: next_pc, ptr: rd },
+                Ret { ty: _i64, val: addr },
             },
             RI::Jalr {
                 address,
@@ -353,12 +354,12 @@ impl Translator {
                 //     // if targets.len() >= 300 {
                 //     //     println!("jalr {:?}", address);
                 //     // }
-                build_instructions! { address, raw, self.abi,
-                    Store { ty: _i, val: next_pc, ptr: rd },
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    // Switch { ty: _i, val: _1, dflt: default, tgts: targets },
-                Ret { ty: _i, val: _1 },
+                build_instructions! { address, raw,
+                    Store { ty: _i64, val: next_pc, ptr: rd },
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    // Switch { ty: _i64, val: _1, dflt: default, tgts: targets },
+                Ret { ty: _i64, val: _1 },
                 }
             }
             RI::ImplicitJalr {
@@ -378,12 +379,12 @@ impl Translator {
                 //     println!("ImplicitJalr {:?}", address);
                 // }
                 let rs2 = &Register::Ra;
-                build_instructions! { address, raw, self.abi,
-                    Store { ty: _i, val: next_pc, ptr: rs2 },
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    // Switch { ty: _i, val: _1, dflt: default, tgts: targets },
-                Ret { ty: _i, val: _1 },
+                build_instructions! { address, raw,
+                    Store { ty: _i64, val: next_pc, ptr: rs2 },
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    // Switch { ty: _i64, val: _1, dflt: default, tgts: targets },
+                Ret { ty: _i64, val: _1 },
                 }
             }
             RI::Beq {
@@ -392,10 +393,10 @@ impl Translator {
                 rs1,
                 rs2,
                 addr,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Icmp { rslt: _2, cond: eq, ty: _i, op1: _0, op2: _1 },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Icmp { rslt: _2, cond: eq, ty: _i64, op1: _0, op2: _1 },
                 ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
             },
             RI::Bne {
@@ -404,10 +405,10 @@ impl Translator {
                 rs1,
                 rs2,
                 addr,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Icmp { rslt: _2, cond: ne, ty: _i, op1: _0, op2: _1 },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Icmp { rslt: _2, cond: ne, ty: _i64, op1: _0, op2: _1 },
                 ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
             },
             RI::Blt {
@@ -416,10 +417,10 @@ impl Translator {
                 rs1,
                 rs2,
                 addr,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Icmp { rslt: _2, cond: slt, ty: _i, op1: _0, op2: _1 },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Icmp { rslt: _2, cond: slt, ty: _i64, op1: _0, op2: _1 },
                 ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
             },
             RI::Bge {
@@ -428,10 +429,10 @@ impl Translator {
                 rs1,
                 rs2,
                 addr,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Icmp { rslt: _2, cond: sge, ty: _i, op1: _0, op2: _1 },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Icmp { rslt: _2, cond: sge, ty: _i64, op1: _0, op2: _1 },
                 ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
             },
             RI::Bltu {
@@ -440,10 +441,10 @@ impl Translator {
                 rs1,
                 rs2,
                 addr,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Icmp { rslt: _2, cond: ult, ty: _i, op1: _0, op2: _1 },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Icmp { rslt: _2, cond: ult, ty: _i64, op1: _0, op2: _1 },
                 ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
             },
             RI::Bgeu {
@@ -452,10 +453,10 @@ impl Translator {
                 rs1,
                 rs2,
                 addr,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Icmp { rslt: _2, cond: uge, ty: _i, op1: _0, op2: _1 },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Icmp { rslt: _2, cond: uge, ty: _i64, op1: _0, op2: _1 },
                 ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
             },
             RI::Lb {
@@ -477,20 +478,20 @@ impl Translator {
                 //     } else {
                 //         Address(addr - (-imm) as u64)
                 //     };
-                //     build_instructions! { address, raw, self.abi,
+                //     build_instructions! { address, raw,
                 //         Loadstack { rslt: _0, ty: _i8, stk: stk },
-                //         Sext { rslt: _1, ty: _i8, val: _0, ty2: _i },
-                //         Store { ty: _i, val: _1, ptr: rd },
+                //         Sext { rslt: _1, ty: _i8, val: _0, ty2: _i64 },
+                //         Store { ty: _i64, val: _1, ptr: rd },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Getdataptr { rslt: _2, ty: _i, addr: _1 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    Getdataptr { rslt: _2, ty: _i64, addr: _1 },
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i8 },
                     Load { rslt: _4, ty: _i8, ptr: _3 },
-                    Sext { rslt: _5, ty: _i8, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Sext { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
+                    Store { ty: _i64, val: _5, ptr: rd },
                     UnconBr { addr: next_pc },
                 },
             },
@@ -513,20 +514,20 @@ impl Translator {
                 //     } else {
                 //         Address(addr - (-imm) as u64)
                 //     };
-                //     build_instructions! { address, raw, self.abi,
+                //     build_instructions! { address, raw,
                 //         Loadstack { rslt: _0, ty: _i16, stk: stk },
-                //         Sext { rslt: _1, ty: _i16, val: _0, ty2: _i },
-                //         Store { ty: _i, val: _1, ptr: rd },
+                //         Sext { rslt: _1, ty: _i16, val: _0, ty2: _i64 },
+                //         Store { ty: _i64, val: _1, ptr: rd },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Getdataptr { rslt: _2, ty: _i, addr: _1 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    Getdataptr { rslt: _2, ty: _i64, addr: _1 },
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i16 },
                     Load { rslt: _4, ty: _i16, ptr: _3 },
-                    Sext { rslt: _5, ty: _i16, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Sext { rslt: _5, ty: _i16, val: _4, ty2: _i64 },
+                    Store { ty: _i64, val: _5, ptr: rd },
                     UnconBr { addr: next_pc },
                 },
             },
@@ -549,20 +550,20 @@ impl Translator {
                 //     } else {
                 //         Address(addr - (-imm) as u64)
                 //     };
-                //     build_instructions! { address, raw, self.abi,
+                //     build_instructions! { address, raw,
                 //         Loadstack { rslt: _0, ty: _i32, stk: stk },
-                //         Sext { rslt: _1, ty: _i32, val: _0, ty2: _i },
-                //         Store { ty: _i, val: _1, ptr: rd },
+                //         Sext { rslt: _1, ty: _i32, val: _0, ty2: _i64 },
+                //         Store { ty: _i64, val: _1, ptr: rd },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Getdataptr { rslt: _2, ty: _i, addr: _1 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    Getdataptr { rslt: _2, ty: _i64, addr: _1 },
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i32 },
                     Load { rslt: _4, ty: _i32, ptr: _3 },
-                    Sext { rslt: _5, ty: _i32, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Sext { rslt: _5, ty: _i32, val: _4, ty2: _i64 },
+                    Store { ty: _i64, val: _5, ptr: rd },
                     UnconBr { addr: next_pc },
                 },
             },
@@ -585,20 +586,20 @@ impl Translator {
                 //     } else {
                 //         Address(addr - (-imm) as u64)
                 //     };
-                //     build_instructions! { address, raw, self.abi,
+                //     build_instructions! { address, raw,
                 //         Loadstack { rslt: _0, ty: _i8, stk: stk },
-                //         Zext { rslt: _1, ty: _i8, val: _0, ty2: _i },
-                //         Store { ty: _i, val: _1, ptr: rd },
+                //         Zext { rslt: _1, ty: _i8, val: _0, ty2: _i64 },
+                //         Store { ty: _i64, val: _1, ptr: rd },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Getdataptr { rslt: _2, ty: _i, addr: _1 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    Getdataptr { rslt: _2, ty: _i64, addr: _1 },
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i8 },
                     Load { rslt: _4, ty: _i8, ptr: _3 },
-                    Zext { rslt: _5, ty: _i8, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Zext { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
+                    Store { ty: _i64, val: _5, ptr: rd },
                     UnconBr { addr: next_pc },
                 },
             },
@@ -621,20 +622,20 @@ impl Translator {
                 //     } else {
                 //         Address(addr - (-imm) as u64)
                 //     };
-                //     build_instructions! { address, raw, self.abi,
+                //     build_instructions! { address, raw,
                 //         Loadstack { rslt: _0, ty: _i16, stk: stk },
-                //         Zext { rslt: _1, ty: _i16, val: _0, ty2: _i },
-                //         Store { ty: _i, val: _1, ptr: rd },
+                //         Zext { rslt: _1, ty: _i16, val: _0, ty2: _i64 },
+                //         Store { ty: _i64, val: _1, ptr: rd },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Getdataptr { rslt: _2, ty: _i, addr: _1 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    Getdataptr { rslt: _2, ty: _i64, addr: _1 },
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i16 },
                     Load { rslt: _4, ty: _i16, ptr: _3 },
-                    Zext { rslt: _5, ty: _i16, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Zext { rslt: _5, ty: _i16, val: _4, ty2: _i64 },
+                    Store { ty: _i64, val: _5, ptr: rd },
                     UnconBr { addr: next_pc },
                 },
             },
@@ -658,18 +659,18 @@ impl Translator {
                 //         Address(addr - (-imm) as u64)
                 //     };
                 //     self.stack.entry(stk).or_default().insert(Type::I8);
-                //     build_instructions! { address, raw, self.abi,
-                //         Load { rslt: _0, ty: _i, ptr: rs2 },
-                //         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i8 },
+                //     build_instructions! { address, raw,
+                //         Load { rslt: _0, ty: _i64, ptr: rs2 },
+                //         Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i8 },
                 //         Storestack { ty: _i8, val: _1, stk: stk },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs2 },
-                    Trunc { rslt: _1, ty: _i, val: _0, ty2: _i8 },
-                    Load { rslt: _2, ty: _i, ptr: rs1 },
-                    Add { rslt: _3, ty: _i, op1: _2, op2: imm },
-                    Getdataptr { rslt: _4, ty: _i, addr: _3 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs2 },
+                    Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i8 },
+                    Load { rslt: _2, ty: _i64, ptr: rs1 },
+                    Add { rslt: _3, ty: _i64, op1: _2, op2: imm },
+                    Getdataptr { rslt: _4, ty: _i64, addr: _3 },
                     Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i8 },
                     Store { ty: _i8, val: _1, ptr: _5 },
                     UnconBr { addr: next_pc },
@@ -695,18 +696,18 @@ impl Translator {
                 //         Address(addr - (-imm) as u64)
                 //     };
                 //     self.stack.entry(stk).or_default().insert(Type::I16);
-                //     build_instructions! { address, raw, self.abi,
-                //         Load { rslt: _0, ty: _i, ptr: rs2 },
-                //         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i16 },
+                //     build_instructions! { address, raw,
+                //         Load { rslt: _0, ty: _i64, ptr: rs2 },
+                //         Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i16 },
                 //         Storestack { ty: _i16, val: _1, stk: stk },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs2 },
-                    Trunc { rslt: _1, ty: _i, val: _0, ty2: _i16 },
-                    Load { rslt: _2, ty: _i, ptr: rs1 },
-                    Add { rslt: _3, ty: _i, op1: _2, op2: imm },
-                    Getdataptr { rslt: _4, ty: _i, addr: _3 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs2 },
+                    Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i16 },
+                    Load { rslt: _2, ty: _i64, ptr: rs1 },
+                    Add { rslt: _3, ty: _i64, op1: _2, op2: imm },
+                    Getdataptr { rslt: _4, ty: _i64, addr: _3 },
                     Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i16 },
                     Store { ty: _i16, val: _1, ptr: _5 },
                     UnconBr { addr: next_pc },
@@ -732,18 +733,18 @@ impl Translator {
                 //         Address(addr - (-imm) as u64)
                 //     };
                 //     self.stack.entry(stk).or_default().insert(Type::I32);
-                //     build_instructions! { address, raw, self.abi,
-                //         Load { rslt: _0, ty: _i, ptr: rs2 },
-                //         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i32 },
+                //     build_instructions! { address, raw,
+                //         Load { rslt: _0, ty: _i64, ptr: rs2 },
+                //         Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i32 },
                 //         Storestack { ty: _i32, val: _1, stk: stk },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs2 },
-                    Trunc { rslt: _1, ty: _i, val: _0, ty2: _i32 },
-                    Load { rslt: _2, ty: _i, ptr: rs1 },
-                    Add { rslt: _3, ty: _i, op1: _2, op2: imm },
-                    Getdataptr { rslt: _4, ty: _i, addr: _3 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs2 },
+                    Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i32 },
+                    Load { rslt: _2, ty: _i64, ptr: rs1 },
+                    Add { rslt: _3, ty: _i64, op1: _2, op2: imm },
+                    Getdataptr { rslt: _4, ty: _i64, addr: _3 },
                     Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i32 },
                     Store { ty: _i32, val: _1, ptr: _5 },
                     UnconBr { addr: next_pc },
@@ -755,10 +756,10 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Store { ty: _i64, val: _1, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Slti {
@@ -767,11 +768,11 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Icmp { rslt: _1, cond: slt, ty: _i, op1: _0, op2: imm },
-                Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Icmp { rslt: _1, cond: slt, ty: _i64, op1: _0, op2: imm },
+                Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Sltiu {
@@ -780,11 +781,11 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Icmp { rslt: _1, cond: ult, ty: _i, op1: _0, op2: imm },
-                Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Icmp { rslt: _1, cond: ult, ty: _i64, op1: _0, op2: imm },
+                Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Xori {
@@ -793,10 +794,10 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Xor { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Xor { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Store { ty: _i64, val: _1, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Ori {
@@ -805,10 +806,10 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Or { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Or { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Store { ty: _i64, val: _1, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Andi {
@@ -817,10 +818,10 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                And { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                And { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Store { ty: _i64, val: _1, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Slli {
@@ -829,10 +830,10 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Shl { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Shl { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Store { ty: _i64, val: _1, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Srli {
@@ -841,10 +842,10 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Lshr { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Lshr { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Store { ty: _i64, val: _1, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Srai {
@@ -853,10 +854,10 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Ashr { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Store { ty: _i, val: _1, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Ashr { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Store { ty: _i64, val: _1, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Add {
@@ -865,11 +866,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Add { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Add { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Sub {
@@ -878,11 +879,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Sub { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Sub { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Sll {
@@ -891,11 +892,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Shl { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Shl { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Slt {
@@ -904,12 +905,12 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Icmp { rslt: _2, cond: slt, ty: _i, op1: _0, op2: _1 },
-                Zext { rslt: _3, ty: _i1, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Icmp { rslt: _2, cond: slt, ty: _i64, op1: _0, op2: _1 },
+                Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
+                Store { ty: _i64, val: _3, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Sltu {
@@ -918,12 +919,12 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Icmp { rslt: _2, cond: ult, ty: _i, op1: _0, op2: _1 },
-                Zext { rslt: _3, ty: _i1, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Icmp { rslt: _2, cond: ult, ty: _i64, op1: _0, op2: _1 },
+                Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
+                Store { ty: _i64, val: _3, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Xor {
@@ -932,11 +933,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Xor { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Xor { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Srl {
@@ -945,11 +946,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Lshr { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Lshr { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Sra {
@@ -958,11 +959,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Ashr { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Ashr { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Or {
@@ -971,11 +972,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Or { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Or { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::And {
@@ -984,27 +985,27 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                And { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                And { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
-            RI::Fence { address, raw, .. } => build_instructions! { address, raw, self.abi,
+            RI::Fence { address, raw, .. } => build_instructions! { address, raw,
                 Fence { ord: acq_rel },
                 UnconBr { addr: next_pc },
             },
-            RI::Ecall { address, raw, .. } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: a7 },
-                Load { rslt: _1, ty: _i, ptr: a0 },
-                Load { rslt: _2, ty: _i, ptr: a1 },
-                Load { rslt: _3, ty: _i, ptr: a2 },
-                Load { rslt: _4, ty: _i, ptr: a3 },
-                Load { rslt: _5, ty: _i, ptr: a4 },
-                Load { rslt: _6, ty: _i, ptr: a5 },
-                Syscall { rslt: _7, ty: _i, nr: _0, arg1: _1, arg2: _2, arg3: _3, arg4: _4, arg5: _5, arg6: _6 },
-                Store { ty: _i, val: _7, ptr: a0 },
+            RI::Ecall { address, raw, .. } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: a7 },
+                Load { rslt: _1, ty: _i64, ptr: a0 },
+                Load { rslt: _2, ty: _i64, ptr: a1 },
+                Load { rslt: _3, ty: _i64, ptr: a2 },
+                Load { rslt: _4, ty: _i64, ptr: a3 },
+                Load { rslt: _5, ty: _i64, ptr: a4 },
+                Load { rslt: _6, ty: _i64, ptr: a5 },
+                Syscall { rslt: _7, ty: _i64, nr: _0, arg1: _1, arg2: _2, arg3: _3, arg4: _4, arg5: _5, arg6: _6 },
+                Store { ty: _i64, val: _7, ptr: a0 },
                 UnconBr { addr: next_pc },
             },
             RI::Ebreak { .. } => panic!("`ebreak` is not implemented"),
@@ -1029,20 +1030,20 @@ impl Translator {
                 //     } else {
                 //         Address(addr - (-imm) as u64)
                 //     };
-                //     build_instructions! { address, raw, self.abi,
+                //     build_instructions! { address, raw,
                 //         Loadstack { rslt: _0, ty: _i32, stk: stk },
-                //         Zext { rslt: _1, ty: _i32, val: _0, ty2: _i },
-                //         Store { ty: _i, val: _1, ptr: rd },
+                //         Zext { rslt: _1, ty: _i32, val: _0, ty2: _i64 },
+                //         Store { ty: _i64, val: _1, ptr: rd },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Getdataptr { rslt: _2, ty: _i, addr: _1 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    Getdataptr { rslt: _2, ty: _i64, addr: _1 },
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i32 },
                     Load { rslt: _4, ty: _i32, ptr: _3 },
-                    Zext { rslt: _5, ty: _i32, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Zext { rslt: _5, ty: _i32, val: _4, ty2: _i64 },
+                    Store { ty: _i64, val: _5, ptr: rd },
                     UnconBr { addr: next_pc },
                 },
             },
@@ -1065,20 +1066,20 @@ impl Translator {
                 //     } else {
                 //         Address(addr - (-imm) as u64)
                 //     };
-                //     build_instructions! { address, raw, self.abi,
+                //     build_instructions! { address, raw,
                 //         Loadstack { rslt: _0, ty: _i64, stk: stk },
-                //         Zext { rslt: _1, ty: _i64, val: _0, ty2: _i },
-                //         Store { ty: _i, val: _1, ptr: rd },
+                //         Zext { rslt: _1, ty: _i64, val: _0, ty2: _i64 },
+                //         Store { ty: _i64, val: _1, ptr: rd },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Getdataptr { rslt: _2, ty: _i, addr: _1 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    Getdataptr { rslt: _2, ty: _i64, addr: _1 },
                     Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i64 },
                     Load { rslt: _4, ty: _i64, ptr: _3 },
-                    Sext { rslt: _5, ty: _i64, val: _4, ty2: _i },
-                    Store { ty: _i, val: _5, ptr: rd },
+                    Sext { rslt: _5, ty: _i64, val: _4, ty2: _i64 },
+                    Store { ty: _i64, val: _5, ptr: rd },
                     UnconBr { addr: next_pc },
                 },
             },
@@ -1102,18 +1103,18 @@ impl Translator {
                 //         Address(addr - (-imm) as u64)
                 //     };
                 //     self.stack.entry(stk).or_default().insert(Type::I64);
-                //     build_instructions! { address, raw, self.abi,
-                //         Load { rslt: _0, ty: _i, ptr: rs2 },
-                //         Trunc { rslt: _1, ty: _i, val: _0, ty2: _i64 },
+                //     build_instructions! { address, raw,
+                //         Load { rslt: _0, ty: _i64, ptr: rs2 },
+                //         Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i64 },
                 //         Storestack { ty: _i64, val: _1, stk: stk },
                 //     }
                 // }
-                _ => build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs2 },
-                    Trunc { rslt: _1, ty: _i, val: _0, ty2: _i64 },
-                    Load { rslt: _2, ty: _i, ptr: rs1 },
-                    Add { rslt: _3, ty: _i, op1: _2, op2: imm },
-                    Getdataptr { rslt: _4, ty: _i, addr: _3 },
+                _ => build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs2 },
+                    Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i64 },
+                    Load { rslt: _2, ty: _i64, ptr: rs1 },
+                    Add { rslt: _3, ty: _i64, op1: _2, op2: imm },
+                    Getdataptr { rslt: _4, ty: _i64, addr: _3 },
                     Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
                     Store { ty: _i64, val: _1, ptr: _5 },
                     UnconBr { addr: next_pc },
@@ -1125,12 +1126,12 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
-                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Trunc { rslt: _2, ty: _i64, val: _1, ty2: _i32 },
+                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i64 },
+                Store { ty: _i64, val: _3, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Slliw {
@@ -1139,12 +1140,12 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Shl { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
-                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Shl { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Trunc { rslt: _2, ty: _i64, val: _1, ty2: _i32 },
+                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i64 },
+                Store { ty: _i64, val: _3, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Srliw {
@@ -1153,12 +1154,12 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Lshr { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
-                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Lshr { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Trunc { rslt: _2, ty: _i64, val: _1, ty2: _i32 },
+                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i64 },
+                Store { ty: _i64, val: _3, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Sraiw {
@@ -1167,12 +1168,12 @@ impl Translator {
                 rd,
                 rs1,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Ashr { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
-                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                Store { ty: _i, val: _3, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Ashr { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Trunc { rslt: _2, ty: _i64, val: _1, ty2: _i32 },
+                Sext { rslt: _3, ty: _i32, val: _2, ty2: _i64 },
+                Store { ty: _i64, val: _3, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Addw {
@@ -1181,13 +1182,13 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Add { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
-                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Add { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
+                Store { ty: _i64, val: _4, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Subw {
@@ -1196,13 +1197,13 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Sub { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
-                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Sub { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
+                Store { ty: _i64, val: _4, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Sllw {
@@ -1211,13 +1212,13 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Shl { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
-                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Shl { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
+                Store { ty: _i64, val: _4, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Srlw {
@@ -1226,13 +1227,13 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Lshr { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
-                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Lshr { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
+                Store { ty: _i64, val: _4, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Sraw {
@@ -1241,18 +1242,18 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Ashr { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
-                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Ashr { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
+                Store { ty: _i64, val: _4, ptr: rd },
                 UnconBr { addr: next_pc },
             },
 
             // Pseudoinstructions
-            RI::Nop { address, raw } => build_instructions! { address, raw, self.abi,
+            RI::Nop { address, raw } => build_instructions! { address, raw,
                 UnconBr { addr: next_pc },
             },
             RI::Li {
@@ -1260,8 +1261,8 @@ impl Translator {
                 raw,
                 rd,
                 imm,
-            } => build_instructions! { address, raw, self.abi,
-                Store { ty: _i, val: imm, ptr: rd },
+            } => build_instructions! { address, raw,
+                Store { ty: _i64, val: imm, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Mv {
@@ -1269,9 +1270,9 @@ impl Translator {
                 raw,
                 rd,
                 rs1,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Store { ty: _i, val: _0, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Store { ty: _i64, val: _0, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Not {
@@ -1281,10 +1282,10 @@ impl Translator {
                 rs1,
             } => {
                 let imm = &Immediate(-1);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Xor { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Store { ty: _i, val: _1, ptr: rd },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Xor { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    Store { ty: _i64, val: _1, ptr: rd },
                     UnconBr { addr: next_pc },
                 }
             }
@@ -1295,10 +1296,10 @@ impl Translator {
                 rs1,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Sub { rslt: _1, ty: _i, op1: imm, op2: _0 },
-                    Store { ty: _i, val: _1, ptr: rd },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Sub { rslt: _1, ty: _i64, op1: imm, op2: _0 },
+                    Store { ty: _i64, val: _1, ptr: rd },
                     UnconBr { addr: next_pc },
                 }
             }
@@ -1309,12 +1310,12 @@ impl Translator {
                 rs1,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Sub { rslt: _1, ty: _i, op1: imm, op2: _0 },
-                    Trunc { rslt: _2, ty: _i, val: _1, ty2: _i32 },
-                    Sext { rslt: _3, ty: _i32, val: _2, ty2: _i },
-                    Store { ty: _i, val: _3, ptr: rd },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Sub { rslt: _1, ty: _i64, op1: imm, op2: _0 },
+                    Trunc { rslt: _2, ty: _i64, val: _1, ty2: _i32 },
+                    Sext { rslt: _3, ty: _i32, val: _2, ty2: _i64 },
+                    Store { ty: _i64, val: _3, ptr: rd },
                     UnconBr { addr: next_pc },
                 }
             }
@@ -1323,9 +1324,9 @@ impl Translator {
                 raw,
                 rd,
                 rs1,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Store { ty: _i, val: _0, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Store { ty: _i64, val: _0, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Seqz {
@@ -1335,11 +1336,11 @@ impl Translator {
                 rs1,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Icmp { rslt: _1, cond: eq, ty: _i, op1: _0, op2: imm },
-                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                    Store { ty: _i, val: _2, ptr: rd },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Icmp { rslt: _1, cond: eq, ty: _i64, op1: _0, op2: imm },
+                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
+                    Store { ty: _i64, val: _2, ptr: rd },
                     UnconBr { addr: next_pc },
                 }
             }
@@ -1350,11 +1351,11 @@ impl Translator {
                 rs1,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Icmp { rslt: _1, cond: ne, ty: _i, op1: _0, op2: imm },
-                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                    Store { ty: _i, val: _2, ptr: rd },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Icmp { rslt: _1, cond: ne, ty: _i64, op1: _0, op2: imm },
+                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
+                    Store { ty: _i64, val: _2, ptr: rd },
                     UnconBr { addr: next_pc },
                 }
             }
@@ -1365,11 +1366,11 @@ impl Translator {
                 rs1,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Icmp { rslt: _1, cond: slt, ty: _i, op1: _0, op2: imm },
-                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                    Store { ty: _i, val: _2, ptr: rd },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Icmp { rslt: _1, cond: slt, ty: _i64, op1: _0, op2: imm },
+                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
+                    Store { ty: _i64, val: _2, ptr: rd },
                     UnconBr { addr: next_pc },
                 }
             }
@@ -1380,11 +1381,11 @@ impl Translator {
                 rs1,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Icmp { rslt: _1, cond: sgt, ty: _i, op1: _0, op2: imm },
-                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i },
-                    Store { ty: _i, val: _2, ptr: rd },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Icmp { rslt: _1, cond: sgt, ty: _i64, op1: _0, op2: imm },
+                    Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
+                    Store { ty: _i64, val: _2, ptr: rd },
                     UnconBr { addr: next_pc },
                 }
             }
@@ -1396,9 +1397,9 @@ impl Translator {
                 addr,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Icmp { rslt: _1, cond: eq, ty: _i, op1: _0, op2: imm },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Icmp { rslt: _1, cond: eq, ty: _i64, op1: _0, op2: imm },
                     ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
                 }
             }
@@ -1409,9 +1410,9 @@ impl Translator {
                 addr,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Icmp { rslt: _1, cond: ne, ty: _i, op1: _0, op2: imm },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Icmp { rslt: _1, cond: ne, ty: _i64, op1: _0, op2: imm },
                     ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
                 }
             }
@@ -1422,9 +1423,9 @@ impl Translator {
                 addr,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Icmp { rslt: _1, cond: sle, ty: _i, op1: _0, op2: imm },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Icmp { rslt: _1, cond: sle, ty: _i64, op1: _0, op2: imm },
                     ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
                 }
             }
@@ -1435,9 +1436,9 @@ impl Translator {
                 addr,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Icmp { rslt: _1, cond: sge, ty: _i, op1: _0, op2: imm },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Icmp { rslt: _1, cond: sge, ty: _i64, op1: _0, op2: imm },
                     ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
                 }
             }
@@ -1448,9 +1449,9 @@ impl Translator {
                 addr,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Icmp { rslt: _1, cond: slt, ty: _i, op1: _0, op2: imm },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Icmp { rslt: _1, cond: slt, ty: _i64, op1: _0, op2: imm },
                     ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
                 }
             }
@@ -1461,16 +1462,16 @@ impl Translator {
                 addr,
             } => {
                 let imm = &Immediate(0);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Icmp { rslt: _1, cond: sgt, ty: _i, op1: _0, op2: imm },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Icmp { rslt: _1, cond: sgt, ty: _i64, op1: _0, op2: imm },
                     ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
                 }
             }
 
-            RI::J { address, raw, addr } => build_instructions! { address, raw, self.abi,
+            RI::J { address, raw, addr } => build_instructions! { address, raw,
                 // UnconBr { addr: addr },
-                Ret { ty: _i, val: addr },
+                Ret { ty: _i64, val: addr },
             },
             RI::Jr { address, raw, rs1 } => {
                 // let default = Value::Address(Address(0x1));
@@ -1483,10 +1484,10 @@ impl Translator {
                 //     // if targets.len() >= 300 {
                 //     //     println!("jr {:?} - {}", address, targets.len());
                 //     // }
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    // Switch { ty: _i, val: _0, dflt: default, tgts: targets },
-                Ret { ty: _i, val: _0 },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    // Switch { ty: _i64, val: _0, dflt: default, tgts: targets },
+                Ret { ty: _i64, val: _0 },
                 }
             }
             RI::OffsetJr {
@@ -1504,11 +1505,11 @@ impl Translator {
                 //     // if targets.len() >= 300 {
                 //     //     println!("offsetjr {:?}", address);
                 //     // }
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    // Switch { ty: _i, val: _1, dflt: default, tgts: targets },
-                Ret { ty: _i, val: _1 },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    // Switch { ty: _i64, val: _1, dflt: default, tgts: targets },
+                Ret { ty: _i64, val: _1 },
                 }
             }
             RI::PseudoJalr { address, raw, rs1 } => {
@@ -1525,12 +1526,12 @@ impl Translator {
                 //     // }
                 let imm = &Immediate(0);
                 let rs2 = &Register::Ra;
-                build_instructions! { address, raw, self.abi,
-                    Store { ty: _i, val: next_pc, ptr: rs2 },
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    // Switch { ty: _i, val: _1, dflt: default, tgts: targets },
-                Ret { ty: _i, val: _1 },
+                build_instructions! { address, raw,
+                    Store { ty: _i64, val: next_pc, ptr: rs2 },
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    // Switch { ty: _i64, val: _1, dflt: default, tgts: targets },
+                Ret { ty: _i64, val: _1 },
                 }
             }
             RI::Ret { address, raw } => {
@@ -1551,14 +1552,14 @@ impl Translator {
                 //     .collect();
 
                 let rs1 = &Register::Ra;
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    // Switch { ty: _i, val: _0, dflt: default, tgts: targets },
-                Ret { ty: _i, val: _0 },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    // Switch { ty: _i64, val: _0, dflt: default, tgts: targets },
+                Ret { ty: _i64, val: _0 },
                 }
             }
 
-            RI::PseudoFence { address, raw } => build_instructions! { address, raw, self.abi,
+            RI::PseudoFence { address, raw } => build_instructions! { address, raw,
                 Fence { ord: acq_rel },
                 UnconBr { addr: next_pc },
             },
@@ -1574,11 +1575,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Mul { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Mul { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Mulw {
@@ -1587,13 +1588,13 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Mul { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
-                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Mul { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
+                Store { ty: _i64, val: _4, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Divw {
@@ -1602,13 +1603,13 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Sdiv { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
-                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Sdiv { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
+                Store { ty: _i64, val: _4, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Divu {
@@ -1617,11 +1618,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Udiv { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Udiv { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Divuw {
@@ -1630,11 +1631,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Udiv { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Udiv { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Div {
@@ -1643,11 +1644,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Sdiv { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Sdiv { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Remu {
@@ -1656,11 +1657,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Urem { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Urem { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Remw {
@@ -1669,13 +1670,13 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Srem { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Trunc { rslt: _3, ty: _i, val: _2, ty2: _i32 },
-                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i },
-                Store { ty: _i, val: _4, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Srem { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
+                Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
+                Store { ty: _i64, val: _4, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Rem {
@@ -1684,11 +1685,11 @@ impl Translator {
                 rd,
                 rs1,
                 rs2,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Load { rslt: _1, ty: _i, ptr: rs2 },
-                Srem { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                Store { ty: _i, val: _2, ptr: rd },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Load { rslt: _1, ty: _i64, ptr: rs2 },
+                Srem { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                Store { ty: _i64, val: _2, ptr: rd },
                 UnconBr { addr: next_pc },
             },
             RI::Mulhu {
@@ -1699,10 +1700,10 @@ impl Translator {
                 rs2,
             } => {
                 let imm = &Immediate(64);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
                     Zext { rslt: _1, ty: _i64, val: _0, ty2: _i128 },
-                    Load { rslt: _2, ty: _i, ptr: rs2 },
+                    Load { rslt: _2, ty: _i64, ptr: rs2 },
                     Zext { rslt: _3, ty: _i64, val: _2, ty2: _i128 },
                     Mul { rslt: _4, ty: _i128, op1: _1, op2: _3 },
                     Lshr { rslt: _5, ty: _i128, op1: _4, op2: imm },
@@ -1718,10 +1719,10 @@ impl Translator {
                 frd,
                 imm,
                 rs1,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Getdataptr { rslt: _2, ty: _i, addr: _1 },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Getdataptr { rslt: _2, ty: _i64, addr: _1 },
                 Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i64 },
                 Load { rslt: _4, ty: _i64, ptr: _3 },
                 Bitcast { rslt: _5, ty: _i64, val: _4, ty2: _d },
@@ -1734,12 +1735,12 @@ impl Translator {
                 frs2,
                 imm,
                 rs1,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs2 },
                 Bitcast { rslt: _1, ty: _d, val: _0, ty2: _i64 },
-                Load { rslt: _2, ty: _i, ptr: rs1 },
-                Add { rslt: _3, ty: _i, op1: _2, op2: imm },
-                Getdataptr { rslt: _4, ty: _i, addr: _3 },
+                Load { rslt: _2, ty: _i64, ptr: rs1 },
+                Add { rslt: _3, ty: _i64, op1: _2, op2: imm },
+                Getdataptr { rslt: _4, ty: _i64, addr: _3 },
                 Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
                 Store { ty: _i64, val: _1, ptr: _5 },
                 UnconBr { addr: next_pc },
@@ -1750,10 +1751,10 @@ impl Translator {
                 frd,
                 imm,
                 rs1,
-            } => build_instructions! { address, raw, self.abi,
-                Load { rslt: _0, ty: _i, ptr: rs1 },
-                Add { rslt: _1, ty: _i, op1: _0, op2: imm },
-                Getdataptr { rslt: _2, ty: _i, addr: _1 },
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                Getdataptr { rslt: _2, ty: _i64, addr: _1 },
                 Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i32 },
                 Load { rslt: _4, ty: _i32, ptr: _3 },
                 Bitcast { rslt: _5, ty: _i32, val: _4, ty2: _f },
@@ -1767,13 +1768,13 @@ impl Translator {
                 frs2,
                 imm,
                 rs1,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs2 },
                 Fptrunc { rslt: _1, ty: _d, val: _0, ty2: _f },
                 Bitcast { rslt: _2, ty: _f, val: _1, ty2: _i32 },
-                Load { rslt: _3, ty: _i, ptr: rs1 },
-                Add { rslt: _4, ty: _i, op1: _3, op2: imm },
-                Getdataptr { rslt: _5, ty: _i, addr: _4 },
+                Load { rslt: _3, ty: _i64, ptr: rs1 },
+                Add { rslt: _4, ty: _i64, op1: _3, op2: imm },
+                Getdataptr { rslt: _5, ty: _i64, addr: _4 },
                 Bitcast { rslt: _6, ty: _i8, val: _5, ty2: _i32 },
                 Store { ty: _i32, val: _2, ptr: _6 },
                 UnconBr { addr: next_pc },
@@ -1783,7 +1784,7 @@ impl Translator {
                 raw,
                 rd,
                 frs1,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Bitcast { rslt: _1, ty: _d, val: _0, ty2: _i64 },
                 Store { ty: _i64, val: _1, ptr: rd },
@@ -1794,7 +1795,7 @@ impl Translator {
                 raw,
                 frd,
                 rs1,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Bitcast { rslt: _1, ty: _i64, val: _0, ty2: _d },
                 Store { ty: _d, val: _1, ptr: frd },
@@ -1805,7 +1806,7 @@ impl Translator {
                 raw,
                 rd,
                 frs1,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Bitcast { rslt: _1, ty: _d, val: _0, ty2: _i64 },
                 Store { ty: _i64, val: _1, ptr: rd },
@@ -1816,7 +1817,7 @@ impl Translator {
                 raw,
                 frd,
                 rs1,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Bitcast { rslt: _1, ty: _i64, val: _0, ty2: _d },
                 Store { ty: _d, val: _1, ptr: frd },
@@ -1829,7 +1830,7 @@ impl Translator {
                 frs1,
                 frs2,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fmul { rslt: _2, ty: _d, op1: _0, op2: _1 },
@@ -1843,7 +1844,7 @@ impl Translator {
                 frs1,
                 frs2,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fsub { rslt: _2, ty: _d, op1: _0, op2: _1 },
@@ -1857,7 +1858,7 @@ impl Translator {
                 frs1,
                 frs2,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fadd { rslt: _2, ty: _d, op1: _0, op2: _1 },
@@ -1869,7 +1870,7 @@ impl Translator {
                 raw,
                 frd,
                 frs1,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Fneg { rslt: _1, ty: _d, op1: _0 },
                 Store { ty: _d, val: _1, ptr: frd },
@@ -1883,7 +1884,7 @@ impl Translator {
                 frs2,
                 frs3,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Load { rslt: _2, ty: _d, ptr: frs3 },
@@ -1900,7 +1901,7 @@ impl Translator {
                 frs2,
                 frs3,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Load { rslt: _2, ty: _d, ptr: frs3 },
@@ -1917,7 +1918,7 @@ impl Translator {
                 frs2,
                 frs3,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Load { rslt: _2, ty: _d, ptr: frs3 },
@@ -1934,7 +1935,7 @@ impl Translator {
                 frs1,
                 frs2,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fmul { rslt: _2, ty: _d, op1: _0, op2: _1 },
@@ -1948,7 +1949,7 @@ impl Translator {
                 frs1,
                 frs2,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fdiv { rslt: _2, ty: _d, op1: _0, op2: _1 },
@@ -1962,7 +1963,7 @@ impl Translator {
                 frs1,
                 frs2,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fdiv { rslt: _2, ty: _d, op1: _0, op2: _1 },
@@ -1976,7 +1977,7 @@ impl Translator {
                 frd,
                 rs1,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
                 Store { ty: _d, val: _1, ptr: frd },
@@ -1988,7 +1989,7 @@ impl Translator {
                 frd,
                 rs1,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Uitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
                 Store { ty: _d, val: _1, ptr: frd },
@@ -2000,7 +2001,7 @@ impl Translator {
                 frd,
                 rs1,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
                 Store { ty: _d, val: _1, ptr: frd },
@@ -2012,7 +2013,7 @@ impl Translator {
                 frd,
                 rs1,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
                 Store { ty: _d, val: _1, ptr: frd },
@@ -2024,7 +2025,7 @@ impl Translator {
                 rd,
                 frs1,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Fptosi { rslt: _1, ty: _d, val: _0, ty2: _i64 },
                 Store { ty: _i64, val: _1, ptr: rd },
@@ -2036,7 +2037,7 @@ impl Translator {
                 rd,
                 frs1,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Fptosi { rslt: _1, ty: _d, val: _0, ty2: _i64 },
                 Store { ty: _i64, val: _1, ptr: rd },
@@ -2048,7 +2049,7 @@ impl Translator {
                 rd,
                 frs1,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Fptoui { rslt: _1, ty: _d, val: _0, ty2: _i64 },
                 Store { ty: _i64, val: _1, ptr: rd },
@@ -2060,7 +2061,7 @@ impl Translator {
                 frd,
                 rs1,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _i64, ptr: rs1 },
                 Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
                 Store { ty: _d, val: _1, ptr: frd },
@@ -2072,7 +2073,7 @@ impl Translator {
                 frd,
                 frs1,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Store { ty: _d, val: _0, ptr: frd },
                 UnconBr { addr: next_pc },
@@ -2083,7 +2084,7 @@ impl Translator {
                 frd,
                 frs1,
                 rm,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Store { ty: _d, val: _0, ptr: frd },
                 UnconBr { addr: next_pc },
@@ -2094,7 +2095,7 @@ impl Translator {
                 raw,
                 frd,
                 frs1,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Store { ty: _d, val: _0, ptr: frd },
                 UnconBr { addr: next_pc },
@@ -2105,7 +2106,7 @@ impl Translator {
                 rd,
                 frs1,
                 frs2,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: oeq, ty: _d, op1: _0, op2: _1 },
@@ -2119,7 +2120,7 @@ impl Translator {
                 rd,
                 frs1,
                 frs2,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: olt, ty: _d, op1: _0, op2: _1 },
@@ -2133,7 +2134,7 @@ impl Translator {
                 rd,
                 frs1,
                 frs2,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: ole, ty: _d, op1: _0, op2: _1 },
@@ -2147,7 +2148,7 @@ impl Translator {
                 rd,
                 frs1,
                 frs2,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: oeq, ty: _d, op1: _0, op2: _1 },
@@ -2161,7 +2162,7 @@ impl Translator {
                 rd,
                 frs1,
                 frs2,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: olt, ty: _d, op1: _0, op2: _1 },
@@ -2175,7 +2176,7 @@ impl Translator {
                 rd,
                 frs1,
                 frs2,
-            } => build_instructions! { address, raw, self.abi,
+            } => build_instructions! { address, raw,
                 Load { rslt: _0, ty: _d, ptr: frs1 },
                 Load { rslt: _1, ty: _d, ptr: frs2 },
                 Fcmp { rslt: _2, fcond: ole, ty: _d, op1: _0, op2: _1 },
@@ -2184,28 +2185,28 @@ impl Translator {
                 UnconBr { addr: next_pc },
             },
 
-            RI::Frrm { address, raw, .. } => build_instructions! { address, raw, self.abi,
+            RI::Frrm { address, raw, .. } => build_instructions! { address, raw,
                 UnconBr { addr: next_pc },
             },
-            RI::Csrs { address, raw, .. } => build_instructions! { address, raw, self.abi,
+            RI::Csrs { address, raw, .. } => build_instructions! { address, raw,
                 UnconBr { addr: next_pc },
             },
-            RI::Csrrw { address, raw, .. } => build_instructions! { address, raw, self.abi,
+            RI::Csrrw { address, raw, .. } => build_instructions! { address, raw,
                 UnconBr { addr: next_pc },
             },
-            RI::Csrr { address, raw, .. } => build_instructions! { address, raw, self.abi,
+            RI::Csrr { address, raw, .. } => build_instructions! { address, raw,
                 UnconBr { addr: next_pc },
             },
-            RI::Csrsi { address, raw, .. } => build_instructions! { address, raw, self.abi,
+            RI::Csrsi { address, raw, .. } => build_instructions! { address, raw,
                 UnconBr { addr: next_pc },
             },
-            RI::Csrrsi { address, raw, .. } => build_instructions! { address, raw, self.abi,
+            RI::Csrrsi { address, raw, .. } => build_instructions! { address, raw,
                 UnconBr { addr: next_pc },
             },
-            RI::Csrrci { address, raw, .. } => build_instructions! { address, raw, self.abi,
+            RI::Csrrci { address, raw, .. } => build_instructions! { address, raw,
                 UnconBr { addr: next_pc },
             },
-            RI::Csrrs { address, raw, .. } => build_instructions! { address, raw, self.abi,
+            RI::Csrrs { address, raw, .. } => build_instructions! { address, raw,
                 UnconBr { addr: next_pc },
             },
 
@@ -2216,10 +2217,10 @@ impl Translator {
                 rs1,
             } => {
                 let imm = &Immediate(255);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    And { rslt: _1, ty: _i, op1: _0, op2: imm },
-                    Store { ty: _i, val: _1, ptr: rd },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    And { rslt: _1, ty: _i64, op1: _0, op2: imm },
+                    Store { ty: _i64, val: _1, ptr: rd },
                     UnconBr { addr: next_pc },
                 }
             }
@@ -2233,10 +2234,10 @@ impl Translator {
                 ..
             } => {
                 let imm = &Immediate(255);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Store { ty: _i, val: _0, ptr: rd },
-                    Store { ty: _i, val: _0, ptr: rs1 },
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Store { ty: _i64, val: _0, ptr: rd },
+                    Store { ty: _i64, val: _0, ptr: rs1 },
                     UnconBr { addr: next_pc },
                 }
             }
@@ -2256,12 +2257,12 @@ impl Translator {
                 ..
             } => {
                 let imm = &Immediate(255);
-                build_instructions! { address, raw, self.abi,
-                    Load { rslt: _0, ty: _i, ptr: rs1 },
-                    Store { ty: _i, val: _0, ptr: rd }, 
-                    Load { rslt: _1, ty: _i, ptr: rs2 },
-                    Add { rslt: _2, ty: _i, op1: _0, op2: _1 },
-                    Store { ty: _i, val: _2, ptr: rs1 }, 
+                build_instructions! { address, raw,
+                    Load { rslt: _0, ty: _i64, ptr: rs1 },
+                    Store { ty: _i64, val: _0, ptr: rd }, 
+                    Load { rslt: _1, ty: _i64, ptr: rs2 },
+                    Add { rslt: _2, ty: _i64, op1: _0, op2: _1 },
+                    Store { ty: _i64, val: _2, ptr: rs1 }, 
                     UnconBr { addr: next_pc },
                 }
             }

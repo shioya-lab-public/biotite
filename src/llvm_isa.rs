@@ -1,12 +1,11 @@
 #![allow(dead_code)]
 
 use crate::riscv_isa::{
-    Abi, Address, DataBlock, FPRegister, Immediate, Instruction as RiscvInstruction, Register,
+    Address, DataBlock, FPRegister, Immediate, Instruction as RiscvInstruction, Register,
 };
-use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-const SYSCALL: &str = "declare i{xlen} @syscall(i{xlen}, ...)
+const SYSCALL: &str = "declare i64 @syscall(i64, ...)
 
 %struct.tms = type { i64, i64, i64, i64 }
 
@@ -67,12 +66,12 @@ fallback:
   unreachable
 }";
 
-const FPFUNCTIONS: &str = "declare {ftype} @llvm.sqrt.f{flen}({ftype} %op1)
-declare {ftype} @llvm.fma.f{flen}({ftype} %op1, {ftype} %op2, {ftype} %op3)
-declare {ftype} @llvm.fabs.f{flen}({ftype} %op1)
-declare {ftype} @llvm.minimum.f{flen}({ftype} %op1, {ftype} %op2)
-declare {ftype} @llvm.maximum.f{flen}({ftype} %op1, {ftype} %op2)
-declare {ftype} @llvm.copysign.f{flen}({ftype} %mag, {ftype} %sgn)";
+const FPFUNCTIONS: &str = "declare double @llvm.sqrt.f64(double %op1)
+declare double @llvm.fma.f64(double %op1, double %op2, double %op3)
+declare double @llvm.fabs.f64(double %op1)
+declare double @llvm.minimum.f64(double %op1, double %op2)
+declare double @llvm.maximum.f64(double %op1, double %op2)
+declare double @llvm.copysign.f64(double %mag, double %sgn)";
 
 const REGISTERS: &str = "
 
@@ -83,172 +82,25 @@ const REGISTERS: &str = "
   %freg_byte = bitcast %struct.freg* %freg to i8*
   call void @llvm.memset.p0i8.i64(i8* align 8 %freg_byte, i8 0, i64 256, i1 false)
 
-  %k1 = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 2
-  store i64 10240, i64* %k1
+  %sp = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 2
+  store i64 10240, i64* %sp
 
-  %zero = alloca i{xlen}
-  %ra = alloca i{xlen}
-  %sp = alloca i{xlen}
-  %gp = alloca i{xlen}
-  %tp = alloca i{xlen}
-  %t0 = alloca i{xlen}
-  %t1 = alloca i{xlen}
-  %t2 = alloca i{xlen}
-  %s0 = alloca i{xlen}
-  %s1 = alloca i{xlen}
-  %a0 = alloca i{xlen}
-  %a1 = alloca i{xlen}
-  %a2 = alloca i{xlen}
-  %a3 = alloca i{xlen}
-  %a4 = alloca i{xlen}
-  %a5 = alloca i{xlen}
-  %a6 = alloca i{xlen}
-  %a7 = alloca i{xlen}
-  %s2 = alloca i{xlen}
-  %s3 = alloca i{xlen}
-  %s4 = alloca i{xlen}
-  %s5 = alloca i{xlen}
-  %s6 = alloca i{xlen}
-  %s7 = alloca i{xlen}
-  %s8 = alloca i{xlen}
-  %s9 = alloca i{xlen}
-  %s10 = alloca i{xlen}
-  %s11 = alloca i{xlen}
-  %t3 = alloca i{xlen}
-  %t4 = alloca i{xlen}
-  %t5 = alloca i{xlen}
-  %t6 = alloca i{xlen}
-
-  store i{xlen} zeroinitializer, i{xlen}* %zero
-  store i{xlen} zeroinitializer, i{xlen}* %ra
-  store i{xlen} 10240, i{xlen}* %sp
-  store i{xlen} zeroinitializer, i{xlen}* %gp
-  store i{xlen} zeroinitializer, i{xlen}* %tp
-  store i{xlen} zeroinitializer, i{xlen}* %t0
-  store i{xlen} zeroinitializer, i{xlen}* %t1
-  store i{xlen} zeroinitializer, i{xlen}* %t2
-  store i{xlen} zeroinitializer, i{xlen}* %s0
-  store i{xlen} zeroinitializer, i{xlen}* %s1
-  store i{xlen} zeroinitializer, i{xlen}* %a0
-  store i{xlen} zeroinitializer, i{xlen}* %a1
-  store i{xlen} zeroinitializer, i{xlen}* %a2
-  store i{xlen} zeroinitializer, i{xlen}* %a3
-  store i{xlen} zeroinitializer, i{xlen}* %a4
-  store i{xlen} zeroinitializer, i{xlen}* %a5
-  store i{xlen} zeroinitializer, i{xlen}* %a6
-  store i{xlen} zeroinitializer, i{xlen}* %a7
-  store i{xlen} zeroinitializer, i{xlen}* %s2
-  store i{xlen} zeroinitializer, i{xlen}* %s3
-  store i{xlen} zeroinitializer, i{xlen}* %s4
-  store i{xlen} zeroinitializer, i{xlen}* %s5
-  store i{xlen} zeroinitializer, i{xlen}* %s6
-  store i{xlen} zeroinitializer, i{xlen}* %s7
-  store i{xlen} zeroinitializer, i{xlen}* %s8
-  store i{xlen} zeroinitializer, i{xlen}* %s9
-  store i{xlen} zeroinitializer, i{xlen}* %s10
-  store i{xlen} zeroinitializer, i{xlen}* %s11
-  store i{xlen} zeroinitializer, i{xlen}* %t3
-  store i{xlen} zeroinitializer, i{xlen}* %t4
-  store i{xlen} zeroinitializer, i{xlen}* %t5
-  store i{xlen} zeroinitializer, i{xlen}* %t6";
-
-const FPREGISTERS: &str = "  %ft0 = alloca {ftype}
-  %ft1 = alloca {ftype}
-  %ft2 = alloca {ftype}
-  %ft3 = alloca {ftype}
-  %ft4 = alloca {ftype}
-  %ft5 = alloca {ftype}
-  %ft6 = alloca {ftype}
-  %ft7 = alloca {ftype}
-  %fs0 = alloca {ftype}
-  %fs1 = alloca {ftype}
-  %fa0 = alloca {ftype}
-  %fa1 = alloca {ftype}
-  %fa2 = alloca {ftype}
-  %fa3 = alloca {ftype}
-  %fa4 = alloca {ftype}
-  %fa5 = alloca {ftype}
-  %fa6 = alloca {ftype}
-  %fa7 = alloca {ftype}
-  %fs2 = alloca {ftype}
-  %fs3 = alloca {ftype}
-  %fs4 = alloca {ftype}
-  %fs5 = alloca {ftype}
-  %fs6 = alloca {ftype}
-  %fs7 = alloca {ftype}
-  %fs8 = alloca {ftype}
-  %fs9 = alloca {ftype}
-  %fs10 = alloca {ftype}
-  %fs11 = alloca {ftype}
-  %ft8 = alloca {ftype}
-  %ft9 = alloca {ftype}
-  %ft10 = alloca {ftype}
-  %ft11 = alloca {ftype}
-
-  store {ftype} zeroinitializer, {ftype}* %ft0
-  store {ftype} zeroinitializer, {ftype}* %ft1
-  store {ftype} zeroinitializer, {ftype}* %ft2
-  store {ftype} zeroinitializer, {ftype}* %ft3
-  store {ftype} zeroinitializer, {ftype}* %ft4
-  store {ftype} zeroinitializer, {ftype}* %ft5
-  store {ftype} zeroinitializer, {ftype}* %ft6
-  store {ftype} zeroinitializer, {ftype}* %ft7
-  store {ftype} zeroinitializer, {ftype}* %fs0
-  store {ftype} zeroinitializer, {ftype}* %fs1
-  store {ftype} zeroinitializer, {ftype}* %fa0
-  store {ftype} zeroinitializer, {ftype}* %fa1
-  store {ftype} zeroinitializer, {ftype}* %fa2
-  store {ftype} zeroinitializer, {ftype}* %fa3
-  store {ftype} zeroinitializer, {ftype}* %fa4
-  store {ftype} zeroinitializer, {ftype}* %fa5
-  store {ftype} zeroinitializer, {ftype}* %fa6
-  store {ftype} zeroinitializer, {ftype}* %fa7
-  store {ftype} zeroinitializer, {ftype}* %fs2
-  store {ftype} zeroinitializer, {ftype}* %fs3
-  store {ftype} zeroinitializer, {ftype}* %fs4
-  store {ftype} zeroinitializer, {ftype}* %fs5
-  store {ftype} zeroinitializer, {ftype}* %fs6
-  store {ftype} zeroinitializer, {ftype}* %fs7
-  store {ftype} zeroinitializer, {ftype}* %fs8
-  store {ftype} zeroinitializer, {ftype}* %fs9
-  store {ftype} zeroinitializer, {ftype}* %fs10
-  store {ftype} zeroinitializer, {ftype}* %fs11
-  store {ftype} zeroinitializer, {ftype}* %ft8
-  store {ftype} zeroinitializer, {ftype}* %ft9
-  store {ftype} zeroinitializer, {ftype}* %ft10
-  store {ftype} zeroinitializer, {ftype}* %ft11";
+  %argc_i64 = sext i32 %argc to i64
+  %a0 = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 10
+  store i64 %argc_i64, i64* %a0
+        
+";
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
-    pub abi: Abi,
     pub entry: Address,
     pub data_blocks: Vec<DataBlock>,
-    // pub code_blocks: Vec<CodeBlock>,
-    pub functions: Vec<Vec<CodeBlock>>,
-    // pub stack: HashMap<Address, HashSet<Type>>,
+    pub code_blocks: Vec<CodeBlock>,
     pub targets: Vec<Address>,
 }
 
 impl Display for Program {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let (xlen, flen, ftype) = match self.abi {
-            Abi::Ilp32 => ("32", None, None),
-            Abi::Ilp32f => ("32", Some("32"), Some("float")),
-            Abi::Ilp32d => ("32", Some("64"), Some("double")),
-            Abi::Lp64 => ("64", None, None),
-            Abi::Lp64f => ("64", Some("32"), Some("float")),
-            Abi::Lp64d => ("64", Some("64"), Some("double")),
-        };
-
-        let abi = format!("; ABI: {}", self.abi);
-        let syscall = SYSCALL.replace("{xlen}", xlen);
-        let fpfunctions = if let (Some(flen), Some(ftype)) = (flen, ftype) {
-            FPFUNCTIONS
-                .replace("{flen}", flen)
-                .replace("{ftype}", ftype)
-        } else {
-            String::new()
-        };
         let data_blocks = self
             .data_blocks
             .iter()
@@ -257,7 +109,7 @@ impl Display for Program {
         let get_data_ptr = if self.data_blocks.is_empty() {
             String::new()
         } else {
-        let mut get_data_ptr = format!("define i8* @get_data_ptr(i{} %addr) {{\n", xlen);
+        let mut get_data_ptr = format!("define i8* @get_data_ptr(i64 %addr) {{\n");
         let mut data_blocks_iter = self.data_blocks.iter();
         let mut current = data_blocks_iter.next();
         let mut next = data_blocks_iter.next();
@@ -267,18 +119,17 @@ impl Display for Program {
                 let cur_end = addr as usize + cur.bytes.len();
                 get_data_ptr += &format!(
                     "data_{cur}:
-  %data_{cur}_start = icmp sle i{xlen} {cur}, %addr
+  %data_{cur}_start = icmp sle i64 {cur}, %addr
   br i1 %data_{cur}_start, label %data_{cur}_start_true, label %data_{nxt}
 data_{cur}_start_true:
-  %data_{cur}_end = icmp sgt i{xlen} {cur_end}, %addr
+  %data_{cur}_end = icmp sgt i64 {cur_end}, %addr
   br i1 %data_{cur}_end, label %data_{cur}_true, label %data_{nxt}
 data_{cur}_true:
-  %rel_addr_{cur} = sub i{xlen} %addr, {cur}
-  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i{xlen} %rel_addr_{cur}
+  %rel_addr_{cur} = sub i64 %addr, {cur}
+  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i64 %rel_addr_{cur}
   ret i8* %ptr_{cur}
 ",
                     cur = cur.address,
-                    xlen = xlen,
                     nxt = nxt.address,
                     len = cur.bytes.len()
                 );
@@ -287,21 +138,20 @@ data_{cur}_true:
                 let cur_end = addr as usize + cur.bytes.len();
                 get_data_ptr += &format!(
                     "data_{cur}:
-  %data_{cur}_start = icmp sle i{xlen} {cur}, %addr
+  %data_{cur}_start = icmp sle i64 {cur}, %addr
   br i1 %data_{cur}_start, label %data_{cur}_start_true, label %fallback
 data_{cur}_start_true:
-  %data_{cur}_end = icmp sgt i{xlen} {cur_end}, %addr
+  %data_{cur}_end = icmp sgt i64 {cur_end}, %addr
   br i1 %data_{cur}_end, label %data_{cur}_true, label %fallback
 data_{cur}_true:
-  %rel_addr_{cur} = sub i{xlen} %addr, {cur}
-  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i{xlen} %rel_addr_{cur}
+  %rel_addr_{cur} = sub i64 %addr, {cur}
+  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i64 %rel_addr_{cur}
   ret i8* %ptr_{cur}
 fallback:
-  %ptr = inttoptr i{xlen} %addr to i8*
+  %ptr = inttoptr i64 %addr to i8*
   ret i8* %ptr
 ",
                     cur = cur.address,
-                    xlen = xlen,
                     len = cur.bytes.len()
                 );
             }
@@ -312,50 +162,12 @@ fallback:
         get_data_ptr
         };
 
-        let mut registers = REGISTERS.replace("{xlen}", xlen);
-        if xlen == "64" {
-            registers += "\n\n  %argc_i64 = sext i32 %argc to i64\n";
-            registers += "  store i64 %argc_i64, i64* %a0";
-        } else {
-            registers += "\n\n  store i32 %argc, i32* %a0";
-        };
-        let fpregisters = if let Some(ftype) = ftype {
-            FPREGISTERS.replace("{ftype}", ftype)
-        } else {
-            String::new()
-        };
-        let mut stack = String::new();
-        // for (addr, tys) in self.stack.iter() {
-        //     for ty in tys {
-        //         stack += &format!("  %stack_{}_{} = alloca {}\n", addr, ty, ty);
-        //     }
-        // }
-        let entry = format!("  %rslt = call i64 @code(i64 {}, %struct.reg* %reg, %struct.freg* %freg)", self.entry);
-        let funcs = self
-            .functions
+        
+        let code_blocks = self
+            .code_blocks
             .iter()
-            .fold(String::new(), |s, b| {
-                let b_s = b.iter()
-                .fold(String::new(), |s, b| s + &format!("{}\n", b));
-                s + &format!("
-                define i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg) {{
-                    entry:
-                    br label %label_{}
-                    {}
-                    label_1:
-                    call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {})
-                        unreachable
-                    label_0:
-                        call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {})
-                            unreachable
-                }}\n", b[0].address, b[0].address, b_s, b[0].address, b[0].address)
-                
-            });
+            .fold(String::new(), |s, b| s + &format!("{}\n", b));
 
-        // let mut targets: Vec<_> = Vec::new();
-        // for block in self.code_blocks.iter() {
-        //     for inst in block.instruction_blocks
-        // }
         let mut dispatch = format!("store i64 %entry, i64* %switch_target\nswitch i64 %entry, label %label_1 [");
         for tgt in &self.targets {
             dispatch += &format!("i64 {tgt}, label %label_{tgt} ");
@@ -372,8 +184,6 @@ fallback:
 
 {}
 
-{}
-
 %struct.reg = type {{ i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64 }}
 %struct.freg = type {{ double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double }}
 declare void @llvm.memset.p0i8.i64(i8* nocapture writeonly, i8, i64, i1 immarg)
@@ -383,38 +193,51 @@ declare dso_local i32 @printf(i8*, ...)
 @.str.f = private unnamed_addr constant [13 x i8] c\"#value: %f#\\0A\\00\", align 1
 @.str.s = private unnamed_addr constant [13 x i8] c\"#value: %s#\\0A\\00\", align 1
 
-define i{xlen} @main(i32 %argc, i8** %argv) {{
-
-
+define i64 @main(i32 %argc, i8** %argv) {{
 {}
 
-{}
-
-{}
-
-%target = call i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg)
-call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 0)
-unreachable
+%entry_p= alloca i64
+store i64 {}, i64* %entry_p
+br label %loop
+loop:
+%entry = load i64, i64* %entry_p
+%target = call i64 @code(i64 %entry, %struct.reg* %reg, %struct.freg* %freg)
+; %addr = call i64 @interpret(i64 %target, %struct.reg* %reg, %struct.freg* %freg)
+store i64 %target, i64* %entry_p
+br label %loop
 }}
 
 define i64 @interpret(i64 %addr, %struct.reg* %reg, %struct.freg* %freg) {{
     ret i64 %addr
 }}
 
+define i64 @code(i64 %entry, %struct.reg* %reg, %struct.freg* %freg) {{
+    %switch_address = alloca i64
+    %switch_target = alloca i64
+    {dispatch}
+  label_1:
+    %switch_address_value = load i64, i64* %switch_address
+    %switch_target_value = load i64, i64* %switch_target
+    ;call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_address_value)
+    ;call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_target_value)
+    ;call void @exit(i32 2)
+    ret i64 %switch_target_value
+    
 
 {}
 
+label_0:
+  ; %ret = load i64, i64* %a0
+  ret i64 101
+}}
 ",
-            abi,
-            syscall,
-            fpfunctions,
+SYSCALL,
+FPFUNCTIONS,
             get_data_ptr,
             data_blocks,
-            registers,
-            fpregisters,
-            stack,
+            REGISTERS,
             self.entry,
-            funcs
+            code_blocks
         )
     }
 }
@@ -448,10 +271,6 @@ pub struct InstructionBlock {
 impl Display for InstructionBlock {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let mut inst_block = format!("  ; {:?}\n", self.riscv_instruction);
-
-        // debug
-        // inst_block += &format!("  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str, i64 0, i64 0), i64 {})\n", self.riscv_instruction.address());
-
         for inst in self.instructions.iter() {
             inst_block += &format!("  {}\n", inst);
         }
@@ -974,22 +793,22 @@ impl Display for Instruction {
                 iftrue,
                 iffalse,
             } =>
-            write!(
-                f,
-                "br i1 {}, label %label_{}, label %label_{}",
-                cond, iftrue, iffalse
-            ),
-            // {
-            //     let c = &format!("{cond}")[1..];
-            //     write!(
-            //         f,
-            //         "br i1 {cond}, label {cond}_t, label {cond}_f
-            //         {c}_t:
-            //           ret i64 {iftrue}
-            //         {c}_f:
-            //           ret i64 {iffalse}"
-            //     )
-            // }
+            // write!(
+            //     f,
+            //     "br i1 {}, label %label_{}, label %label_{}",
+            //     cond, iftrue, iffalse
+            // ),
+            {
+                let c = &format!("{cond}")[1..];
+                write!(
+                    f,
+                    "br i1 {cond}, label {cond}_t, label {cond}_f
+                    {c}_t:
+                      ret i64 {iftrue}
+                    {c}_f:
+                      ret i64 {iffalse}"
+                )
+            }
             UnconBr { addr } => write!(f, "br label %label_{}", addr),
             Switch {
                 ty,
@@ -997,12 +816,12 @@ impl Display for Instruction {
                 dflt,
                 tgts,
             } => {
-                let mut s = format!("switch {} {}, label %label_{} [", ty, val, dflt);
-                for target in tgts {
-                    s += &format!("{} {}, label %label_{} ", ty, target, target);
-                }
-                s += "]";
-                // let s = format!("store i64 {}, i64* %switch_target\n  br label %label_1", val);
+                // let mut s = format!("switch {} {}, label %label_{} [", ty, val, dflt);
+                // for target in tgts {
+                //     s += &format!("{} {}, label %label_{} ", ty, target, target);
+                // }
+                // s += "]";
+                let s = format!("store i64 {}, i64* %switch_target\n  br label %label_1", val);
                 write!(f, "{}", s)
             }
 

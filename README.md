@@ -46,6 +46,7 @@ Counter
 
 ## Todo
 
+- read entry from elf?
 - Trap `argv` in address 1?
 
 - Force x0 always to be 0
