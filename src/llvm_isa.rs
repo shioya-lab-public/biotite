@@ -95,7 +95,7 @@ const REGISTERS: &str = "
 pub struct Program {
     pub entry: Address,
     pub data_blocks: Vec<DataBlock>,
-    pub code_blocks: Vec<CodeBlock>,
+    pub functions: Vec<Vec<CodeBlock>>,
     pub targets: Vec<Address>,
 }
 
@@ -109,16 +109,16 @@ impl Display for Program {
         let get_data_ptr = if self.data_blocks.is_empty() {
             String::new()
         } else {
-        let mut get_data_ptr = format!("define i8* @get_data_ptr(i64 %addr) {{\n");
-        let mut data_blocks_iter = self.data_blocks.iter();
-        let mut current = data_blocks_iter.next();
-        let mut next = data_blocks_iter.next();
-        while let Some(cur) = current {
-            if let Some(nxt) = next {
-                let Address(addr) = cur.address;
-                let cur_end = addr as usize + cur.bytes.len();
-                get_data_ptr += &format!(
-                    "data_{cur}:
+            let mut get_data_ptr = format!("define i8* @get_data_ptr(i64 %addr) {{\n");
+            let mut data_blocks_iter = self.data_blocks.iter();
+            let mut current = data_blocks_iter.next();
+            let mut next = data_blocks_iter.next();
+            while let Some(cur) = current {
+                if let Some(nxt) = next {
+                    let Address(addr) = cur.address;
+                    let cur_end = addr as usize + cur.bytes.len();
+                    get_data_ptr += &format!(
+                        "data_{cur}:
   %data_{cur}_start = icmp sle i64 {cur}, %addr
   br i1 %data_{cur}_start, label %data_{cur}_start_true, label %data_{nxt}
 data_{cur}_start_true:
@@ -129,15 +129,15 @@ data_{cur}_true:
   %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i64 %rel_addr_{cur}
   ret i8* %ptr_{cur}
 ",
-                    cur = cur.address,
-                    nxt = nxt.address,
-                    len = cur.bytes.len()
-                );
-            } else {
-                let Address(addr) = cur.address;
-                let cur_end = addr as usize + cur.bytes.len();
-                get_data_ptr += &format!(
-                    "data_{cur}:
+                        cur = cur.address,
+                        nxt = nxt.address,
+                        len = cur.bytes.len()
+                    );
+                } else {
+                    let Address(addr) = cur.address;
+                    let cur_end = addr as usize + cur.bytes.len();
+                    get_data_ptr += &format!(
+                        "data_{cur}:
   %data_{cur}_start = icmp sle i64 {cur}, %addr
   br i1 %data_{cur}_start, label %data_{cur}_start_true, label %fallback
 data_{cur}_start_true:
@@ -151,29 +151,66 @@ fallback:
   %ptr = inttoptr i64 %addr to i8*
   ret i8* %ptr
 ",
-                    cur = cur.address,
-                    len = cur.bytes.len()
-                );
+                        cur = cur.address,
+                        len = cur.bytes.len()
+                    );
+                }
+                current = next;
+                next = data_blocks_iter.next();
             }
-            current = next;
-            next = data_blocks_iter.next();
-        }
-        get_data_ptr += "}";
-        get_data_ptr
+            get_data_ptr += "}";
+            get_data_ptr
         };
 
-        
-        let code_blocks = self
-            .code_blocks
-            .iter()
-            .fold(String::new(), |s, b| s + &format!("{}\n", b));
+        // Build each function
+        let mut functions = String::new();
+        for func in &self.functions {
+            let mut targets = String::from("switch i64 %entry, label %label_0 [");
+            for block in func {
+                for inst in &block.instruction_blocks {
+                    let Address(addr) = inst.riscv_instruction.address();
+                    targets += &format!("i64 {}, label %label_{} ", addr, addr);
+                }
+            }
+            targets.pop();
+            targets += "]";
 
-        let mut dispatch = format!("store i64 %entry, i64* %switch_target\nswitch i64 %entry, label %label_1 [");
-        for tgt in &self.targets {
-            dispatch += &format!("i64 {tgt}, label %label_{tgt} ");
+            let code_blocks = func
+                .iter()
+                .fold(String::new(), |s, b| s + &format!("{}\n", b));
+
+            let s = format!(
+                "
+define i64 @func_{}(i64 %entry, %struct.reg* %reg, %struct.freg* %freg) {{
+  {targets}
+  {code_blocks}
+label_0:
+  unreachable
+}}
+",
+                func[0].address
+            );
+            functions += &s;
         }
-        dispatch += "]";
 
+        // Main dispatcher
+        let mut inst_cnt = 150000;
+        let mut table = vec![String::from("i64 0"); inst_cnt];
+        for func in &self.functions {
+            let f = func[0].instruction_blocks[0].riscv_instruction.address();
+            for block in func {
+                for b in &block.instruction_blocks {
+                    let Address(addr) = b.riscv_instruction.address();
+                    table[addr as usize] = format!(
+                        "i64 ptrtoint (i64 (i64, %struct.reg*, %struct.freg*)* @func_{f} to i64)"
+                    );
+                }
+            }
+        }
+        let table = table.join(", ");
+        let mut table = format!("@dispatch_table = dso_local global [{inst_cnt} x i64] [{table}]");
+
+        // Main formatting
         write!(
             f,
             "{}
@@ -193,6 +230,8 @@ declare dso_local i32 @printf(i8*, ...)
 @.str.f = private unnamed_addr constant [13 x i8] c\"#value: %f#\\0A\\00\", align 1
 @.str.s = private unnamed_addr constant [13 x i8] c\"#value: %s#\\0A\\00\", align 1
 
+{table}
+
 define i64 @main(i32 %argc, i8** %argv) {{
 {}
 
@@ -201,35 +240,20 @@ store i64 {}, i64* %entry_p
 br label %loop
 loop:
 %entry = load i64, i64* %entry_p
-%target = call i64 @code(i64 %entry, %struct.reg* %reg, %struct.freg* %freg)
-; %addr = call i64 @interpret(i64 %target, %struct.reg* %reg, %struct.freg* %freg)
+%func_val_ptr = getelementptr [{inst_cnt} x i64], [{inst_cnt} x i64]* @dispatch_table, i64 0, i64 %entry
+%func_val = load i64, i64* %func_val_ptr
+%func_ptr = inttoptr i64 %func_val to i64 (i64, %struct.reg*, %struct.freg*)*
+%target = call i64 %func_ptr(i64 %entry, %struct.reg* %reg, %struct.freg* %freg)
 store i64 %target, i64* %entry_p
 br label %loop
-}}
 
-define i64 @interpret(i64 %addr, %struct.reg* %reg, %struct.freg* %freg) {{
-    ret i64 %addr
-}}
 
-define i64 @code(i64 %entry, %struct.reg* %reg, %struct.freg* %freg) {{
-    %switch_address = alloca i64
-    %switch_target = alloca i64
-    {dispatch}
-  label_1:
-    %switch_address_value = load i64, i64* %switch_address
-    %switch_target_value = load i64, i64* %switch_target
-    ;call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_address_value)
-    ;call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %switch_target_value)
-    ;call void @exit(i32 2)
-    ret i64 %switch_target_value
-    
+label_0:
+  unreachable
+}}
 
 {}
 
-label_0:
-  ; %ret = load i64, i64* %a0
-  ret i64 101
-}}
 ",
 SYSCALL,
 FPFUNCTIONS,
@@ -237,7 +261,7 @@ FPFUNCTIONS,
             data_blocks,
             REGISTERS,
             self.entry,
-            code_blocks
+            functions
         )
     }
 }
@@ -793,22 +817,22 @@ impl Display for Instruction {
                 iftrue,
                 iffalse,
             } =>
-            // write!(
-            //     f,
-            //     "br i1 {}, label %label_{}, label %label_{}",
-            //     cond, iftrue, iffalse
-            // ),
-            {
-                let c = &format!("{cond}")[1..];
-                write!(
-                    f,
-                    "br i1 {cond}, label {cond}_t, label {cond}_f
-                    {c}_t:
-                      ret i64 {iftrue}
-                    {c}_f:
-                      ret i64 {iffalse}"
-                )
-            }
+            write!(
+                f,
+                "br i1 {}, label %label_{}, label %label_{}",
+                cond, iftrue, iffalse
+            ),
+            // {
+            //     let c = &format!("{cond}")[1..];
+            //     write!(
+            //         f,
+            //         "br i1 {cond}, label {cond}_t, label {cond}_f
+            //         {c}_t:
+            //           ret i64 {iftrue}
+            //         {c}_f:
+            //           ret i64 {iffalse}"
+            //     )
+            // }
             UnconBr { addr } => write!(f, "br label %label_{}", addr),
             Switch {
                 ty,
@@ -821,7 +845,10 @@ impl Display for Instruction {
                 //     s += &format!("{} {}, label %label_{} ", ty, target, target);
                 // }
                 // s += "]";
-                let s = format!("store i64 {}, i64* %switch_target\n  br label %label_1", val);
+                let s = format!(
+                    "store i64 {}, i64* %switch_target\n  br label %label_1",
+                    val
+                );
                 write!(f, "{}", s)
             }
 
@@ -861,78 +888,208 @@ impl Display for Instruction {
                 // let temp = if let Value::Temp(addr, t) = rslt {
                 //     Value::Temp(*addr, t+1000)
                 // } else if let Value::Immediate(_) = rslt {
-                    let t = unsafe { T };
-                    unsafe { T += 1; }
-                    let temp = Value::Temp(Address(0), t);
+                let t = unsafe { T };
+                unsafe {
+                    T += 1;
+                }
+                let temp = Value::Temp(Address(0), t);
                 // } else {
                 //     unreachable!()
                 // };
                 let load = match ptr {
-                    Value::Register(Register::Zero) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 0"),
-                    Value::Register(Register::Ra) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 1"),
-                    Value::Register(Register::Sp) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 2"),
-                    Value::Register(Register::Gp) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 3"),
-                    Value::Register(Register::Tp) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 4"),
-                    Value::Register(Register::T0) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 5"),
-                    Value::Register(Register::T1) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 6"),
-                    Value::Register(Register::T2) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 7"),
-                    Value::Register(Register::S0) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 8"),
-                    Value::Register(Register::S1) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 9"),
-                    Value::Register(Register::A0) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 10"),
-                    Value::Register(Register::A1) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 11"),
-                    Value::Register(Register::A2) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 12"),
-                    Value::Register(Register::A3) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 13"),
-                    Value::Register(Register::A4) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 14"),
-                    Value::Register(Register::A5) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 15"),
-                    Value::Register(Register::A6) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 16"),
-                    Value::Register(Register::A7) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 17"),
-                    Value::Register(Register::S2) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 18"),
-                    Value::Register(Register::S3) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 19"),
-                    Value::Register(Register::S4) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 20"),
-                    Value::Register(Register::S5) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 21"),
-                    Value::Register(Register::S6) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 22"),
-                    Value::Register(Register::S7) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 23"),
-                    Value::Register(Register::S8) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 24"),
-                    Value::Register(Register::S9) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 25"),
-                    Value::Register(Register::S10) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 26"),
-                    Value::Register(Register::S11) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 27"),
-                    Value::Register(Register::T3) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 28"),
-                    Value::Register(Register::T4) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 29"),
-                    Value::Register(Register::T5) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 30"),
-                    Value::Register(Register::T6) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 31"),
+                    Value::Register(Register::Zero) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 0"
+                    ),
+                    Value::Register(Register::Ra) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 1"
+                    ),
+                    Value::Register(Register::Sp) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 2"
+                    ),
+                    Value::Register(Register::Gp) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 3"
+                    ),
+                    Value::Register(Register::Tp) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 4"
+                    ),
+                    Value::Register(Register::T0) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 5"
+                    ),
+                    Value::Register(Register::T1) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 6"
+                    ),
+                    Value::Register(Register::T2) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 7"
+                    ),
+                    Value::Register(Register::S0) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 8"
+                    ),
+                    Value::Register(Register::S1) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 9"
+                    ),
+                    Value::Register(Register::A0) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 10"
+                    ),
+                    Value::Register(Register::A1) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 11"
+                    ),
+                    Value::Register(Register::A2) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 12"
+                    ),
+                    Value::Register(Register::A3) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 13"
+                    ),
+                    Value::Register(Register::A4) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 14"
+                    ),
+                    Value::Register(Register::A5) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 15"
+                    ),
+                    Value::Register(Register::A6) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 16"
+                    ),
+                    Value::Register(Register::A7) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 17"
+                    ),
+                    Value::Register(Register::S2) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 18"
+                    ),
+                    Value::Register(Register::S3) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 19"
+                    ),
+                    Value::Register(Register::S4) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 20"
+                    ),
+                    Value::Register(Register::S5) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 21"
+                    ),
+                    Value::Register(Register::S6) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 22"
+                    ),
+                    Value::Register(Register::S7) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 23"
+                    ),
+                    Value::Register(Register::S8) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 24"
+                    ),
+                    Value::Register(Register::S9) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 25"
+                    ),
+                    Value::Register(Register::S10) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 26"
+                    ),
+                    Value::Register(Register::S11) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 27"
+                    ),
+                    Value::Register(Register::T3) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 28"
+                    ),
+                    Value::Register(Register::T4) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 29"
+                    ),
+                    Value::Register(Register::T5) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 30"
+                    ),
+                    Value::Register(Register::T6) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 31"
+                    ),
 
-                    Value::FPRegister(FPRegister::Ft0) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 0"),
-                    Value::FPRegister(FPRegister::Ft1) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 1"),
-                    Value::FPRegister(FPRegister::Ft2) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 2"),
-                    Value::FPRegister(FPRegister::Ft3) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 3"),
-                    Value::FPRegister(FPRegister::Ft4) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 4"),
-                    Value::FPRegister(FPRegister::Ft5) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 5"),
-                    Value::FPRegister(FPRegister::Ft6) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 6"),
-                    Value::FPRegister(FPRegister::Ft7) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 7"),
-                    Value::FPRegister(FPRegister::Fs0) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 8"),
-                    Value::FPRegister(FPRegister::Fs1) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 9"),
-                    Value::FPRegister(FPRegister::Fa0) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 10"),
-                    Value::FPRegister(FPRegister::Fa1) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 11"),
-                    Value::FPRegister(FPRegister::Fa2) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 12"),
-                    Value::FPRegister(FPRegister::Fa3) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 13"),
-                    Value::FPRegister(FPRegister::Fa4) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 14"),
-                    Value::FPRegister(FPRegister::Fa5) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 15"),
-                    Value::FPRegister(FPRegister::Fa6) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 16"),
-                    Value::FPRegister(FPRegister::Fa7) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 17"),
-                    Value::FPRegister(FPRegister::Fs2) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 18"),
-                    Value::FPRegister(FPRegister::Fs3) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 19"),
-                    Value::FPRegister(FPRegister::Fs4) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 20"),
-                    Value::FPRegister(FPRegister::Fs5) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 21"),
-                    Value::FPRegister(FPRegister::Fs6) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 22"),
-                    Value::FPRegister(FPRegister::Fs7) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 23"),
-                    Value::FPRegister(FPRegister::Fs8) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 24"),
-                    Value::FPRegister(FPRegister::Fs9) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 25"),
-                    Value::FPRegister(FPRegister::Fs10) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 26"),
-                    Value::FPRegister(FPRegister::Fs11) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 27"),
-                    Value::FPRegister(FPRegister::Ft8) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 28"),
-                    Value::FPRegister(FPRegister::Ft9) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 29"),
-                    Value::FPRegister(FPRegister::Ft10) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 30"),
-                    Value::FPRegister(FPRegister::Ft11) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 31"),
+                    Value::FPRegister(FPRegister::Ft0) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 0"
+                    ),
+                    Value::FPRegister(FPRegister::Ft1) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 1"
+                    ),
+                    Value::FPRegister(FPRegister::Ft2) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 2"
+                    ),
+                    Value::FPRegister(FPRegister::Ft3) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 3"
+                    ),
+                    Value::FPRegister(FPRegister::Ft4) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 4"
+                    ),
+                    Value::FPRegister(FPRegister::Ft5) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 5"
+                    ),
+                    Value::FPRegister(FPRegister::Ft6) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 6"
+                    ),
+                    Value::FPRegister(FPRegister::Ft7) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 7"
+                    ),
+                    Value::FPRegister(FPRegister::Fs0) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 8"
+                    ),
+                    Value::FPRegister(FPRegister::Fs1) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 9"
+                    ),
+                    Value::FPRegister(FPRegister::Fa0) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 10"
+                    ),
+                    Value::FPRegister(FPRegister::Fa1) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 11"
+                    ),
+                    Value::FPRegister(FPRegister::Fa2) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 12"
+                    ),
+                    Value::FPRegister(FPRegister::Fa3) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 13"
+                    ),
+                    Value::FPRegister(FPRegister::Fa4) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 14"
+                    ),
+                    Value::FPRegister(FPRegister::Fa5) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 15"
+                    ),
+                    Value::FPRegister(FPRegister::Fa6) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 16"
+                    ),
+                    Value::FPRegister(FPRegister::Fa7) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 17"
+                    ),
+                    Value::FPRegister(FPRegister::Fs2) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 18"
+                    ),
+                    Value::FPRegister(FPRegister::Fs3) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 19"
+                    ),
+                    Value::FPRegister(FPRegister::Fs4) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 20"
+                    ),
+                    Value::FPRegister(FPRegister::Fs5) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 21"
+                    ),
+                    Value::FPRegister(FPRegister::Fs6) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 22"
+                    ),
+                    Value::FPRegister(FPRegister::Fs7) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 23"
+                    ),
+                    Value::FPRegister(FPRegister::Fs8) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 24"
+                    ),
+                    Value::FPRegister(FPRegister::Fs9) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 25"
+                    ),
+                    Value::FPRegister(FPRegister::Fs10) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 26"
+                    ),
+                    Value::FPRegister(FPRegister::Fs11) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 27"
+                    ),
+                    Value::FPRegister(FPRegister::Ft8) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 28"
+                    ),
+                    Value::FPRegister(FPRegister::Ft9) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 29"
+                    ),
+                    Value::FPRegister(FPRegister::Ft10) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 30"
+                    ),
+                    Value::FPRegister(FPRegister::Ft11) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 31"
+                    ),
 
                     _ => String::new(),
                 };
@@ -947,76 +1104,206 @@ impl Display for Instruction {
                 // let temp = if let Value::Temp(addr, t) = val {
                 //     Value::Temp(*addr, t+1000)
                 // } else {
-                    let t = unsafe { T };
-                    unsafe { T += 1; }
-                    let temp = Value::Temp(Address(0), t);
+                let t = unsafe { T };
+                unsafe {
+                    T += 1;
+                }
+                let temp = Value::Temp(Address(0), t);
                 // };
                 let load = match ptr {
-                    Value::Register(Register::Zero) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 0"),
-                    Value::Register(Register::Ra) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 1"),
-                    Value::Register(Register::Sp) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 2"),
-                    Value::Register(Register::Gp) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 3"),
-                    Value::Register(Register::Tp) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 4"),
-                    Value::Register(Register::T0) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 5"),
-                    Value::Register(Register::T1) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 6"),
-                    Value::Register(Register::T2) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 7"),
-                    Value::Register(Register::S0) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 8"),
-                    Value::Register(Register::S1) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 9"),
-                    Value::Register(Register::A0) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 10"),
-                    Value::Register(Register::A1) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 11"),
-                    Value::Register(Register::A2) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 12"),
-                    Value::Register(Register::A3) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 13"),
-                    Value::Register(Register::A4) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 14"),
-                    Value::Register(Register::A5) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 15"),
-                    Value::Register(Register::A6) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 16"),
-                    Value::Register(Register::A7) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 17"),
-                    Value::Register(Register::S2) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 18"),
-                    Value::Register(Register::S3) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 19"),
-                    Value::Register(Register::S4) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 20"),
-                    Value::Register(Register::S5) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 21"),
-                    Value::Register(Register::S6) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 22"),
-                    Value::Register(Register::S7) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 23"),
-                    Value::Register(Register::S8) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 24"),
-                    Value::Register(Register::S9) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 25"),
-                    Value::Register(Register::S10) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 26"),
-                    Value::Register(Register::S11) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 27"),
-                    Value::Register(Register::T3) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 28"),
-                    Value::Register(Register::T4) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 29"),
-                    Value::Register(Register::T5) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 30"),
-                    Value::Register(Register::T6) => format!("{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 31"),
+                    Value::Register(Register::Zero) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 0"
+                    ),
+                    Value::Register(Register::Ra) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 1"
+                    ),
+                    Value::Register(Register::Sp) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 2"
+                    ),
+                    Value::Register(Register::Gp) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 3"
+                    ),
+                    Value::Register(Register::Tp) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 4"
+                    ),
+                    Value::Register(Register::T0) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 5"
+                    ),
+                    Value::Register(Register::T1) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 6"
+                    ),
+                    Value::Register(Register::T2) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 7"
+                    ),
+                    Value::Register(Register::S0) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 8"
+                    ),
+                    Value::Register(Register::S1) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 9"
+                    ),
+                    Value::Register(Register::A0) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 10"
+                    ),
+                    Value::Register(Register::A1) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 11"
+                    ),
+                    Value::Register(Register::A2) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 12"
+                    ),
+                    Value::Register(Register::A3) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 13"
+                    ),
+                    Value::Register(Register::A4) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 14"
+                    ),
+                    Value::Register(Register::A5) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 15"
+                    ),
+                    Value::Register(Register::A6) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 16"
+                    ),
+                    Value::Register(Register::A7) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 17"
+                    ),
+                    Value::Register(Register::S2) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 18"
+                    ),
+                    Value::Register(Register::S3) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 19"
+                    ),
+                    Value::Register(Register::S4) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 20"
+                    ),
+                    Value::Register(Register::S5) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 21"
+                    ),
+                    Value::Register(Register::S6) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 22"
+                    ),
+                    Value::Register(Register::S7) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 23"
+                    ),
+                    Value::Register(Register::S8) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 24"
+                    ),
+                    Value::Register(Register::S9) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 25"
+                    ),
+                    Value::Register(Register::S10) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 26"
+                    ),
+                    Value::Register(Register::S11) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 27"
+                    ),
+                    Value::Register(Register::T3) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 28"
+                    ),
+                    Value::Register(Register::T4) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 29"
+                    ),
+                    Value::Register(Register::T5) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 30"
+                    ),
+                    Value::Register(Register::T6) => format!(
+                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 31"
+                    ),
 
-                    Value::FPRegister(FPRegister::Ft0) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 0"),
-                    Value::FPRegister(FPRegister::Ft1) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 1"),
-                    Value::FPRegister(FPRegister::Ft2) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 2"),
-                    Value::FPRegister(FPRegister::Ft3) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 3"),
-                    Value::FPRegister(FPRegister::Ft4) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 4"),
-                    Value::FPRegister(FPRegister::Ft5) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 5"),
-                    Value::FPRegister(FPRegister::Ft6) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 6"),
-                    Value::FPRegister(FPRegister::Ft7) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 7"),
-                    Value::FPRegister(FPRegister::Fs0) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 8"),
-                    Value::FPRegister(FPRegister::Fs1) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 9"),
-                    Value::FPRegister(FPRegister::Fa0) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 10"),
-                    Value::FPRegister(FPRegister::Fa1) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 11"),
-                    Value::FPRegister(FPRegister::Fa2) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 12"),
-                    Value::FPRegister(FPRegister::Fa3) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 13"),
-                    Value::FPRegister(FPRegister::Fa4) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 14"),
-                    Value::FPRegister(FPRegister::Fa5) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 15"),
-                    Value::FPRegister(FPRegister::Fa6) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 16"),
-                    Value::FPRegister(FPRegister::Fa7) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 17"),
-                    Value::FPRegister(FPRegister::Fs2) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 18"),
-                    Value::FPRegister(FPRegister::Fs3) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 19"),
-                    Value::FPRegister(FPRegister::Fs4) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 20"),
-                    Value::FPRegister(FPRegister::Fs5) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 21"),
-                    Value::FPRegister(FPRegister::Fs6) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 22"),
-                    Value::FPRegister(FPRegister::Fs7) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 23"),
-                    Value::FPRegister(FPRegister::Fs8) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 24"),
-                    Value::FPRegister(FPRegister::Fs9) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 25"),
-                    Value::FPRegister(FPRegister::Fs10) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 26"),
-                    Value::FPRegister(FPRegister::Fs11) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 27"),
-                    Value::FPRegister(FPRegister::Ft8) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 28"),
-                    Value::FPRegister(FPRegister::Ft9) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 29"),
-                    Value::FPRegister(FPRegister::Ft10) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 30"),
-                    Value::FPRegister(FPRegister::Ft11) => format!("{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 31"),
+                    Value::FPRegister(FPRegister::Ft0) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 0"
+                    ),
+                    Value::FPRegister(FPRegister::Ft1) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 1"
+                    ),
+                    Value::FPRegister(FPRegister::Ft2) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 2"
+                    ),
+                    Value::FPRegister(FPRegister::Ft3) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 3"
+                    ),
+                    Value::FPRegister(FPRegister::Ft4) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 4"
+                    ),
+                    Value::FPRegister(FPRegister::Ft5) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 5"
+                    ),
+                    Value::FPRegister(FPRegister::Ft6) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 6"
+                    ),
+                    Value::FPRegister(FPRegister::Ft7) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 7"
+                    ),
+                    Value::FPRegister(FPRegister::Fs0) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 8"
+                    ),
+                    Value::FPRegister(FPRegister::Fs1) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 9"
+                    ),
+                    Value::FPRegister(FPRegister::Fa0) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 10"
+                    ),
+                    Value::FPRegister(FPRegister::Fa1) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 11"
+                    ),
+                    Value::FPRegister(FPRegister::Fa2) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 12"
+                    ),
+                    Value::FPRegister(FPRegister::Fa3) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 13"
+                    ),
+                    Value::FPRegister(FPRegister::Fa4) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 14"
+                    ),
+                    Value::FPRegister(FPRegister::Fa5) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 15"
+                    ),
+                    Value::FPRegister(FPRegister::Fa6) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 16"
+                    ),
+                    Value::FPRegister(FPRegister::Fa7) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 17"
+                    ),
+                    Value::FPRegister(FPRegister::Fs2) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 18"
+                    ),
+                    Value::FPRegister(FPRegister::Fs3) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 19"
+                    ),
+                    Value::FPRegister(FPRegister::Fs4) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 20"
+                    ),
+                    Value::FPRegister(FPRegister::Fs5) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 21"
+                    ),
+                    Value::FPRegister(FPRegister::Fs6) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 22"
+                    ),
+                    Value::FPRegister(FPRegister::Fs7) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 23"
+                    ),
+                    Value::FPRegister(FPRegister::Fs8) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 24"
+                    ),
+                    Value::FPRegister(FPRegister::Fs9) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 25"
+                    ),
+                    Value::FPRegister(FPRegister::Fs10) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 26"
+                    ),
+                    Value::FPRegister(FPRegister::Fs11) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 27"
+                    ),
+                    Value::FPRegister(FPRegister::Ft8) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 28"
+                    ),
+                    Value::FPRegister(FPRegister::Ft9) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 29"
+                    ),
+                    Value::FPRegister(FPRegister::Ft10) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 30"
+                    ),
+                    Value::FPRegister(FPRegister::Ft11) => format!(
+                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 31"
+                    ),
 
                     _ => String::new(),
                 };
@@ -1088,9 +1375,11 @@ impl Display for Instruction {
                 write!(f, "{} = sitofp {} {} to {}", rslt, ty, val, ty2)
             }
             Bitcast { rslt, ty, val, ty2 } => match (ty, ty2) {
-                (Type::Double, _) | (_, Type::Double) | (Type::Float, _) | (_, Type::Float) => write!(f, "{} = bitcast {} {} to {}", rslt, ty, val, ty2),
+                (Type::Double, _) | (_, Type::Double) | (Type::Float, _) | (_, Type::Float) => {
+                    write!(f, "{} = bitcast {} {} to {}", rslt, ty, val, ty2)
+                }
                 _ => write!(f, "{} = bitcast {}* {} to {}*", rslt, ty, val, ty2),
-            }
+            },
 
             // Other Operations
             Icmp {
@@ -1210,7 +1499,16 @@ impl Display for Instruction {
             }
 
             Call { addr } => {
-                write!(f, "call i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg)", addr)
+                let t = unsafe { T };
+                unsafe {
+                    T += 1;
+                }
+                write!(
+                    f,
+                    "%ret_{t} = call i64 @func_{}(i64 {addr}, %struct.reg* %reg, %struct.freg* %freg)
+  ret i64 %ret_{t}",
+                    addr
+                )
             }
 
             SwitchCall {
@@ -1234,7 +1532,7 @@ impl Display for Instruction {
             Ret { ty, val } => {
                 write!(f, "ret {} {}", ty, val)
             }
-            Unreachable {addr}  => {
+            Unreachable { addr } => {
                 write!(f, "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {addr})\nunreachable")
             }
         }
