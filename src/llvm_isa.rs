@@ -4,6 +4,7 @@ use crate::riscv_isa::{
     Address, DataBlock, FPRegister, Immediate, Instruction as RiscvInstruction, Register,
 };
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::collections::HashMap;
 
 const SYSCALL: &str = "declare i64 @syscall(i64, ...)
 
@@ -97,6 +98,8 @@ pub struct Program {
     pub data_blocks: Vec<DataBlock>,
     pub functions: Vec<Vec<CodeBlock>>,
     pub targets: Vec<Address>,
+    pub parsed_funcs: HashMap<Address, String>,
+    pub parsed_irs: Vec<String>,
 }
 
 impl Display for Program {
@@ -192,23 +195,29 @@ label_0:
             );
             functions += &s;
         }
-
+        
         // Main dispatcher
-        let mut inst_cnt = 150000;
+        let inst_cnt = 150000;
         let mut table = vec![String::from("i64 0"); inst_cnt];
         for func in &self.functions {
             let f = func[0].instruction_blocks[0].riscv_instruction.address();
             for block in func {
                 for b in &block.instruction_blocks {
                     let Address(addr) = b.riscv_instruction.address();
-                    table[addr as usize] = format!(
-                        "i64 ptrtoint (i64 (i64, %struct.reg*, %struct.freg*)* @func_{f} to i64)"
-                    );
+                    if let Some(name) = self.parsed_funcs.get(&Address(addr)) {
+                        table[addr as usize] = format!(
+                            "i64 ptrtoint (i64 (i64, %struct.reg*, %struct.freg*)* @{name} to i64)"
+                        );
+                    } else {
+                        table[addr as usize] = format!(
+                            "i64 ptrtoint (i64 (i64, %struct.reg*, %struct.freg*)* @func_{f} to i64)"
+                        );
+                    }
                 }
             }
         }
         let table = table.join(", ");
-        let mut table = format!("@dispatch_table = dso_local global [{inst_cnt} x i64] [{table}]");
+        let table = format!("@dispatch_table = dso_local global [{inst_cnt} x i64] [{table}]");
 
         // Main formatting
         write!(
@@ -254,6 +263,7 @@ label_0:
 
 {}
 
+{}
 ",
 SYSCALL,
 FPFUNCTIONS,
@@ -261,7 +271,8 @@ FPFUNCTIONS,
             data_blocks,
             REGISTERS,
             self.entry,
-            functions
+            functions,
+            self.parsed_irs.join("\n"),
         )
     }
 }

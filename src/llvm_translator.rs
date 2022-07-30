@@ -7,7 +7,7 @@ use crate::riscv_isa::{
     Address, CodeBlock as RiscvCodeBlock, DataBlock, Immediate, Instruction as RiscvInstruction,
     Program as RiscvProgram, Raw, Register,
 };
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::mem;
 
 pub struct Translator {
@@ -23,7 +23,7 @@ impl Translator {
         }
     }
 
-    pub fn run(&mut self, rv_program: RiscvProgram) -> Program {
+    pub fn run(&mut self, rv_program: RiscvProgram, parsed_funcs: HashMap<Address, String>, parsed_irs: Vec<String>) -> Program {
         self.entry = Address(0x0);
 
         let mut end = 0;
@@ -84,6 +84,8 @@ impl Translator {
             data_blocks: mem::take(&mut self.data_blocks),
             functions: funcs,
             targets,
+            parsed_funcs,
+            parsed_irs,
         }
     }
 
