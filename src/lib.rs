@@ -6,8 +6,8 @@ mod riscv_isa;
 mod riscv_macro;
 mod riscv_parser;
 
-use std::path::PathBuf;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use llvm_translator::Translator;
 use riscv_parser::Parser;
@@ -16,7 +16,7 @@ pub fn run(
     rv_source: &str,
     auto_split_functions: bool,
     elf: &Option<String>,
-    irs: &Vec<String>,
+    irs: &Vec<Vec<u8>>,
 ) -> String {
     let rv_program = Parser::new().run(rv_source);
     let (mut parsed_funcs, mut parsed_irs) = (HashMap::new(), Vec::new());

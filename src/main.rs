@@ -26,9 +26,11 @@ fn main() {
     let elf = arguments.elf.map(|path| {
         fs::read_to_string(&path).expect("Unable to read the ELF information of the input file")
     });
-    let irs = arguments.irs.iter().map(|path| {
-        fs::read_to_string(&path).expect("Unable to read LLVM IR")
-    }).collect();
+    let irs = arguments
+        .irs
+        .iter()
+        .map(|path| fs::read(&path).expect("Unable to read LLVM IR"))
+        .collect();
     let ll_source = riscv2llvm::run(&rv_source, arguments.auto_split_functions, &elf, &irs);
     let ll_path = arguments
         .output

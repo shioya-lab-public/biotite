@@ -3,8 +3,8 @@
 use crate::riscv_isa::{
     Address, DataBlock, FPRegister, Immediate, Instruction as RiscvInstruction, Register,
 };
-use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 const SYSCALL: &str = "declare i64 @syscall(i64, ...)
 
@@ -195,7 +195,7 @@ label_0:
             );
             functions += &s;
         }
-        
+
         // Main dispatcher
         let inst_cnt = 150000;
         let mut table = vec![String::from("i64 0"); inst_cnt];
@@ -827,8 +827,7 @@ impl Display for Instruction {
                 cond,
                 iftrue,
                 iffalse,
-            } =>
-            write!(
+            } => write!(
                 f,
                 "br i1 {}, label %label_{}, label %label_{}",
                 cond, iftrue, iffalse
