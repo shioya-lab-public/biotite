@@ -74,6 +74,54 @@ declare double @llvm.minimum.f64(double %op1, double %op2)
 declare double @llvm.maximum.f64(double %op1, double %op2)
 declare double @llvm.copysign.f64(double %mag, double %sgn)";
 
+const INIT_ARGV: &str = "define void @init_argv(i32 %0, i32 %1, i8** %2) {
+    %4 = icmp sgt i32 %1, 0
+    br i1 %4, label %5, label %16
+  
+  5:                                                ; preds = %3
+    %6 = zext i32 %1 to i64
+    br label %7
+  
+  7:                                                ; preds = %5, %29
+    %8 = phi i64 [ 0, %5 ], [ %31, %29 ]
+    %9 = phi i32 [ %0, %5 ], [ %30, %29 ]
+    %10 = getelementptr inbounds i8*, i8** %2, i64 %8
+    %11 = load i8*, i8** %10
+    %12 = load i8, i8* %11
+    %13 = sext i32 %9 to i64
+    %14 = call i8* @get_data_ptr(i64 %13)
+    store i8 %12, i8* %14
+    %15 = icmp eq i8 %12, 0
+    br i1 %15, label %29, label %17
+  
+  16:                                               ; preds = %29, %3
+    ret void
+  
+  17:                                               ; preds = %7, %17
+    %18 = phi i64 [ %20, %17 ], [ %13, %7 ]
+    %19 = phi i64 [ %21, %17 ], [ 0, %7 ]
+    %20 = add i64 %18, 1
+    %21 = add nuw nsw i64 %19, 1
+    %22 = load i8*, i8** %10
+    %23 = getelementptr inbounds i8, i8* %22, i64 %21
+    %24 = load i8, i8* %23
+    %25 = call i8* @get_data_ptr(i64 %20)
+    store i8 %24, i8* %25
+    %26 = icmp eq i8 %24, 0
+    br i1 %26, label %27, label %17
+  
+  27:                                               ; preds = %17
+    %28 = trunc i64 %20 to i32
+    br label %29
+  
+  29:                                               ; preds = %27, %7
+    %30 = phi i32 [ %9, %7 ], [ %28, %27 ]
+    %31 = add nuw nsw i64 %8, 1
+    %32 = icmp eq i64 %31, %6
+    br i1 %32, label %16, label %7
+  }
+";
+
 const REGISTERS: &str = "
 
   %reg = alloca %struct.reg
@@ -86,9 +134,16 @@ const REGISTERS: &str = "
   %sp = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 2
   store i64 10240, i64* %sp
 
+  ; riscv64-unknown-elf-gcc
   %argc_i64 = sext i32 %argc to i64
-  %a0 = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 10
-  store i64 %argc_i64, i64* %a0
+  %argc_ptr = call i8* @get_data_ptr(i64 10240)
+  %cast_argc_ptr = bitcast i8* %argc_ptr to i64*
+  store i64 %argc_i64, i64* %cast_argc_ptr
+
+  %argv_ptr = call i8* @get_data_ptr(i64 10248)
+  %cast_argv = bitcast i8** %argv to i8*
+  %num = mul i64 %argc_i64, 8
+  call void @llvm.memcpy.p0i8.p0i8.i64(i8* %argv_ptr, i8* %cast_argv, i64 %num, i1 0)
         
 ";
 
@@ -233,6 +288,7 @@ label_0:
 %struct.reg = type {{ i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64 }}
 %struct.freg = type {{ double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double }}
 declare void @llvm.memset.p0i8.i64(i8* nocapture writeonly, i8, i64, i1 immarg)
+declare void @llvm.memcpy.p0i8.p0i8.i64(i8*, i8*, i64, i1)
 declare dso_local void @exit(i32)
 declare dso_local i32 @printf(i8*, ...)
 @.str.d = private unnamed_addr constant [14 x i8] c\"#value: %ld#\\0A\\00\", align 1

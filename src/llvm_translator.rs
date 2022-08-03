@@ -836,7 +836,10 @@ impl Translator {
                 Store { ty: _i64, val: _7, ptr: a0 },
                 UnconBr { addr: next_pc },
             },
-            RI::Ebreak { .. } => panic!("`ebreak` is not implemented"),
+            RI::Ebreak { address, raw, .. } => build_instructions! { address, raw,
+                Unreachable { addr: address },
+                // UnconBr { addr: next_pc },
+            }, //panic!("`ebreak` is not implemented"),
 
             // RV64I
             RI::Lwu {
@@ -1824,6 +1827,18 @@ impl Translator {
                 UnconBr { addr: next_pc },
             },
             RI::FcvtDWu {
+                address,
+                raw,
+                frd,
+                rs1,
+                rm,
+            } => build_instructions! { address, raw,
+                Load { rslt: _0, ty: _i64, ptr: rs1 },
+                Uitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
+                Store { ty: _d, val: _1, ptr: frd },
+                UnconBr { addr: next_pc },
+            },
+            RI::FcvtDLu {
                 address,
                 raw,
                 frd,
