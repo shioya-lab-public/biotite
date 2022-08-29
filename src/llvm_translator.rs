@@ -16,7 +16,7 @@ pub struct Translator {
 }
 
 impl Translator {
-    pub fn new() -> Self {
+    pub fn new(jobs: usize) -> Self {
         Translator {
             entry: Address(0x0),
             data_blocks: Vec::new(),
@@ -26,8 +26,7 @@ impl Translator {
     pub fn run(
         &mut self,
         rv_program: RiscvProgram,
-        parsed_funcs: HashMap<Address, String>,
-        parsed_irs: Vec<String>,
+        parsed_funcs: &HashMap<Address, String>,
     ) -> Program {
         self.entry = Address(0x0);
 
@@ -90,7 +89,7 @@ impl Translator {
             functions: funcs,
             targets,
             parsed_funcs,
-            parsed_irs,
+            parsed_irs: Vec::new(),
         }
     }
 

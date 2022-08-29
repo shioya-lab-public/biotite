@@ -7,6 +7,25 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr::null;
 
+// let (mut parsed_funcs, mut parsed_irs) = (HashMap::new(), Vec::new());
+// for ir in irs {
+//     let (funcs, ir) = llvm_parser::parse(ir, &rv_program);
+//     parsed_funcs.extend(funcs);
+//     parsed_irs.push(ir);
+// }
+
+pub struct Rewriter {
+
+}
+
+impl Rewriter {
+    pub fn new(jobs: usize) -> Self {
+        Rewriter {}
+    }
+    pub fn run(&self, rv_prog: &Program, ir: &Vec<Vec<u8>>) -> HashMap<Address, String> {
+        HashMap::new()
+    }
+}
 pub fn parse(ir: &Vec<u8>, rv_prog: &Program) -> (HashMap<Address, String>, String) {
     unsafe {
         let memory_buffer =

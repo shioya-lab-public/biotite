@@ -23,7 +23,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new() -> Self {
+    pub fn new(jobs: usize) -> Self {
         Parser {
             lines: Vec::new(),
             data_blocks: Vec::new(),
@@ -32,6 +32,27 @@ impl Parser {
     }
 
     pub fn run(&mut self, source: &str) -> Program {
+        // let lines = rv_source
+        //     .lines()
+        //     .filter(|l| !l.is_empty())
+        //     .skip_while(|l| !SECTION.is_match(l));
+        // let mut funcs = Vec::new();
+        // let mut sec = String::new();
+        // let mut sym = String::new();
+        // let mut insts = Vec::new();
+        // for line in lines {
+        //     if let Some(caps) = SECTION.captures(line) {
+        //         sec = caps[1].to_string();
+        //         funcs.push((sec.clone(), sym.clone(), mem::take(&mut insts)));
+        //     } else if let Some(caps) = SYMBOL.captures(line) {
+        //         sym = caps[2].to_string();
+        //         funcs.push((sec.clone(), sym.clone(), mem::take(&mut insts)));
+        //     } else {
+        //         insts.push(Instruction::new(line));
+        //     }
+        // }
+        // panic!("{}", funcs.len());
+
         self.lines = source
             .lines()
             .map(|l| l.trim())
