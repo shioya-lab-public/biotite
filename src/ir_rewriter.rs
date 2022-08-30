@@ -14,9 +14,7 @@ use std::ptr::null;
 //     parsed_irs.push(ir);
 // }
 
-pub struct Rewriter {
-
-}
+pub struct Rewriter {}
 
 impl Rewriter {
     pub fn new(jobs: usize) -> Self {

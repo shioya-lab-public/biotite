@@ -1,127 +1,66 @@
-macro_rules! ord {
-    ("uppercase") => {
-        ORD
-    };
-    ("type") => {
-        Ordering
-    };
-}
-
 macro_rules! rd {
-    ("uppercase") => {
-        RD
-    };
-    ("type") => {
-        Register
-    };
+    ("regex") => { RD };
+    ("type") => { Reg };
 }
 
 macro_rules! rs1 {
-    ("uppercase") => {
-        RS1
-    };
-    ("type") => {
-        Register
-    };
+    ("regex") => { RS1 };
+    ("type") => { Reg };
 }
 
 macro_rules! rs2 {
-    ("uppercase") => {
-        RS2
-    };
-    ("type") => {
-        Register
-    };
+    ("regex") => { RS2 };
+    ("type") => { Reg };
 }
 
 macro_rules! frd {
-    ("uppercase") => {
-        FRD
-    };
-    ("type") => {
-        FPRegister
-    };
+    ("regex") => { FRD };
+    ("type") => { FReg };
 }
 
 macro_rules! frs1 {
-    ("uppercase") => {
-        FRS1
-    };
-    ("type") => {
-        FPRegister
-    };
+    ("regex") => { FRS1 };
+    ("type") => { FReg };
 }
 
 macro_rules! frs2 {
-    ("uppercase") => {
-        FRS2
-    };
-    ("type") => {
-        FPRegister
-    };
+    ("regex") => { FRS2 };
+    ("type") => { FReg };
 }
 
 macro_rules! frs3 {
-    ("uppercase") => {
-        FRS3
-    };
-    ("type") => {
-        FPRegister
-    };
+    ("regex") => { FRS3 };
+    ("type") => { FReg };
 }
-
 macro_rules! imm {
-    ("uppercase") => {
-        IMM
-    };
-    ("type") => {
-        Immediate
-    };
+    ("regex") => { IMM };
+    ("type") => { Imm };
 }
 
 macro_rules! addr {
-    ("uppercase") => {
-        ADDR
-    };
-    ("type") => {
-        Address
-    };
+    ("regex") => { ADDR };
+    ("type") => { Addr };
 }
 
 macro_rules! csr {
-    ("uppercase") => {
-        CSR
-    };
-    ("type") => {
-        Csr
-    };
+    ("regex") => { CSR };
+    ("type") => { Csr };
+}
+macro_rules! ord {
+    ("regex") => { ORD };
+    ("type") => { Ord };
 }
 
 macro_rules! rm {
-    ("uppercase") => {
-        RM
-    };
-    ("type") => {
-        Rounding
-    };
+    ("regex") => { RM };
+    ("type") => { Rm };
 }
 
-macro_rules! iorw {
-    ("uppercase") => {
-        IORW
-    };
-    ("type") => {
-        Iorw
-    };
-}
-
-macro_rules! define_instruction {
+macro_rules! define_inst {
     ( $( $inst:ident ( $regex:literal $(, $field:ident )* ), )* ) => {
         use lazy_static::lazy_static;
+        use regex::{Regex, RegexSet};
 
-        const ADDRESS: &str = r"(?P<address>[[:xdigit:]]+)";
-        const RAW: &str = r"(?P<byte>([[:xdigit:]]+ )+)";
-        const ORD: &str = r"(\.(?P<ord>[[:alpha:]]+))?";
         const RD: &str = r"(?P<rd>[[:alpha:]][[:alnum:]]+)";
         const RS1: &str = r"(?P<rs1>[[:alpha:]][[:alnum:]]+)";
         const RS2: &str = r"(?P<rs2>[[:alpha:]][[:alnum:]]+)";
@@ -132,8 +71,10 @@ macro_rules! define_instruction {
         const IMM: &str = r"(?P<imm>(-|(0x))?[[:xdigit:]]+)";
         const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
         const CSR: &str = r"(?P<csr>[[:alpha:]]+|(0x[[:xdigit:]]+))";
+        const ORD: &str = r"(\.(?P<ord>[[:alpha:]]+))?";
         const RM: &str = r"(,(?P<rm>[[:alpha:]]+))?";
-        const IORW: &str = r"(?P<iorw>((\.tso)|(\s+[iorw]+,[iorw]+)))";
+        const INST_ADDR: &str = r"(?P<inst_addr>[[:xdigit:]]+)";
+        const INST_RAW: &str = r"(?P<inst_raw>([[:xdigit:]]+ )+)";
 
         lazy_static! {
             static ref REGEXES: Vec<(&'static str, Regex)> = vec![
@@ -141,8 +82,8 @@ macro_rules! define_instruction {
                     (
                         stringify!($inst),
                         Regex::new(&format!(
-                            concat!(r"{}:\s+{}?\s+", $regex),
-                            ADDRESS, RAW, $( $field!("uppercase") ),*
+                            concat!(r"\s+{}:\s+{}\s+", $regex),
+                            INST_ADDR, INST_RAW, $( $field!("regex") ),*
                         )).unwrap()
                     ),
                 )*
@@ -155,12 +96,12 @@ macro_rules! define_instruction {
             ).unwrap();
         }
 
-        #[derive(Debug, PartialEq, Clone)]
-        pub enum Instruction {
+        #[derive(Debug, PartialEq)]
+        pub enum Inst {
             $(
                 $inst {
-                    address: Address,
-                    raw: Raw,
+                    inst_addr: Addr,
+                    inst_raw: Raw,
                     $(
                         $field: $field!("type"),
                     )*
@@ -168,23 +109,19 @@ macro_rules! define_instruction {
             )*
         }
 
-        impl Instruction {
-            pub fn new(line: &str) -> Instruction {
-                use Instruction::*;
+        impl Inst {
+            pub fn new(line: &str) -> Inst {
+                use Inst::*;
 
                 let matches: Vec<_> = REGEX_SET.matches(line).into_iter().collect();
-                if matches.is_empty() {
-                    return Unknown {address: Address(0x0), raw: Raw(line.to_string())};
-                    // panic!("Unknown instruction: {}", line);
-                }
-                let (inst, regex) = &REGEXES[matches[0]];
+                let (name, regex) = &REGEXES[matches[0]];
                 let caps = regex.captures(line).unwrap();
 
-                match *inst {
+                match *name {
                     $(
                         stringify!($inst) => $inst {
-                            address: Address::new(&caps["address"]),
-                            raw: Raw::new(caps.name("byte").map_or("", |m| m.as_str())),
+                            inst_addr: Addr::new(&caps["inst_addr"]),
+                            inst_raw: Raw::new(caps.name("inst_raw").map_or("", |m| m.as_str())),
                             $(
                                 $field: <$field!("type")>::new(
                                     caps.name(stringify!($field))
@@ -198,22 +135,22 @@ macro_rules! define_instruction {
                 }
             }
 
-            pub fn address(&self) -> Address {
-                use Instruction::*;
+            pub fn inst_addr(&self) -> Addr {
+                use Inst::*;
 
                 match self {
                     $(
-                        $inst { address, .. } => *address,
+                        $inst { inst_addr, .. } => *inst_addr,
                     )*
                 }
             }
 
-            pub fn raw(&self) -> &str {
-                use Instruction::*;
+            pub fn inst_raw(&self) -> &str {
+                use Inst::*;
 
                 match self {
                     $(
-                        $inst { raw: Raw(s), .. } => s,
+                        $inst { inst_raw: Raw(s), .. } => s,
                     )*
                 }
             }
@@ -221,6 +158,4 @@ macro_rules! define_instruction {
     };
 }
 
-pub(crate) use {
-    addr, csr, define_instruction, frd, frs1, frs2, frs3, imm, iorw, ord, rd, rm, rs1, rs2,
-};
+pub(crate) use {addr, csr, define_inst, frd, frs1, frs2, frs3, imm, ord, rd, rm, rs1, rs2};

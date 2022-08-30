@@ -10,7 +10,7 @@ struct Args {
     #[clap(short, long)]
     output: Option<PathBuf>,
 
-    #[clap(short, long, default_value=8)]
+    #[clap(short, long, default_value = 8)]
     jobs: usize,
 
     #[clap(long)]

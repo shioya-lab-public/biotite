@@ -1,6 +1,5 @@
 use crate::riscv_macro::*;
-use regex::{Regex, RegexSet};
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
@@ -12,75 +11,20 @@ pub struct Program {
 pub struct DataBlock {
     pub section: String,
     pub symbol: String,
-    pub address: Address,
+    pub address: Addr,
     pub bytes: Vec<u8>,
-}
-
-impl Display for DataBlock {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let mut data_block = format!("; {}: {} <{}>\n", self.address, self.section, self.symbol);
-        data_block += &format!(
-            "@data_{} = global [{} x i8] [",
-            self.address,
-            self.bytes.len()
-        );
-        for byte in self.bytes.iter() {
-            data_block += &format!("i8 {}, ", byte);
-        }
-        data_block.pop();
-        data_block.pop();
-        data_block += "]";
-        write!(f, "{}", data_block)
-    }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct CodeBlock {
     pub section: String,
     pub symbol: String,
-    pub address: Address,
-    pub instructions: Vec<Instruction>,
+    pub address: Addr,
+    pub insts: Vec<Inst>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Raw(pub String);
-
-impl Raw {
-    pub fn new(s: &str) -> Self {
-        Raw(s.to_string())
-    }
-}
-
-impl PartialEq for Raw {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Ordering {
-    No,
-    Aq,
-    Rl,
-    AqRl,
-}
-
-impl Ordering {
-    pub fn new(s: &str) -> Self {
-        use Ordering::*;
-
-        match s {
-            "" => No,
-            "aq" => Aq,
-            "rl" => Rl,
-            "aqrl" => AqRl,
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Register {
+#[derive(Debug, PartialEq)]
+pub enum Reg {
     Zero,
     Ra,
     Sp,
@@ -115,9 +59,9 @@ pub enum Register {
     T6,
 }
 
-impl Register {
+impl Reg {
     fn new(s: &str) -> Self {
-        use Register::*;
+        use Reg::*;
 
         match s {
             "zero" => Zero,
@@ -152,14 +96,14 @@ impl Register {
             "t4" => T4,
             "t5" => T5,
             "t6" => T6,
-            _ => unreachable!(),
+            s => panic!("Unknown register `{s}`"),
         }
     }
 }
 
-impl Display for Register {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use Register::*;
+impl Display for Reg {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Reg::*;
 
         match self {
             Zero => write!(f, "zero"),
@@ -198,8 +142,8 @@ impl Display for Register {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum FPRegister {
+#[derive(Debug, PartialEq)]
+pub enum FReg {
     Ft0,
     Ft1,
     Ft2,
@@ -234,9 +178,9 @@ pub enum FPRegister {
     Ft11,
 }
 
-impl FPRegister {
+impl FReg {
     fn new(s: &str) -> Self {
-        use FPRegister::*;
+        use FReg::*;
 
         match s {
             "ft0" => Ft0,
@@ -271,14 +215,14 @@ impl FPRegister {
             "ft9" => Ft9,
             "ft10" => Ft10,
             "ft11" => Ft11,
-            _ => unreachable!(),
+            s => panic!("Unknown register `{s}`"),
         }
     }
 }
 
-impl Display for FPRegister {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use FPRegister::*;
+impl Display for FReg {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use FReg::*;
 
         match self {
             Ft0 => write!(f, "ft0"),
@@ -317,42 +261,42 @@ impl Display for FPRegister {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct Immediate(pub i64);
+#[derive(Debug, PartialEq)]
+pub struct Imm(pub i64);
 
-impl Immediate {
+impl Imm {
     pub fn new(s: &str) -> Self {
-        Immediate(match s.strip_prefix("0x") {
+        Imm(match s.strip_prefix("0x") {
             Some(s) => i64::from_str_radix(s, 16).unwrap(),
             None => s.parse().unwrap(),
         })
     }
 }
 
-impl Display for Immediate {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let Immediate(imm) = self;
-        write!(f, "{}", imm)
+impl Display for Imm {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        let Imm(imm) = self;
+        write!(f, "{imm}")
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash, PartialOrd, Ord)]
-pub struct Address(pub u64);
+#[derive(Debug, PartialEq)]
+pub struct Addr(pub u64);
 
-impl Address {
+impl Addr {
     pub fn new(s: &str) -> Self {
-        Address(u64::from_str_radix(s, 16).unwrap())
+        Addr(u64::from_str_radix(s, 16).unwrap())
     }
 }
 
-impl Display for Address {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let Address(addr) = self;
-        write!(f, "{}", addr)
+impl Display for Addr {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        let Addr(addr) = self;
+        write!(f, "0x{addr:x}")
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub enum Csr {
     Fflags,
     Frm,
@@ -360,77 +304,84 @@ pub enum Csr {
     Cycle,
     Time,
     Instret,
-    Cycleh,
-    Timeh,
-    Instreth,
-    UnknownCsr(String),
+    // `Cycleh` is RV32I only.
+    // `Timeh` is RV32I only.
+    // `Instreth` is RV32I only.
 }
 
 impl Csr {
     pub fn new(s: &str) -> Self {
-        use Csr::*;
-
         match s {
-            "fflags" => Fflags,
-            "frm" => Frm,
-            "fcsr" => Fcsr,
-            "cycle" => Cycle,
-            "time" => Time,
-            "instret" => Instret,
-            "cycleh" => Cycleh,
-            "timeh" => Timeh,
-            "instreth" => Instreth,
-            s => UnknownCsr(s.to_string()),
+            "fflags" => Csr::Fflags,
+            "frm" => Csr::Frm,
+            "fcsr" => Csr::Fcsr,
+            "cycle" => Csr::Cycle,
+            "time" => Csr::Time,
+            "instret" => Csr::Instret,
+            s => panic!("Unknown CSR `{s}`"),
         }
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum Rounding {
+#[derive(Debug, PartialEq)]
+pub enum Ord {
+    Mono,
+    Aq,
+    Rl,
+    AqRl,
+}
+
+impl Ord {
+    pub fn new(s: &str) -> Self {
+        match s {
+            "" => Ord::Mono,
+            "aq" => Ord::Aq,
+            "rl" => Ord::Rl,
+            "aqrl" => Ord::AqRl,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Rm {
     Rne,
     Rtz,
     Rdn,
     Rup,
     Rmm,
     Dyn,
-    UnknownRounding(String),
 }
 
-impl Rounding {
+impl Rm {
     pub fn new(s: &str) -> Self {
-        use Rounding::*;
-
         match s {
-            "rne" => Rne,
-            "rtz" => Rtz,
-            "rdn" => Rdn,
-            "rup" => Rup,
-            "rmm" => Rmm,
-            "" => Dyn,
-            s => UnknownRounding(s.to_string()),
+            "rne" => Rm::Rne,
+            "rtz" => Rm::Rtz,
+            "rdn" => Rm::Rdn,
+            "rup" => Rm::Rup,
+            "rmm" => Rm::Rmm,
+            "" => Rm::Dyn,
+            s => panic!("Unknown rounding mode `{s}`"),
         }
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Iorw(pub String);
+#[derive(Debug, PartialEq)]
+pub struct Raw(pub String);
 
-impl Iorw {
+impl Raw {
     pub fn new(s: &str) -> Self {
-        match s.strip_prefix('.') {
-            Some(s) => Iorw(s.to_string()),
-            None => Iorw(s.trim().to_string()),
-        }
+        Raw(s.to_string())
     }
 }
 
-define_instruction! {
+define_inst! {
     // RV32I
     Lui(r"lui\s+{},{}", rd, imm),
     Auipc(r"auipc\s+{},{}", rd, imm),
     Jal(r"jal\s+{},{}", rd, addr),
     Jalr(r"jalr\s+{},{}\({}\)", rd, imm, rs1),
-    ImplicitJalr(r"jalr\s+{}\({}\)", imm, rs1), // `rd` is omitted if it is `ra`.
     Beq(r"beq\s+{},{},{}", rs1, rs2, addr),
     Bne(r"bne\s+{},{},{}", rs1, rs2, addr),
     Blt(r"blt\s+{},{},{}", rs1, rs2, addr),
@@ -464,17 +415,17 @@ define_instruction! {
     Sra(r"sra\s+{},{},{}", rd, rs1, rs2),
     Or(r"or\s+{},{},{}", rd, rs1, rs2),
     And(r"and\s+{},{},{}", rd, rs1, rs2),
-    Fence(r"fence{}", iorw),
+    Fence("(fence	\\S+)|fence.tso"), // All `fence`s are implemented the same.
     Ecall(r"ecall"),
     Ebreak(r"ebreak"),
 
-    // RV64I
+    // RV64I (in addition to RV32I)
     Lwu(r"lwu\s+{},{}\({}\)", rd, imm, rs1),
     Ld(r"ld\s+{},{}\({}\)", rd, imm, rs1),
     Sd(r"sd\s+{},{}\({}\)", rs2, imm, rs1),
-    // `slli` is the same as RV32I.
-    // `srli` is the same as RV32I.
-    // `srai` is the same as RV32I.
+    // `slli` is the same as its RV32I version.
+    // `srli` is the same as its RV32I version.
+    // `srai` is the same as its RV32I version.
     Addiw(r"addiw\s+{},{},{}", rd, rs1, imm),
     Slliw(r"slliw\s+{},{},{}", rd, rs1, imm),
     Srliw(r"srliw\s+{},{},{}", rd, rs1, imm),
@@ -506,7 +457,7 @@ define_instruction! {
     Rem(r"rem\s+{},{},{}", rd, rs1, rs2),
     Remu(r"remu\s+{},{},{}", rd, rs1, rs2),
 
-    // RV64M
+    // RV64M (in addition to RV32M)
     Mulw(r"mulw\s+{},{},{}", rd, rs1, rs2),
     Divw(r"divw\s+{},{},{}", rd, rs1, rs2),
     Divuw(r"divuw\s+{},{},{}", rd, rs1, rs2),
@@ -526,7 +477,7 @@ define_instruction! {
     AmominuW(r"amominu\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
     AmomaxuW(r"amomaxu\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
 
-    // RV64A
+    // RV64A (in addition to RV32A)
     LrD(r"lr\.d{}\s+{},\({}\)", ord, rd, rs1),
     ScD(r"sc\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
     AmoswapD(r"amoswap\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
@@ -567,7 +518,7 @@ define_instruction! {
     FcvtSWu(r"fcvt\.s\.wu\s+{},{}{}", frd, rs1, rm),
     FmvWX(r"fmv\.w\.x\s+{},{}", frd, rs1),
 
-    // RV64F
+    // RV64F (in addition to RV32F)
     FcvtLS(r"fcvt\.l\.s\s+{},{}{}", rd, frs1, rm),
     FcvtLuS(r"fcvt\.lu\.s\s+{},{}{}", rd, frs1, rm),
     FcvtSL(r"fcvt\.s\.l\s+{},{}{}", frd, rs1, rm),
@@ -601,7 +552,7 @@ define_instruction! {
     FcvtDW(r"fcvt\.d\.w\s+{},{}{}", frd, rs1, rm),
     FcvtDWu(r"fcvt\.d\.wu\s+{},{}{}", frd, rs1, rm),
 
-    // RV64D
+    // RV64D (in addition to RV32D)
     FcvtLD(r"fcvt\.l\.d\s+{},{}{}", rd, frs1, rm),
     FcvtLuD(r"fcvt\.lu\.d\s+{},{}{}", rd, frs1, rm),
     FmvXD(r"fmv\.x\.d\s+{},{}", rd, frs1),
@@ -610,7 +561,7 @@ define_instruction! {
     FmvDX(r"fmv\.d\.x\s+{},{}", frd, rs1),
 
     // Pseudoinstructions
-    // Pseudoinstructions using symbols are always converted to base instructions.
+    // Pseudoinstructions using symbols are compiled to other instructions.
 
     Nop(r"nop"),
     Li(r"li\s+{},{}", rd, imm),
@@ -638,28 +589,24 @@ define_instruction! {
     Bltz(r"bltz\s+{},{}", rs1, addr),
     Bgtz(r"bgtz\s+{},{}", rs1, addr),
 
-    // `bgt` is always converted to `blt`.
-    // `ble` is always converted to `bge`.
-    // `bgtu` is always converted to `bltu`.
-    // `bleu` is always converted to `bgeu`.
+    // `bgt` is compiled to other instructions.
+    // `ble` is compiled to other instructions.
+    // `bgtu` is compiled to other instructions.
+    // `bleu` is compiled to other instructions.
 
     J(r"j\s+{}", addr),
-    // `jal offset` is always converted to `jal ra,addr`.
+    // `jal` is compiled to other instructions.
     Jr(r"jr\s+{}", rs1),
-    OffsetJr(r"jr\s+{}\({}\)", imm, rs1),
     PseudoJalr(r"jalr\s+{}", rs1),
     Ret(r"ret"),
-    // `call offset` is always converted to the base instruction.
-    // `tail offset` is always converted to the base instruction.
+    // `call` is compiled to other instructions.
+    // `tail` is compiled to other instructions.
 
     PseudoFence(r"fence"),
 
     Rdinstret(r"rdinstret\s+{}", rd),
-    Rdinstreth(r"rdinstreth\s+{}", rd),
     Rdcycle(r"rdcycle\s+{}", rd),
-    Rdcycleh(r"rdcycleh\s+{}", rd),
     Rdtime(r"rdtime\s+{}", rd),
-    Rdtimeh(r"rdtimeh\s+{}", rd),
 
     Csrr(r"csrr\s+{},{}", rd, csr),
     Csrw(r"csrw\s+{},{}", csr, rs1),
@@ -672,18 +619,17 @@ define_instruction! {
 
     Frcsr(r"frcsr\s+{}", rd),
     Fscsr(r"fscsr\s+{},{}", rd, rs1),
-    Fwcsr(r"fscsr\s+{}", rs1), // `fscsr rs` is renamed to `fwcsr` to avoid conflicts.
+    PseudoFscsr(r"fscsr\s+{}", rs1),
 
     Frrm(r"frrm\s+{}", rd),
     Fsrm(r"fsrm\s+{},{}", rd, rs1),
-    Fwrm(r"fsrm\s+{}", rs1), // `fsrm rs` is renamed to `fwrm` to avoid conflicts.
+    PseudoFsrm(r"fsrm\s+{}", rs1),
 
     Frflags(r"frflags\s+{}", rd),
     Fsflags(r"fsflags\s+{},{}", rd, rs1),
-    Fwflags(r"fsflags\s+{}", rs1), // `fsflags rs` is renamed to `fwflags` to avoid conflicts.
+    PseudoFsflags(r"fsflags\s+{}", rs1),
 
     // Misc
     ZextB(r"zext\.b\s+{},{}", rd, rs1),
     Unimp(r"unimp"),
-    Unknown(".*"),
 }
