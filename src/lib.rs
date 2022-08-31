@@ -4,7 +4,7 @@
 // mod llvm_translator;
 mod riscv_isa;
 mod riscv_macro;
-// mod riscv_parser;
+mod riscv_parser;
 
 // use ir_rewriter::Rewriter;
 // use llvm_translator::Translator;

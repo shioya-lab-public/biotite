@@ -1,59 +1,107 @@
 macro_rules! rd {
-    ("regex") => { RD };
-    ("type") => { Reg };
+    ("regex") => {
+        RD
+    };
+    ("type") => {
+        Reg
+    };
 }
 
 macro_rules! rs1 {
-    ("regex") => { RS1 };
-    ("type") => { Reg };
+    ("regex") => {
+        RS1
+    };
+    ("type") => {
+        Reg
+    };
 }
 
 macro_rules! rs2 {
-    ("regex") => { RS2 };
-    ("type") => { Reg };
+    ("regex") => {
+        RS2
+    };
+    ("type") => {
+        Reg
+    };
 }
 
 macro_rules! frd {
-    ("regex") => { FRD };
-    ("type") => { FReg };
+    ("regex") => {
+        FRD
+    };
+    ("type") => {
+        FReg
+    };
 }
 
 macro_rules! frs1 {
-    ("regex") => { FRS1 };
-    ("type") => { FReg };
+    ("regex") => {
+        FRS1
+    };
+    ("type") => {
+        FReg
+    };
 }
 
 macro_rules! frs2 {
-    ("regex") => { FRS2 };
-    ("type") => { FReg };
+    ("regex") => {
+        FRS2
+    };
+    ("type") => {
+        FReg
+    };
 }
 
 macro_rules! frs3 {
-    ("regex") => { FRS3 };
-    ("type") => { FReg };
+    ("regex") => {
+        FRS3
+    };
+    ("type") => {
+        FReg
+    };
 }
 macro_rules! imm {
-    ("regex") => { IMM };
-    ("type") => { Imm };
+    ("regex") => {
+        IMM
+    };
+    ("type") => {
+        Imm
+    };
 }
 
 macro_rules! addr {
-    ("regex") => { ADDR };
-    ("type") => { Addr };
+    ("regex") => {
+        ADDR
+    };
+    ("type") => {
+        Addr
+    };
 }
 
 macro_rules! csr {
-    ("regex") => { CSR };
-    ("type") => { Csr };
+    ("regex") => {
+        CSR
+    };
+    ("type") => {
+        Csr
+    };
 }
 macro_rules! ord {
-    ("regex") => { ORD };
-    ("type") => { Ord };
+    ("regex") => {
+        ORD
+    };
+    ("type") => {
+        Ord
+    };
 }
 
 macro_rules! rm {
-    ("regex") => { RM };
-    ("type") => { Rm };
+    ("regex") => {
+        RM
+    };
+    ("type") => {
+        Rm
+    };
 }
 
 macro_rules! define_inst {
@@ -74,7 +122,7 @@ macro_rules! define_inst {
         const ORD: &str = r"(\.(?P<ord>[[:alpha:]]+))?";
         const RM: &str = r"(,(?P<rm>[[:alpha:]]+))?";
         const INST_ADDR: &str = r"(?P<inst_addr>[[:xdigit:]]+)";
-        const INST_RAW: &str = r"(?P<inst_raw>([[:xdigit:]]+ )+)";
+        const INST_BYTE: &str = r"(?P<inst_byte>[[:xdigit:]]+)";
 
         lazy_static! {
             static ref REGEXES: Vec<(&'static str, Regex)> = vec![
@@ -83,7 +131,7 @@ macro_rules! define_inst {
                         stringify!($inst),
                         Regex::new(&format!(
                             concat!(r"\s+{}:\s+{}\s+", $regex),
-                            INST_ADDR, INST_RAW, $( $field!("regex") ),*
+                            INST_ADDR, INST_BYTE, $( $field!("regex") ),*
                         )).unwrap()
                     ),
                 )*
@@ -96,12 +144,12 @@ macro_rules! define_inst {
             ).unwrap();
         }
 
-        #[derive(Debug, PartialEq)]
+        #[derive(Debug, PartialEq, Clone, Copy)]
         pub enum Inst {
             $(
                 $inst {
                     inst_addr: Addr,
-                    inst_raw: Raw,
+                    compressed: bool,
                     $(
                         $field: $field!("type"),
                     )*
@@ -114,19 +162,21 @@ macro_rules! define_inst {
                 use Inst::*;
 
                 let matches: Vec<_> = REGEX_SET.matches(line).into_iter().collect();
+                if matches.is_empty() {
+                    panic!("Unknown instruction `{line}`");
+                }
                 let (name, regex) = &REGEXES[matches[0]];
                 let caps = regex.captures(line).unwrap();
-
                 match *name {
                     $(
                         stringify!($inst) => $inst {
                             inst_addr: Addr::new(&caps["inst_addr"]),
-                            inst_raw: Raw::new(caps.name("inst_raw").map_or("", |m| m.as_str())),
+                            compressed: caps["inst_byte"].len() == 4,
                             $(
                                 $field: <$field!("type")>::new(
                                     caps.name(stringify!($field))
                                         .map(|m| m.as_str())
-                                        .unwrap_or_default(),
+                                        .unwrap_or_default()
                                 ),
                             )*
                         },
@@ -145,12 +195,12 @@ macro_rules! define_inst {
                 }
             }
 
-            pub fn inst_raw(&self) -> &str {
+            pub fn compressed(&self) -> bool {
                 use Inst::*;
 
                 match self {
                     $(
-                        $inst { inst_raw: Raw(s), .. } => s,
+                        $inst { compressed, .. } => *compressed,
                     )*
                 }
             }

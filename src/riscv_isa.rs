@@ -23,7 +23,7 @@ pub struct CodeBlock {
     pub insts: Vec<Inst>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Reg {
     Zero,
     Ra,
@@ -142,7 +142,7 @@ impl Display for Reg {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FReg {
     Ft0,
     Ft1,
@@ -261,7 +261,7 @@ impl Display for FReg {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Imm(pub i64);
 
 impl Imm {
@@ -280,7 +280,7 @@ impl Display for Imm {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Addr(pub u64);
 
 impl Addr {
@@ -296,7 +296,7 @@ impl Display for Addr {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Csr {
     Fflags,
     Frm,
@@ -323,7 +323,7 @@ impl Csr {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Ord {
     Mono,
     Aq,
@@ -343,7 +343,7 @@ impl Ord {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Rm {
     Rne,
     Rtz,
@@ -364,15 +364,6 @@ impl Rm {
             "" => Rm::Dyn,
             s => panic!("Unknown rounding mode `{s}`"),
         }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Raw(pub String);
-
-impl Raw {
-    pub fn new(s: &str) -> Self {
-        Raw(s.to_string())
     }
 }
 
@@ -415,7 +406,7 @@ define_inst! {
     Sra(r"sra\s+{},{},{}", rd, rs1, rs2),
     Or(r"or\s+{},{},{}", rd, rs1, rs2),
     And(r"and\s+{},{},{}", rd, rs1, rs2),
-    Fence("(fence	\\S+)|fence.tso"), // All `fence`s are implemented the same.
+    Fence(r"(fence\s+\S+)|(fence.tso)"), // All `fence`s are implemented the same.
     Ecall(r"ecall"),
     Ebreak(r"ebreak"),
 
