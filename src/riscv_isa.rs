@@ -1,13 +1,13 @@
 use crate::riscv_macro::*;
 use std::fmt::{Display, Formatter, Result};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Program {
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DataBlock {
     pub section: String,
     pub symbol: String,
@@ -15,7 +15,7 @@ pub struct DataBlock {
     pub bytes: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CodeBlock {
     pub section: String,
     pub symbol: String,
@@ -23,7 +23,7 @@ pub struct CodeBlock {
     pub insts: Vec<Inst>,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Reg {
     Zero,
     Ra,
@@ -142,7 +142,7 @@ impl Display for Reg {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum FReg {
     Ft0,
     Ft1,
@@ -261,7 +261,7 @@ impl Display for FReg {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Imm(pub i64);
 
 impl Imm {
@@ -280,7 +280,7 @@ impl Display for Imm {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Addr(pub u64);
 
 impl Addr {
@@ -296,8 +296,8 @@ impl Display for Addr {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Csr {
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum CSR {
     Fflags,
     Frm,
     Fcsr,
@@ -309,42 +309,46 @@ pub enum Csr {
     // `Instreth` is RV32I only.
 }
 
-impl Csr {
+impl CSR {
     pub fn new(s: &str) -> Self {
+        use CSR::*;
+
         match s {
-            "fflags" => Csr::Fflags,
-            "frm" => Csr::Frm,
-            "fcsr" => Csr::Fcsr,
-            "cycle" => Csr::Cycle,
-            "time" => Csr::Time,
-            "instret" => Csr::Instret,
+            "fflags" => Fflags,
+            "frm" => Frm,
+            "fcsr" => Fcsr,
+            "cycle" => Cycle,
+            "time" => Time,
+            "instret" => Instret,
             s => panic!("Unknown CSR `{s}`"),
         }
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Ord {
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum MO {
     Mono,
     Aq,
     Rl,
     AqRl,
 }
 
-impl Ord {
+impl MO {
     pub fn new(s: &str) -> Self {
+        use MO::*;
+
         match s {
-            "" => Ord::Mono,
-            "aq" => Ord::Aq,
-            "rl" => Ord::Rl,
-            "aqrl" => Ord::AqRl,
+            "" => Mono,
+            "aq" => Aq,
+            "rl" => Rl,
+            "aqrl" => AqRl,
             _ => unreachable!(),
         }
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Rm {
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum RM {
     Rne,
     Rtz,
     Rdn,
@@ -353,21 +357,23 @@ pub enum Rm {
     Dyn,
 }
 
-impl Rm {
+impl RM {
     pub fn new(s: &str) -> Self {
+        use RM::*;
+
         match s {
-            "rne" => Rm::Rne,
-            "rtz" => Rm::Rtz,
-            "rdn" => Rm::Rdn,
-            "rup" => Rm::Rup,
-            "rmm" => Rm::Rmm,
-            "" => Rm::Dyn,
+            "rne" => Rne,
+            "rtz" => Rtz,
+            "rdn" => Rdn,
+            "rup" => Rup,
+            "rmm" => Rmm,
+            "" => Dyn,
             s => panic!("Unknown rounding mode `{s}`"),
         }
     }
 }
 
-define_inst! {
+define_insts! {
     // RV32I
     Lui(r"lui\s+{},{}", rd, imm),
     Auipc(r"auipc\s+{},{}", rd, imm),
@@ -456,30 +462,30 @@ define_inst! {
     Remuw(r"remuw\s+{},{},{}", rd, rs1, rs2),
 
     // RV32A
-    LrW(r"lr\.w{}\s+{},\({}\)", ord, rd, rs1),
-    ScW(r"sc\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmoswapW(r"amoswap\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmoaddW(r"amoadd\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmoxorW(r"amoxor\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmoandW(r"amoand\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmoorW(r"amoor\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmominW(r"amomin\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmomaxW(r"amomax\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmominuW(r"amominu\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmomaxuW(r"amomaxu\.w{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    LrW(r"lr\.w{}\s+{},\({}\)", mo, rd, rs1),
+    ScW(r"sc\.w{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmoswapW(r"amoswap\.w{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmoaddW(r"amoadd\.w{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmoxorW(r"amoxor\.w{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmoandW(r"amoand\.w{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmoorW(r"amoor\.w{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmominW(r"amomin\.w{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmomaxW(r"amomax\.w{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmominuW(r"amominu\.w{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmomaxuW(r"amomaxu\.w{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
 
     // RV64A (in addition to RV32A)
-    LrD(r"lr\.d{}\s+{},\({}\)", ord, rd, rs1),
-    ScD(r"sc\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmoswapD(r"amoswap\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmoaddD(r"amoadd\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmoxorD(r"amoxor\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmoandD(r"amoand\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmoorD(r"amoor\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmominD(r"amomin\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmomaxD(r"amomax\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmominuD(r"amominu\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
-    AmomaxuD(r"amomaxu\.d{}\s+{},{},\({}\)", ord, rd, rs2, rs1),
+    LrD(r"lr\.d{}\s+{},\({}\)", mo, rd, rs1),
+    ScD(r"sc\.d{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmoswapD(r"amoswap\.d{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmoaddD(r"amoadd\.d{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmoxorD(r"amoxor\.d{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmoandD(r"amoand\.d{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmoorD(r"amoor\.d{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmominD(r"amomin\.d{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmomaxD(r"amomax\.d{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmominuD(r"amominu\.d{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
+    AmomaxuD(r"amomaxu\.d{}\s+{},{},\({}\)", mo, rd, rs2, rs1),
 
     // RV32F
     Flw(r"flw\s+{},{}\({}\)", frd, imm, rs1),

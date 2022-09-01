@@ -83,15 +83,15 @@ macro_rules! csr {
         CSR
     };
     ("type") => {
-        Csr
+        CSR
     };
 }
-macro_rules! ord {
+macro_rules! mo {
     ("regex") => {
-        ORD
+        MO
     };
     ("type") => {
-        Ord
+        MO
     };
 }
 
@@ -100,11 +100,11 @@ macro_rules! rm {
         RM
     };
     ("type") => {
-        Rm
+        RM
     };
 }
 
-macro_rules! define_inst {
+macro_rules! define_insts {
     ( $( $inst:ident ( $regex:literal $(, $field:ident )* ), )* ) => {
         use lazy_static::lazy_static;
         use regex::{Regex, RegexSet};
@@ -119,7 +119,7 @@ macro_rules! define_inst {
         const IMM: &str = r"(?P<imm>(-|(0x))?[[:xdigit:]]+)";
         const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
         const CSR: &str = r"(?P<csr>[[:alpha:]]+|(0x[[:xdigit:]]+))";
-        const ORD: &str = r"(\.(?P<ord>[[:alpha:]]+))?";
+        const MO: &str = r"(\.(?P<mo>[[:alpha:]]+))?";
         const RM: &str = r"(,(?P<rm>[[:alpha:]]+))?";
         const INST_ADDR: &str = r"(?P<inst_addr>[[:xdigit:]]+)";
         const INST_BYTE: &str = r"(?P<inst_byte>[[:xdigit:]]+)";
@@ -144,12 +144,12 @@ macro_rules! define_inst {
             ).unwrap();
         }
 
-        #[derive(Debug, PartialEq, Clone, Copy)]
+        #[derive(Debug, PartialEq, Eq, Clone, Copy)]
         pub enum Inst {
             $(
                 $inst {
-                    inst_addr: Addr,
-                    compressed: bool,
+                    address: Addr,
+                    is_compressed: bool,
                     $(
                         $field: $field!("type"),
                     )*
@@ -170,8 +170,8 @@ macro_rules! define_inst {
                 match *name {
                     $(
                         stringify!($inst) => $inst {
-                            inst_addr: Addr::new(&caps["inst_addr"]),
-                            compressed: caps["inst_byte"].len() == 4,
+                            address: Addr::new(&caps["inst_addr"]),
+                            is_compressed: caps["inst_byte"].len() == 4,
                             $(
                                 $field: <$field!("type")>::new(
                                     caps.name(stringify!($field))
@@ -185,22 +185,22 @@ macro_rules! define_inst {
                 }
             }
 
-            pub fn inst_addr(&self) -> Addr {
+            pub fn address(&self) -> Addr {
                 use Inst::*;
 
                 match self {
                     $(
-                        $inst { inst_addr, .. } => *inst_addr,
+                        $inst { address, .. } => *address,
                     )*
                 }
             }
 
-            pub fn compressed(&self) -> bool {
+            pub fn is_compressed(&self) -> bool {
                 use Inst::*;
 
                 match self {
                     $(
-                        $inst { compressed, .. } => *compressed,
+                        $inst { is_compressed, .. } => *is_compressed,
                     )*
                 }
             }
@@ -208,4 +208,4 @@ macro_rules! define_inst {
     };
 }
 
-pub(crate) use {addr, csr, define_inst, frd, frs1, frs2, frs3, imm, ord, rd, rm, rs1, rs2};
+pub(crate) use {addr, csr, define_insts, frd, frs1, frs2, frs3, imm, mo, rd, rm, rs1, rs2};

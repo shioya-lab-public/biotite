@@ -10,9 +10,6 @@ struct Args {
     #[clap(short, long)]
     output: Option<PathBuf>,
 
-    #[clap(short, long, default_value = 8)]
-    jobs: usize,
-
     #[clap(long)]
     entry: Option<String>,
 
@@ -28,8 +25,8 @@ fn main() {
         .iter()
         .map(|path| fs::read(path).expect("Unable to read LLVM IR"))
         .collect();
-    let ll_src = riscv2llvm::run(&rv_src, &irs, args.jobs);
-    let output = arguments
+    let ll_src = riscv2llvm::run(&rv_src, &irs);
+    let output = args
         .output
         .unwrap_or_else(|| args.input.with_extension("ll"));
     fs::write(&output, &ll_src).expect("Unable to write the output file");
