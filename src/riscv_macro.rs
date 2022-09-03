@@ -116,13 +116,13 @@ macro_rules! define_insts {
         const FRS1: &str = r"(?P<frs1>[[:alpha:]][[:alnum:]]+)";
         const FRS2: &str = r"(?P<frs2>[[:alpha:]][[:alnum:]]+)";
         const FRS3: &str = r"(?P<frs3>[[:alpha:]][[:alnum:]]+)";
-        const IMM: &str = r"(?P<imm>(-|(0x))?[[:xdigit:]]+)";
-        const ADDR: &str = r"(?P<addr>[[:xdigit:]]+)";
-        const CSR: &str = r"(?P<csr>[[:alpha:]]+|(0x[[:xdigit:]]+))";
+        const IMM: &str = r"(?P<imm>-?[[:digit:]]+)";
+        const ADDR: &str = r"0x(?P<addr>[[:xdigit:]]+)";
+        const CSR: &str = r"(?P<csr>[[:alpha:]]+)";
         const MO: &str = r"(\.(?P<mo>[[:alpha:]]+))?";
-        const RM: &str = r"(,(?P<rm>[[:alpha:]]+))?";
+        const RM: &str = r"(,\s+(?P<rm>[[:alpha:]]+))?";
         const INST_ADDR: &str = r"(?P<inst_addr>[[:xdigit:]]+)";
-        const INST_BYTE: &str = r"(?P<inst_byte>[[:xdigit:]]+)";
+        const INST_BYTE: &str = r"(?P<inst_byte>([[:xdigit:]][[:xdigit:]] )+)";
 
         lazy_static! {
             static ref REGEXES: Vec<(&'static str, Regex)> = vec![
@@ -171,7 +171,7 @@ macro_rules! define_insts {
                     $(
                         stringify!($inst) => $inst {
                             address: Addr::new(&caps["inst_addr"]),
-                            is_compressed: caps["inst_byte"].len() == 4,
+                            is_compressed: caps["inst_byte"].len() == 6,
                             $(
                                 $field: <$field!("type")>::new(
                                     caps.name(stringify!($field))

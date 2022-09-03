@@ -11,15 +11,7 @@ A binary translator that translates RISC-V to LLVM IR.
 ## Testing Commands
 
 ``` Bash
-
-riscv64-unknown-linux-gnu-gcc -static test.c -o test
-riscv64-unknown-linux-gnu-strip -g test -o test.stripped
-llvm-objdump --disassemble-all --disassemble-zeroes test.stripped > test.dump
-
-llvm-objdump
---all-headers
---section-headers
---syms
+llvm-objdump -fhtDz test
 ```
 
 ## RISC-V Notes

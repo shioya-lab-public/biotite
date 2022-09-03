@@ -11,9 +11,6 @@ struct Args {
     output: Option<PathBuf>,
 
     #[clap(long)]
-    entry: Option<String>,
-
-    #[clap(long)]
     irs: Vec<PathBuf>,
 }
 
