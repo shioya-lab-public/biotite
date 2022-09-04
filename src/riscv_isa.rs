@@ -24,7 +24,7 @@ pub struct CodeBlock {
     pub insts: Vec<Inst>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Reg {
     Zero,
     Ra,
@@ -143,7 +143,7 @@ impl Display for Reg {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum FReg {
     Ft0,
     Ft1,
@@ -262,12 +262,12 @@ impl Display for FReg {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Imm(pub i64);
 
 impl Imm {
     pub fn new(s: &str) -> Self {
-        Imm(s.parse().unwrap())
+        Imm(s.parse().unwrap_or_else(|_| panic!("Invalid immediate `{s}`")))
     }
 }
 
@@ -278,12 +278,12 @@ impl Display for Imm {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Addr(pub u64);
 
 impl Addr {
     pub fn new(s: &str) -> Self {
-        Addr(u64::from_str_radix(s, 16).unwrap())
+        Addr(u64::from_str_radix(s, 16).unwrap_or_else(|_| panic!("Invalid address `{s}`")))
     }
 }
 
@@ -294,7 +294,7 @@ impl Display for Addr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum CSR {
     Fflags,
     Frm,
@@ -323,7 +323,7 @@ impl CSR {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum MO {
     Mono,
     Aq,
@@ -345,7 +345,7 @@ impl MO {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum RM {
     Rne,
     Rtz,
@@ -590,7 +590,7 @@ define_insts! {
     // `bleu` is compiled to other instructions.
 
     J(r"j\s+{}", addr),
-    // `jal` is compiled to other instructions.
+    PseudoJal(r"jal\s+{}", addr),
     Jr(r"jr\s+{}", rs1),
     PseudoJalr(r"jalr\s+{}", rs1),
     Ret(r"ret"),

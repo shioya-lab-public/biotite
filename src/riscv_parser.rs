@@ -2,22 +2,75 @@ use crate::riscv_isa::*;
 use lazy_static::lazy_static;
 use rayon::prelude::*;
 use regex::Regex;
+use std::collections::HashMap;
 use std::mem;
+use std::str::Lines;
 
 lazy_static! {
+    static ref SECTION_SIZE: Regex =
+        Regex::new(r"\s+\S+\s+(\S+)\s+([[:xdigit:]]+)\s+([[:xdigit:]]+)").unwrap();
+    static ref SYMBOL_SIZE: Regex =
+        Regex::new(r"([[:xdigit:]]+)\s+\S+\s+\S+\s+\S+\s+([[:xdigit:]]+)\s+(\S+)").unwrap();
     static ref SECTION: Regex = Regex::new(r"Disassembly of section (\S+):").unwrap();
     static ref SYMBOL: Regex = Regex::new(r"([[:xdigit:]]+) <(\S+)>:").unwrap();
-    static ref BYTES: Regex = Regex::new(r"\s+[[:xdigit:]]+:\s+(([[:xdigit:]]+ )+)").unwrap();
+    static ref BYTES: Regex =
+        Regex::new(r"\s+[[:xdigit:]]+:\s+(([[:xdigit:]][[:xdigit:]] )+)").unwrap();
 }
 
 pub fn parse(src: &str) -> Program {
+    let mut src = src.lines();
+    let entry = parse_entry(&mut src);
+    let sections = parse_sections(&mut src);
+    let symbols = parse_symbols(&mut src);
+    let (mut data_blocks, code_blocks) = parse_assembly(&mut src);
+    expand_data_blocks(&mut data_blocks, &sections, &symbols);
+    Program {
+        entry,
+        data_blocks,
+        code_blocks,
+    }
+}
+
+fn parse_entry(src: &mut Lines) -> Addr {
+    let mut src = src.skip(3);
+    Addr::new(
+        src.next()
+            .expect("Missing file header")
+            .strip_prefix("start address: 0x")
+            .expect("Invalid file header"),
+    )
+}
+
+fn parse_sections(src: &mut Lines) -> HashMap<(String, Addr), usize> {
+    let mut src = src.skip(4);
+    let mut sections = HashMap::new();
+    while let Some(caps) = SECTION_SIZE.captures(src.next().expect("Missing section header")) {
+        let section = (String::from(&caps[1]), Addr::new(&caps[3]));
+        let size = usize::from_str_radix(&caps[2], 16).unwrap();
+        sections.insert(section, size);
+    }
+    sections
+}
+
+fn parse_symbols(src: &mut Lines) -> HashMap<(String, Addr), usize> {
+    let mut src = src.skip(1);
+    let mut symbols = HashMap::new();
+    while let Some(caps) = SYMBOL_SIZE.captures(src.next().expect("Missing symbol table")) {
+        let symbol = (String::from(&caps[3]), Addr::new(&caps[1]));
+        let size = usize::from_str_radix(&caps[2], 16).unwrap();
+        symbols.insert(symbol, size);
+    }
+    symbols
+}
+
+fn parse_assembly(src: &mut Lines) -> (Vec<DataBlock>, Vec<CodeBlock>) {
     let mut data_blocks = Vec::new();
     let mut code_blocks = Vec::new();
     let mut section = String::new();
     let mut symbol = String::new();
     let mut address = Addr(0);
     let mut lines = Vec::new();
-    for line in src.lines().filter(|l| !l.is_empty()).skip(1) {
+    for line in src.filter(|l| !l.is_empty()) {
         if let Some(caps) = SYMBOL.captures(line) {
             let sym = caps[2].to_string();
             let addr = Addr::new(&caps[1]);
@@ -59,25 +112,24 @@ pub fn parse(src: &str) -> Program {
     } else {
         data_blocks.push(raw_block);
     }
-    Program {
-        data_blocks: data_blocks.into_par_iter().map(parse_data_block).collect(),
-        code_blocks: code_blocks.into_par_iter().map(parse_code_block).collect(),
-    }
+    (
+        data_blocks.into_par_iter().map(parse_data_block).collect(),
+        code_blocks.into_par_iter().map(parse_code_block).collect(),
+    )
 }
 
 fn parse_data_block(
     (section, symbol, address, lines): (String, String, Addr, Vec<&str>),
 ) -> DataBlock {
     let mut bytes = Vec::new();
-    for line in lines {
-        let caps = BYTES.captures(line).unwrap();
-        for byte_str in caps[1].split_ascii_whitespace() {
-            bytes.extend(
-                (0..byte_str.len())
-                    .step_by(2)
-                    .map(|i| u8::from_str_radix(&byte_str[i..i + 2], 16).unwrap())
-                    .rev(),
-            );
+    if lines.len() > 1 || lines[0] != "..." {
+        for line in lines {
+            let caps = BYTES.captures(line).unwrap();
+            for byte_str in caps[1].split(' ').filter(|s| !s.is_empty()) {
+                let byte =
+                    u8::from_str_radix(byte_str, 16).unwrap_or_else(|_| panic!("Invalid byte `{byte_str}`"));
+                bytes.push(byte);
+            }
         }
     }
     DataBlock {
@@ -99,6 +151,30 @@ fn parse_code_block(
     }
 }
 
+fn expand_data_blocks(
+    data_blocks: &mut Vec<DataBlock>,
+    sections: &HashMap<(String, Addr), usize>,
+    symbols: &HashMap<(String, Addr), usize>,
+) {
+    for data_block in data_blocks {
+        if data_block.bytes.is_empty() {
+            let symbol = data_block.symbol.clone();
+            let address = data_block.address;
+            let size = match symbols.get(&(symbol, address)) {
+                Some(size) => *size,
+                None => {
+                    let section = data_block.section.clone();
+                    match sections.get(&(section, address)) {
+                        Some(usize) => *usize,
+                        None => unreachable!(),
+                    }
+                }
+            };
+            data_block.bytes = vec![0; size];
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::riscv_isa::*;
@@ -114,25 +190,35 @@ mod tests {
             $(
                 #[test]
                 fn $func() {
-                    let src = concat!("./a.out:     file format elf64-littleriscv
+                    let src = concat!("
+test:	file format elf64-littleriscv
+architecture: riscv64
+start address: 0x0000000000010528
+
+Sections:
+Idx Name                Size     VMA              Type
+  0                     00000000 0000000000000000 
+
+SYMBOL TABLE:
 
 Disassembly of section .text:
 
-00000000000103f0 <_start>:
-   103f0:	02e000ef          	", $src);
+0000000000010528 <_start>:
+   10528: ef 00 e0 02  	", $src);
                     let prog = super::parse(src);
                     assert_eq!(
                         prog,
                         Program {
+                            entry: Addr(0x10528),
                             data_blocks: Vec::new(),
                             code_blocks: vec![
                                 CodeBlock {
                                     section: String::from(".text"),
                                     symbol: String::from("_start"),
-                                    address: Addr(0x103f0),
+                                    address: Addr(0x10528),
                                     insts: vec![
                                         $inst {
-                                            address: Addr(0x103f0),
+                                            address: Addr(0x10528),
                                             is_compressed: false,
                                             $(
                                                 $field: $value,
@@ -151,43 +237,73 @@ Disassembly of section .text:
     #[test]
     fn program() {
         let src = "
-./a.out:     file format elf64-littleriscv
+test:	file format elf64-littleriscv
+architecture: riscv64
+start address: 0x0000000000010528
 
+Sections:
+Idx Name                Size     VMA              Type
+  0                     00000000 0000000000000000 
+  21 .bss                000011d8 0000000000070e40 BSS
+
+SYMBOL TABLE:
+0000000000070a78 g     O .sbss	0000000000000008 _dl_tls_generation
+
+Disassembly of section .bss:
+
+0000000000070e40 <.bss>:
+...
+
+Disassembly of section .sbss:
+
+0000000000070a78 <_dl_tls_generation>:
+...
 
 Disassembly of section .text:
 
 00000000000103b0 <abort>:
-   103b0:	714d                	addi	sp,sp,-336
+   103b0: 4d 71        	addi	sp, sp, -336
 
 0000000000010528 <_start>:
-   10528:	02e000ef          	jal	ra,10556 <load_gp>
+   10528: ef 00 e0 02  	jal	0x10556 <load_gp>
 
 Disassembly of section .rodata:
 
-000000000004c370 <__PRETTY_FUNCTION__.0-0xc0>:
-   4c370:	6568                	ld	a0,200(a0)
-   4c372:	6c6c                	ld	a1,216(s0)
-   4c374:	6f77206f          	j	bf26a <__BSS_END__+0x4d232>
+000000000004c370 <.rodata>:
+   4c370: 48 65        	ld	a0, 136(a0)
 
 000000000004c430 <__PRETTY_FUNCTION__.0>:
-   4c430:	5f5f 696c 6362      	.byte	0x5f, 0x5f, 0x6c, 0x69, 0x62, 0x63
+   4c430: 5f 5f 6c 69  	<unknown>
 ";
         let prog = super::parse(src);
         assert_eq!(
             prog,
             Program {
+                entry: Addr(0x10528),
                 data_blocks: vec![
                     DataBlock {
+                        section: String::from(".bss"),
+                        symbol: String::from(".bss"),
+                        address: Addr(0x70e40),
+                        bytes: vec![0; 0x11d8],
+                    },
+                    DataBlock {
+                        section: String::from(".sbss"),
+                        symbol: String::from("_dl_tls_generation"),
+                        address: Addr(0x70a78),
+                        bytes: vec![0; 0x8],
+                    },
+                    DataBlock {
                         section: String::from(".rodata"),
-                        symbol: String::from("__PRETTY_FUNCTION__.0-0xc0"),
+                        symbol: String::from(".rodata"),
                         address: Addr(0x4c370),
-                        bytes: vec![0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x77, 0x6f],
+                        bytes: vec![0x48, 0x65],
                     },
                     DataBlock {
                         section: String::from(".rodata"),
                         symbol: String::from("__PRETTY_FUNCTION__.0"),
                         address: Addr(0x4c430),
-                        bytes: vec![0x5f, 0x5f, 0x6c, 0x69, 0x62, 0x63],
+                        bytes: vec![0x5f, 0x5f, 0x6c, 0x69],
                     },
                 ],
                 code_blocks: vec![
@@ -207,10 +323,9 @@ Disassembly of section .rodata:
                         section: String::from(".text"),
                         symbol: String::from("_start"),
                         address: Addr(0x10528),
-                        insts: vec![Inst::Jal {
+                        insts: vec![Inst::PseudoJal {
                             address: Addr(0x10528),
                             is_compressed: false,
-                            rd: Ra,
                             addr: Addr(0x10556),
                         }]
                     },
@@ -221,38 +336,38 @@ Disassembly of section .rodata:
 
     build_tests! {
         // Registers
-        x0_f0("flw	ft0,0(zero)", Flw { frd: Ft0, imm: Imm(0), rs1: Zero }),
-        x1_f1("flw	ft1,0(ra)", Flw { frd: Ft1, imm: Imm(0), rs1: Ra }),
-        x2_f2("flw	ft2,0(sp)", Flw { frd: Ft2, imm: Imm(0), rs1: Sp }),
-        x3_f3("flw	ft3,0(gp)", Flw { frd: Ft3, imm: Imm(0), rs1: Gp }),
-        x4_f4("flw	ft4,0(tp)", Flw { frd: Ft4, imm: Imm(0), rs1: Tp }),
-        x5_f5("flw	ft5,0(t0)", Flw { frd: Ft5, imm: Imm(0), rs1: T0 }),
-        x6_f6("flw	ft6,0(t1)", Flw { frd: Ft6, imm: Imm(0), rs1: T1 }),
-        x7_f7("flw	ft7,0(t2)", Flw { frd: Ft7, imm: Imm(0), rs1: T2 }),
-        x8_f8("flw	fs0,0(s0)", Flw { frd: Fs0, imm: Imm(0), rs1: S0 }),
-        x9_f9("flw	fs1,0(s1)", Flw { frd: Fs1, imm: Imm(0), rs1: S1 }),
-        x10_f10("flw	fa0,0(a0)", Flw { frd: Fa0, imm: Imm(0), rs1: A0 }),
-        x11_f11("flw	fa1,0(a1)", Flw { frd: Fa1, imm: Imm(0), rs1: A1 }),
-        x12_f12("flw	fa2,0(a2)", Flw { frd: Fa2, imm: Imm(0), rs1: A2 }),
-        x13_f13("flw	fa3,0(a3)", Flw { frd: Fa3, imm: Imm(0), rs1: A3 }),
-        x14_f14("flw	fa4,0(a4)", Flw { frd: Fa4, imm: Imm(0), rs1: A4 }),
-        x15_f15("flw	fa5,0(a5)", Flw { frd: Fa5, imm: Imm(0), rs1: A5 }),
-        x16_f16("flw	fa6,0(a6)", Flw { frd: Fa6, imm: Imm(0), rs1: A6 }),
-        x17_f17("flw	fa7,0(a7)", Flw { frd: Fa7, imm: Imm(0), rs1: A7 }),
-        x18_f18("flw	fs2,0(s2)", Flw { frd: Fs2, imm: Imm(0), rs1: S2 }),
-        x19_f19("flw	fs3,0(s3)", Flw { frd: Fs3, imm: Imm(0), rs1: S3 }),
-        x20_f20("flw	fs4,0(s4)", Flw { frd: Fs4, imm: Imm(0), rs1: S4 }),
-        x21_f21("flw	fs5,0(s5)", Flw { frd: Fs5, imm: Imm(0), rs1: S5 }),
-        x22_f22("flw	fs6,0(s6)", Flw { frd: Fs6, imm: Imm(0), rs1: S6 }),
-        x23_f23("flw	fs7,0(s7)", Flw { frd: Fs7, imm: Imm(0), rs1: S7 }),
-        x24_f24("flw	fs8,0(s8)", Flw { frd: Fs8, imm: Imm(0), rs1: S8 }),
-        x25_f25("flw	fs9,0(s9)", Flw { frd: Fs9, imm: Imm(0), rs1: S9 }),
-        x26_f26("flw	fs10,0(s10)", Flw { frd: Fs10, imm: Imm(0), rs1: S10 }),
-        x27_f27("flw	fs11,0(s11)", Flw { frd: Fs11, imm: Imm(0), rs1: S11 }),
-        x28_f28("flw	ft8,0(t3)", Flw { frd: Ft8, imm: Imm(0), rs1: T3 }),
-        x29_f29("flw	ft9,0(t4)", Flw { frd: Ft9, imm: Imm(0), rs1: T4 }),
-        x30_f30("flw	ft10,0(t5)", Flw { frd: Ft10, imm: Imm(0), rs1: T5 }),
-        x31_f31("flw	ft11,0(t6)", Flw { frd: Ft11, imm: Imm(0), rs1: T6 }),
+        x0_f0("flw	ft0, 0(zero)", Flw { frd: Ft0, imm: Imm(0), rs1: Zero }),
+        x1_f1("flw	ft1, 0(ra)", Flw { frd: Ft1, imm: Imm(0), rs1: Ra }),
+        x2_f2("flw	ft2, 0(sp)", Flw { frd: Ft2, imm: Imm(0), rs1: Sp }),
+        x3_f3("flw	ft3, 0(gp)", Flw { frd: Ft3, imm: Imm(0), rs1: Gp }),
+        x4_f4("flw	ft4, 0(tp)", Flw { frd: Ft4, imm: Imm(0), rs1: Tp }),
+        x5_f5("flw	ft5, 0(t0)", Flw { frd: Ft5, imm: Imm(0), rs1: T0 }),
+        x6_f6("flw	ft6, 0(t1)", Flw { frd: Ft6, imm: Imm(0), rs1: T1 }),
+        x7_f7("flw	ft7, 0(t2)", Flw { frd: Ft7, imm: Imm(0), rs1: T2 }),
+        x8_f8("flw	fs0, 0(s0)", Flw { frd: Fs0, imm: Imm(0), rs1: S0 }),
+        x9_f9("flw	fs1, 0(s1)", Flw { frd: Fs1, imm: Imm(0), rs1: S1 }),
+        x10_f10("flw	fa0, 0(a0)", Flw { frd: Fa0, imm: Imm(0), rs1: A0 }),
+        x11_f11("flw	fa1, 0(a1)", Flw { frd: Fa1, imm: Imm(0), rs1: A1 }),
+        x12_f12("flw	fa2, 0(a2)", Flw { frd: Fa2, imm: Imm(0), rs1: A2 }),
+        x13_f13("flw	fa3, 0(a3)", Flw { frd: Fa3, imm: Imm(0), rs1: A3 }),
+        x14_f14("flw	fa4, 0(a4)", Flw { frd: Fa4, imm: Imm(0), rs1: A4 }),
+        x15_f15("flw	fa5, 0(a5)", Flw { frd: Fa5, imm: Imm(0), rs1: A5 }),
+        x16_f16("flw	fa6, 0(a6)", Flw { frd: Fa6, imm: Imm(0), rs1: A6 }),
+        x17_f17("flw	fa7, 0(a7)", Flw { frd: Fa7, imm: Imm(0), rs1: A7 }),
+        x18_f18("flw	fs2, 0(s2)", Flw { frd: Fs2, imm: Imm(0), rs1: S2 }),
+        x19_f19("flw	fs3, 0(s3)", Flw { frd: Fs3, imm: Imm(0), rs1: S3 }),
+        x20_f20("flw	fs4, 0(s4)", Flw { frd: Fs4, imm: Imm(0), rs1: S4 }),
+        x21_f21("flw	fs5, 0(s5)", Flw { frd: Fs5, imm: Imm(0), rs1: S5 }),
+        x22_f22("flw	fs6, 0(s6)", Flw { frd: Fs6, imm: Imm(0), rs1: S6 }),
+        x23_f23("flw	fs7, 0(s7)", Flw { frd: Fs7, imm: Imm(0), rs1: S7 }),
+        x24_f24("flw	fs8, 0(s8)", Flw { frd: Fs8, imm: Imm(0), rs1: S8 }),
+        x25_f25("flw	fs9, 0(s9)", Flw { frd: Fs9, imm: Imm(0), rs1: S9 }),
+        x26_f26("flw	fs10, 0(s10)", Flw { frd: Fs10, imm: Imm(0), rs1: S10 }),
+        x27_f27("flw	fs11, 0(s11)", Flw { frd: Fs11, imm: Imm(0), rs1: S11 }),
+        x28_f28("flw	ft8, 0(t3)", Flw { frd: Ft8, imm: Imm(0), rs1: T3 }),
+        x29_f29("flw	ft9, 0(t4)", Flw { frd: Ft9, imm: Imm(0), rs1: T4 }),
+        x30_f30("flw	ft10, 0(t5)", Flw { frd: Ft10, imm: Imm(0), rs1: T5 }),
+        x31_f31("flw	ft11, 0(t6)", Flw { frd: Ft11, imm: Imm(0), rs1: T6 }),
 
         // // RV32I (42 tests)
         // lui("lui t0,4", Lui { rd: T0, imm: Immediate(4) }),

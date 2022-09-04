@@ -144,7 +144,7 @@ macro_rules! define_insts {
             ).unwrap();
         }
 
-        #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+        #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
         pub enum Inst {
             $(
                 $inst {
