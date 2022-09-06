@@ -24,353 +24,6 @@ pub struct CodeBlock {
     pub insts: Vec<Inst>,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum Reg {
-    Zero,
-    Ra,
-    Sp,
-    Gp,
-    Tp,
-    T0,
-    T1,
-    T2,
-    S0,
-    S1,
-    A0,
-    A1,
-    A2,
-    A3,
-    A4,
-    A5,
-    A6,
-    A7,
-    S2,
-    S3,
-    S4,
-    S5,
-    S6,
-    S7,
-    S8,
-    S9,
-    S10,
-    S11,
-    T3,
-    T4,
-    T5,
-    T6,
-}
-
-impl Reg {
-    fn new(s: &str) -> Self {
-        use Reg::*;
-
-        match s {
-            "zero" => Zero,
-            "ra" => Ra,
-            "sp" => Sp,
-            "gp" => Gp,
-            "tp" => Tp,
-            "t0" => T0,
-            "t1" => T1,
-            "t2" => T2,
-            "s0" => S0,
-            "s1" => S1,
-            "a0" => A0,
-            "a1" => A1,
-            "a2" => A2,
-            "a3" => A3,
-            "a4" => A4,
-            "a5" => A5,
-            "a6" => A6,
-            "a7" => A7,
-            "s2" => S2,
-            "s3" => S3,
-            "s4" => S4,
-            "s5" => S5,
-            "s6" => S6,
-            "s7" => S7,
-            "s8" => S8,
-            "s9" => S9,
-            "s10" => S10,
-            "s11" => S11,
-            "t3" => T3,
-            "t4" => T4,
-            "t5" => T5,
-            "t6" => T6,
-            s => panic!("Unknown register `{s}`"),
-        }
-    }
-}
-
-impl Display for Reg {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        use Reg::*;
-
-        match self {
-            Zero => write!(f, "zero"),
-            Ra => write!(f, "ra"),
-            Sp => write!(f, "sp"),
-            Gp => write!(f, "gp"),
-            Tp => write!(f, "tp"),
-            T0 => write!(f, "t0"),
-            T1 => write!(f, "t1"),
-            T2 => write!(f, "t2"),
-            S0 => write!(f, "s0"),
-            S1 => write!(f, "s1"),
-            A0 => write!(f, "a0"),
-            A1 => write!(f, "a1"),
-            A2 => write!(f, "a2"),
-            A3 => write!(f, "a3"),
-            A4 => write!(f, "a4"),
-            A5 => write!(f, "a5"),
-            A6 => write!(f, "a6"),
-            A7 => write!(f, "a7"),
-            S2 => write!(f, "s2"),
-            S3 => write!(f, "s3"),
-            S4 => write!(f, "s4"),
-            S5 => write!(f, "s5"),
-            S6 => write!(f, "s6"),
-            S7 => write!(f, "s7"),
-            S8 => write!(f, "s8"),
-            S9 => write!(f, "s9"),
-            S10 => write!(f, "s10"),
-            S11 => write!(f, "s11"),
-            T3 => write!(f, "t3"),
-            T4 => write!(f, "t4"),
-            T5 => write!(f, "t5"),
-            T6 => write!(f, "t6"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum FReg {
-    Ft0,
-    Ft1,
-    Ft2,
-    Ft3,
-    Ft4,
-    Ft5,
-    Ft6,
-    Ft7,
-    Fs0,
-    Fs1,
-    Fa0,
-    Fa1,
-    Fa2,
-    Fa3,
-    Fa4,
-    Fa5,
-    Fa6,
-    Fa7,
-    Fs2,
-    Fs3,
-    Fs4,
-    Fs5,
-    Fs6,
-    Fs7,
-    Fs8,
-    Fs9,
-    Fs10,
-    Fs11,
-    Ft8,
-    Ft9,
-    Ft10,
-    Ft11,
-}
-
-impl FReg {
-    fn new(s: &str) -> Self {
-        use FReg::*;
-
-        match s {
-            "ft0" => Ft0,
-            "ft1" => Ft1,
-            "ft2" => Ft2,
-            "ft3" => Ft3,
-            "ft4" => Ft4,
-            "ft5" => Ft5,
-            "ft6" => Ft6,
-            "ft7" => Ft7,
-            "fs0" => Fs0,
-            "fs1" => Fs1,
-            "fa0" => Fa0,
-            "fa1" => Fa1,
-            "fa2" => Fa2,
-            "fa3" => Fa3,
-            "fa4" => Fa4,
-            "fa5" => Fa5,
-            "fa6" => Fa6,
-            "fa7" => Fa7,
-            "fs2" => Fs2,
-            "fs3" => Fs3,
-            "fs4" => Fs4,
-            "fs5" => Fs5,
-            "fs6" => Fs6,
-            "fs7" => Fs7,
-            "fs8" => Fs8,
-            "fs9" => Fs9,
-            "fs10" => Fs10,
-            "fs11" => Fs11,
-            "ft8" => Ft8,
-            "ft9" => Ft9,
-            "ft10" => Ft10,
-            "ft11" => Ft11,
-            s => panic!("Unknown FP register `{s}`"),
-        }
-    }
-}
-
-impl Display for FReg {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        use FReg::*;
-
-        match self {
-            Ft0 => write!(f, "ft0"),
-            Ft1 => write!(f, "ft1"),
-            Ft2 => write!(f, "ft2"),
-            Ft3 => write!(f, "ft3"),
-            Ft4 => write!(f, "ft4"),
-            Ft5 => write!(f, "ft5"),
-            Ft6 => write!(f, "ft6"),
-            Ft7 => write!(f, "ft7"),
-            Fs0 => write!(f, "fs0"),
-            Fs1 => write!(f, "fs1"),
-            Fa0 => write!(f, "fa0"),
-            Fa1 => write!(f, "fa1"),
-            Fa2 => write!(f, "fa2"),
-            Fa3 => write!(f, "fa3"),
-            Fa4 => write!(f, "fa4"),
-            Fa5 => write!(f, "fa5"),
-            Fa6 => write!(f, "fa6"),
-            Fa7 => write!(f, "fa7"),
-            Fs2 => write!(f, "fs2"),
-            Fs3 => write!(f, "fs3"),
-            Fs4 => write!(f, "fs4"),
-            Fs5 => write!(f, "fs5"),
-            Fs6 => write!(f, "fs6"),
-            Fs7 => write!(f, "fs7"),
-            Fs8 => write!(f, "fs8"),
-            Fs9 => write!(f, "fs9"),
-            Fs10 => write!(f, "fs10"),
-            Fs11 => write!(f, "fs11"),
-            Ft8 => write!(f, "ft8"),
-            Ft9 => write!(f, "ft9"),
-            Ft10 => write!(f, "ft10"),
-            Ft11 => write!(f, "ft11"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct Imm(pub i64);
-
-impl Imm {
-    pub fn new(s: &str) -> Self {
-        Imm(s.parse().unwrap_or_else(|_| panic!("Invalid immediate `{s}`")))
-    }
-}
-
-impl Display for Imm {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        let Imm(imm) = self;
-        write!(f, "{imm}")
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct Addr(pub u64);
-
-impl Addr {
-    pub fn new(s: &str) -> Self {
-        Addr(u64::from_str_radix(s, 16).unwrap_or_else(|_| panic!("Invalid address `{s}`")))
-    }
-}
-
-impl Display for Addr {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        let Addr(addr) = self;
-        write!(f, "0x{addr:x}")
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum CSR {
-    Fflags,
-    Frm,
-    Fcsr,
-    Cycle,
-    Time,
-    Instret,
-    // `Cycleh` is RV32I only.
-    // `Timeh` is RV32I only.
-    // `Instreth` is RV32I only.
-}
-
-impl CSR {
-    pub fn new(s: &str) -> Self {
-        use CSR::*;
-
-        match s {
-            "fflags" => Fflags,
-            "frm" => Frm,
-            "fcsr" => Fcsr,
-            "cycle" => Cycle,
-            "time" => Time,
-            "instret" => Instret,
-            s => panic!("Unknown CSR `{s}`"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum MO {
-    Mono,
-    Aq,
-    Rl,
-    AqRl,
-}
-
-impl MO {
-    pub fn new(s: &str) -> Self {
-        use MO::*;
-
-        match s {
-            "" => Mono,
-            "aq" => Aq,
-            "rl" => Rl,
-            "aqrl" => AqRl,
-            s => panic!("Unknown memory ordering `{s}`"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum RM {
-    Rne,
-    Rtz,
-    Rdn,
-    Rup,
-    Rmm,
-    Dyn,
-}
-
-impl RM {
-    pub fn new(s: &str) -> Self {
-        use RM::*;
-
-        match s {
-            "rne" => Rne,
-            "rtz" => Rtz,
-            "rdn" => Rdn,
-            "rup" => Rup,
-            "rmm" => Rmm,
-            "" => Dyn,
-            s => panic!("Unknown rounding mode `{s}`"),
-        }
-    }
-}
-
 define_insts! {
     // RV32I
     Lui(r"lui\s+{},\s+{}", rd, imm),
@@ -626,4 +279,353 @@ define_insts! {
 
     // Misc
     Unimp(r"unimp"),
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum Reg {
+    Zero,
+    Ra,
+    Sp,
+    Gp,
+    Tp,
+    T0,
+    T1,
+    T2,
+    S0,
+    S1,
+    A0,
+    A1,
+    A2,
+    A3,
+    A4,
+    A5,
+    A6,
+    A7,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    S8,
+    S9,
+    S10,
+    S11,
+    T3,
+    T4,
+    T5,
+    T6,
+}
+
+impl Reg {
+    fn new(s: &str) -> Self {
+        use Reg::*;
+
+        match s {
+            "zero" => Zero,
+            "ra" => Ra,
+            "sp" => Sp,
+            "gp" => Gp,
+            "tp" => Tp,
+            "t0" => T0,
+            "t1" => T1,
+            "t2" => T2,
+            "s0" => S0,
+            "s1" => S1,
+            "a0" => A0,
+            "a1" => A1,
+            "a2" => A2,
+            "a3" => A3,
+            "a4" => A4,
+            "a5" => A5,
+            "a6" => A6,
+            "a7" => A7,
+            "s2" => S2,
+            "s3" => S3,
+            "s4" => S4,
+            "s5" => S5,
+            "s6" => S6,
+            "s7" => S7,
+            "s8" => S8,
+            "s9" => S9,
+            "s10" => S10,
+            "s11" => S11,
+            "t3" => T3,
+            "t4" => T4,
+            "t5" => T5,
+            "t6" => T6,
+            s => panic!("Unknown register `{s}`"),
+        }
+    }
+}
+
+impl Display for Reg {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Reg::*;
+
+        match self {
+            Zero => write!(f, "zero"),
+            Ra => write!(f, "ra"),
+            Sp => write!(f, "sp"),
+            Gp => write!(f, "gp"),
+            Tp => write!(f, "tp"),
+            T0 => write!(f, "t0"),
+            T1 => write!(f, "t1"),
+            T2 => write!(f, "t2"),
+            S0 => write!(f, "s0"),
+            S1 => write!(f, "s1"),
+            A0 => write!(f, "a0"),
+            A1 => write!(f, "a1"),
+            A2 => write!(f, "a2"),
+            A3 => write!(f, "a3"),
+            A4 => write!(f, "a4"),
+            A5 => write!(f, "a5"),
+            A6 => write!(f, "a6"),
+            A7 => write!(f, "a7"),
+            S2 => write!(f, "s2"),
+            S3 => write!(f, "s3"),
+            S4 => write!(f, "s4"),
+            S5 => write!(f, "s5"),
+            S6 => write!(f, "s6"),
+            S7 => write!(f, "s7"),
+            S8 => write!(f, "s8"),
+            S9 => write!(f, "s9"),
+            S10 => write!(f, "s10"),
+            S11 => write!(f, "s11"),
+            T3 => write!(f, "t3"),
+            T4 => write!(f, "t4"),
+            T5 => write!(f, "t5"),
+            T6 => write!(f, "t6"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum FReg {
+    Ft0,
+    Ft1,
+    Ft2,
+    Ft3,
+    Ft4,
+    Ft5,
+    Ft6,
+    Ft7,
+    Fs0,
+    Fs1,
+    Fa0,
+    Fa1,
+    Fa2,
+    Fa3,
+    Fa4,
+    Fa5,
+    Fa6,
+    Fa7,
+    Fs2,
+    Fs3,
+    Fs4,
+    Fs5,
+    Fs6,
+    Fs7,
+    Fs8,
+    Fs9,
+    Fs10,
+    Fs11,
+    Ft8,
+    Ft9,
+    Ft10,
+    Ft11,
+}
+
+impl FReg {
+    fn new(s: &str) -> Self {
+        use FReg::*;
+
+        match s {
+            "ft0" => Ft0,
+            "ft1" => Ft1,
+            "ft2" => Ft2,
+            "ft3" => Ft3,
+            "ft4" => Ft4,
+            "ft5" => Ft5,
+            "ft6" => Ft6,
+            "ft7" => Ft7,
+            "fs0" => Fs0,
+            "fs1" => Fs1,
+            "fa0" => Fa0,
+            "fa1" => Fa1,
+            "fa2" => Fa2,
+            "fa3" => Fa3,
+            "fa4" => Fa4,
+            "fa5" => Fa5,
+            "fa6" => Fa6,
+            "fa7" => Fa7,
+            "fs2" => Fs2,
+            "fs3" => Fs3,
+            "fs4" => Fs4,
+            "fs5" => Fs5,
+            "fs6" => Fs6,
+            "fs7" => Fs7,
+            "fs8" => Fs8,
+            "fs9" => Fs9,
+            "fs10" => Fs10,
+            "fs11" => Fs11,
+            "ft8" => Ft8,
+            "ft9" => Ft9,
+            "ft10" => Ft10,
+            "ft11" => Ft11,
+            s => panic!("Unknown FP register `{s}`"),
+        }
+    }
+}
+
+impl Display for FReg {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use FReg::*;
+
+        match self {
+            Ft0 => write!(f, "ft0"),
+            Ft1 => write!(f, "ft1"),
+            Ft2 => write!(f, "ft2"),
+            Ft3 => write!(f, "ft3"),
+            Ft4 => write!(f, "ft4"),
+            Ft5 => write!(f, "ft5"),
+            Ft6 => write!(f, "ft6"),
+            Ft7 => write!(f, "ft7"),
+            Fs0 => write!(f, "fs0"),
+            Fs1 => write!(f, "fs1"),
+            Fa0 => write!(f, "fa0"),
+            Fa1 => write!(f, "fa1"),
+            Fa2 => write!(f, "fa2"),
+            Fa3 => write!(f, "fa3"),
+            Fa4 => write!(f, "fa4"),
+            Fa5 => write!(f, "fa5"),
+            Fa6 => write!(f, "fa6"),
+            Fa7 => write!(f, "fa7"),
+            Fs2 => write!(f, "fs2"),
+            Fs3 => write!(f, "fs3"),
+            Fs4 => write!(f, "fs4"),
+            Fs5 => write!(f, "fs5"),
+            Fs6 => write!(f, "fs6"),
+            Fs7 => write!(f, "fs7"),
+            Fs8 => write!(f, "fs8"),
+            Fs9 => write!(f, "fs9"),
+            Fs10 => write!(f, "fs10"),
+            Fs11 => write!(f, "fs11"),
+            Ft8 => write!(f, "ft8"),
+            Ft9 => write!(f, "ft9"),
+            Ft10 => write!(f, "ft10"),
+            Ft11 => write!(f, "ft11"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct Imm(pub i64);
+
+impl Imm {
+    pub fn new(s: &str) -> Self {
+        Imm(s
+            .parse()
+            .unwrap_or_else(|_| panic!("Invalid immediate `{s}`")))
+    }
+}
+
+impl Display for Imm {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        let Imm(imm) = self;
+        write!(f, "{imm}")
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct Addr(pub u64);
+
+impl Addr {
+    pub fn new(s: &str) -> Self {
+        Addr(u64::from_str_radix(s, 16).unwrap_or_else(|_| panic!("Invalid address `{s}`")))
+    }
+}
+
+impl Display for Addr {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        let Addr(addr) = self;
+        write!(f, "0x{addr:x}")
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum CSR {
+    Fflags,
+    Frm,
+    Fcsr,
+    Cycle,
+    Time,
+    Instret,
+    // `Cycleh` is RV32I only.
+    // `Timeh` is RV32I only.
+    // `Instreth` is RV32I only.
+}
+
+impl CSR {
+    pub fn new(s: &str) -> Self {
+        use CSR::*;
+
+        match s {
+            "fflags" => Fflags,
+            "frm" => Frm,
+            "fcsr" => Fcsr,
+            "cycle" => Cycle,
+            "time" => Time,
+            "instret" => Instret,
+            s => panic!("Unknown CSR `{s}`"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum MO {
+    Mono,
+    Aq,
+    Rl,
+    AqRl,
+}
+
+impl MO {
+    pub fn new(s: &str) -> Self {
+        use MO::*;
+
+        match s {
+            "" => Mono,
+            "aq" => Aq,
+            "rl" => Rl,
+            "aqrl" => AqRl,
+            s => panic!("Unknown memory ordering `{s}`"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum RM {
+    Rne,
+    Rtz,
+    Rdn,
+    Rup,
+    Rmm,
+    Dyn,
+}
+
+impl RM {
+    pub fn new(s: &str) -> Self {
+        use RM::*;
+
+        match s {
+            "rne" => Rne,
+            "rtz" => Rtz,
+            "rdn" => Rdn,
+            "rup" => Rup,
+            "rmm" => Rmm,
+            "" => Dyn,
+            s => panic!("Unknown rounding mode `{s}`"),
+        }
+    }
 }

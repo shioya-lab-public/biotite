@@ -17,7 +17,7 @@ lazy_static! {
         Regex::new(r"\s+[[:xdigit:]]+:\s+(([[:xdigit:]][[:xdigit:]] )+)").unwrap();
 }
 
-pub fn parse(src: &str) -> Program {
+pub fn run(src: &str) -> Program {
     let mut src = src.lines();
     let entry = parse_entry(&mut src);
     let sections = parse_sections(&mut src);
@@ -126,8 +126,8 @@ fn parse_data_block(
         for line in lines {
             let caps = BYTES.captures(line).unwrap();
             for byte_str in caps[1].split(' ').filter(|s| !s.is_empty()) {
-                let byte =
-                    u8::from_str_radix(byte_str, 16).unwrap_or_else(|_| panic!("Invalid byte `{byte_str}`"));
+                let byte = u8::from_str_radix(byte_str, 16)
+                    .unwrap_or_else(|_| panic!("Invalid byte `{byte_str}`"));
                 bytes.push(byte);
             }
         }
@@ -205,7 +205,7 @@ Disassembly of section .text:
 
 0000000000010528 <_start>:
    10528: ef 00 e0 02  	", $src);
-                    let prog = super::parse(src);
+                    let prog = super::run(src);
                     assert_eq!(
                         prog,
                         Program {
@@ -275,7 +275,7 @@ Disassembly of section .rodata:
 000000000004c430 <__PRETTY_FUNCTION__.0>:
    4c430: 5f 5f 6c 69  	<unknown>
 ";
-        let prog = super::parse(src);
+        let prog = super::run(src);
         assert_eq!(
             prog,
             Program {

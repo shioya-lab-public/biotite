@@ -1,4 +1,4 @@
-use crate::riscv_isa::{Address, Program};
+use crate::riscv_isa::{Addr, Program};
 use llvm_sys::bit_reader::LLVMParseBitcode2;
 use llvm_sys::core::*;
 use llvm_sys::*;
@@ -14,17 +14,11 @@ use std::ptr::null;
 //     parsed_irs.push(ir);
 // }
 
-pub struct Rewriter {}
-
-impl Rewriter {
-    pub fn new(jobs: usize) -> Self {
-        Rewriter {}
-    }
-    pub fn run(&self, rv_prog: &Program, ir: &Vec<Vec<u8>>) -> HashMap<Address, String> {
-        HashMap::new()
-    }
+pub fn run(rv_prog: &Program, ir: &Vec<Vec<u8>>) -> HashMap<Addr, String> {
+    HashMap::new()
 }
-pub fn parse(ir: &Vec<u8>, rv_prog: &Program) -> (HashMap<Address, String>, String) {
+
+pub fn parse(ir: &Vec<u8>, rv_prog: &Program) -> (HashMap<Addr, String>, String) {
     unsafe {
         let memory_buffer =
             LLVMCreateMemoryBufferWithMemoryRange(ir.as_ptr() as *const i8, ir.len(), null(), 1);
@@ -165,7 +159,7 @@ ret i64 %ret_{t}"
                                         .iter()
                                         .position(|b| b.symbol == dest_name)
                                         .unwrap();
-                                    let Address(dest_addr) = rv_prog.data_blocks[dest_i].address;
+                                    let Addr(dest_addr) = rv_prog.data_blocks[dest_i].address;
                                     let data_len = 141912; // Fix me
                                     func_s.push_str(&format!(
                                         "  %ptr_{t} = getelementptr [{data_len} x i8], [{data_len} x i8]* @data_0, i64 0, i64 {dest_addr}
@@ -186,7 +180,7 @@ store {val_s}, {val_ty}* %cast_ptr_{t}
                                         .iter()
                                         .position(|b| b.symbol == src_name)
                                         .unwrap();
-                                    let Address(src_addr) = rv_prog.data_blocks[src_i].address;
+                                    let Addr(src_addr) = rv_prog.data_blocks[src_i].address;
                                     let data_len = 141912; // Fix me
                                     func_s.push_str(&format!(
                                         "  %ptr_{t} = getelementptr [{data_len} x i8], [{data_len} x i8]* @data_0, i64 0, i64 {src_addr}
@@ -261,8 +255,7 @@ ret i64 %ret_{t}"
                                             .iter()
                                             .position(|b| b.symbol == dest_name)
                                             .unwrap();
-                                        let Address(dest_addr) =
-                                            rv_prog.data_blocks[dest_i].address;
+                                        let Addr(dest_addr) = rv_prog.data_blocks[dest_i].address;
                                         let data_len = 141912; // Fix me
                                         func_s.push_str(&format!(
                                         "  %ptr_{t} = getelementptr [{data_len} x i8], [{data_len} x i8]* @data_0, i64 0, i64 {dest_addr}
@@ -291,7 +284,7 @@ store {val_s}, {val_ty}* %cast_ptr_{t}
                                             .iter()
                                             .position(|b| b.symbol == src_name)
                                             .unwrap();
-                                        let Address(src_addr) = rv_prog.data_blocks[src_i].address;
+                                        let Addr(src_addr) = rv_prog.data_blocks[src_i].address;
                                         let data_len = 141912; // Fix me
                                         func_s.push_str(&format!(
                                             "  %ptr_{t} = getelementptr [{data_len} x i8], [{data_len} x i8]* @data_0, i64 0, i64 {src_addr}

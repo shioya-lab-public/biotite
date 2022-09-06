@@ -60,6 +60,7 @@ macro_rules! frs3 {
         FReg
     };
 }
+
 macro_rules! imm {
     ("regex") => {
         IMM
@@ -86,6 +87,7 @@ macro_rules! csr {
         CSR
     };
 }
+
 macro_rules! mo {
     ("regex") => {
         MO

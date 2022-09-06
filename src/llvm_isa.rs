@@ -1,10 +1,569 @@
-#![allow(dead_code)]
-
-use crate::riscv_isa::{
-    Address, DataBlock, FPRegister, Immediate, Instruction as RiscvInstruction, Register,
-};
+use crate::riscv_isa as RV;
+use std::fmt::{Display, Formatter, Result};
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter, Result as FmtResult};
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Program {
+    pub entry: RV::Addr,
+    pub data_blocks: Vec<RV::DataBlock>,
+    pub funcs: Vec<Func>,
+    pub src_funcs: HashMap<RV::Addr, String>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Func {
+    pub section: String,
+    pub symbol: String,
+    pub address: RV::Addr,
+    pub inst_blocks: Vec<InstBlock>,
+}
+
+impl Display for Func {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        let mut dispatcher = String::from("switch i64 %entry, label %unreachable [");
+        let mut inst_blocks = String::new();
+        for inst_block in self.inst_blocks {
+            let addr = inst_block.rv_inst.address();
+            dispatcher += &format!("i64 {addr}, label %{addr} ");
+            inst_blocks += &inst_block.to_string();
+        }
+        dispatcher.pop();
+        dispatcher += "]";
+        write!(f, "; {} {} <{}>
+define i64 @{}(i64 %entry) {{
+  {dispatcher}
+unreachable:
+  unreachable
+  {inst_blocks}
+}}", self.address, self.section, self.symbol, self.address)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct InstBlock {
+    pub rv_inst: RV::Inst,
+    pub insts: Vec<Inst>,
+}
+
+impl Display for InstBlock {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        let mut inst_block = format!("  ; {:?}\n", self.rv_inst);
+        for inst in self.insts {
+            inst_block += &format!("  {inst}\n");
+        }
+        write!(f, "{}", inst_block)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum Type {
+    I1,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    Float,
+    Double,
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Type::*;
+
+        match self {
+            I1 => write!(f, "i1"),
+            I8 => write!(f, "i8"),
+            I16 => write!(f, "i16"),
+            I32 => write!(f, "i32"),
+            I64 => write!(f, "i64"),
+            I128 => write!(f, "i128"),
+            Float => write!(f, "float"),
+            Double => write!(f, "double"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum Value {
+    Reg(RV::Reg),
+    FReg(RV::FReg),
+    Imm(RV::Imm),
+    Addr(RV::Addr),
+    Temp(RV::Addr, usize),
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Value::*;
+
+        match self {
+            Reg(reg) => write!(f, "@{reg}"),
+            FReg(freg) => write!(f, "@{freg}"),
+            Imm(imm) => write!(f, "{imm}"),
+            Addr(addr) => write!(f, "u{addr}"),
+            Temp(addr, i) => write!(f, "%{addr}_{i}"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum MO {
+    Mono,
+    Aq,
+    Rl,
+    AqRl,
+}
+
+impl Display for MO {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use MO::*;
+
+        match self {
+            Mono => write!(f, "monotonic"),
+            Aq => write!(f, "acquire"),
+            Rl => write!(f, "release"),
+            AqRl => write!(f, "acq_rel"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum Op {
+    Xchg,
+    Add,
+    And,
+    Or,
+    Xor,
+    Max,
+    Min,
+    Umax,
+    Umin,
+}
+
+impl Display for Op {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Op::*;
+
+        match self {
+            Xchg => write!(f, "xchg"),
+            Add => write!(f, "add"),
+            And => write!(f, "and"),
+            Or => write!(f, "or"),
+            Xor => write!(f, "xor"),
+            Max => write!(f, "max"),
+            Min => write!(f, "min"),
+            Umax => write!(f, "umax"),
+            Umin => write!(f, "umin"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum Cond {
+    Eq,
+    Ne,
+    Uge,
+    Ult,
+    Sgt,
+    Sge,
+    Slt,
+    Sle,
+}
+
+impl Display for Cond {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Cond::*;
+
+        match self {
+            Eq => write!(f, "eq"),
+            Ne => write!(f, "ne"),
+            Uge => write!(f, "uge"),
+            Ult => write!(f, "ult"),
+            Sgt => write!(f, "sgt"),
+            Sge => write!(f, "sge"),
+            Slt => write!(f, "slt"),
+            Sle => write!(f, "sle"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum FCond {
+    Oeq,
+    Olt,
+    Ole,
+}
+
+impl Display for FCond {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use FCond::*;
+
+        match self {
+            Oeq => write!(f, "oeq"),
+            Olt => write!(f, "olt"),
+            Ole => write!(f, "ole"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum Inst {
+    // Terminator Instructions
+    Ret {
+        val: Value,
+    },
+    Br {
+        addr: Value,
+    },
+
+    // Unary Operations
+    Fneg {
+        rslt: Value,
+        ty: Type,
+        op: Value,
+    },
+
+    // Binary Operations
+    Add {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Fadd {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Sub {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Fsub {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Mul {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Fmul {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Udiv {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Sdiv {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Fdiv {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Urem {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Srem {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+
+    // Bitwise Binary Operations
+    Shl {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Lshr {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Ashr {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    And {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Or {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+    Xor {
+        rslt: Value,
+        ty: Type,
+        op1: Value,
+        op2: Value,
+    },
+
+    // Memory Access and Addressing Operations
+    Load {
+        rslt: Value,
+        ty: Type,
+        ptr: Value,
+    },
+    Store {
+        ty: Type,
+        val: Value,
+        ptr: Value,
+    },
+    Fence {
+        mo: MO,
+    },
+    Atomicrmw {
+        rslt: Value,
+        op: Op,
+        ty: Type,
+        ptr: Value,
+        val: Value,
+        mo: MO,
+    },
+
+    // Conversion Operations
+    Trunc {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
+    Zext {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
+    Sext {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
+    Fptrunc {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
+    Fpext {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
+    Fptoui {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
+    Fptosi {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
+    Uitofp {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
+    Sitofp {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
+    Bitcast {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
+
+    // Other Operations
+    Icmp {
+        rslt: Value,
+        cond: Cond,
+        op1: Value,
+        op2: Value,
+    },
+    Fcmp {
+        rslt: Value,
+        fcond: FCond,
+        op1: Value,
+        op2: Value,
+    },
+    Select {
+        rslt: Value,
+        cond: Value,
+        op1: Value,
+        op2: Value,
+    },
+
+    // Standard C/C++ Library Intrinsics
+    Sqrt {
+        rslt: Value,
+        ty: Type,
+        arg: Value,
+    },
+    Fma {
+        rslt: Value,
+        ty: Type,
+        arg1: Value,
+        arg2: Value,
+        arg3: Value,
+    },
+    Fabs {
+        rslt: Value,
+        ty: Type,
+        arg: Value,
+    },
+    Minimum {
+        rslt: Value,
+        ty: Type,
+        arg1: Value,
+        arg2: Value,
+    },
+    Maximum {
+        rslt: Value,
+        ty: Type,
+        arg1: Value,
+        arg2: Value,
+    },
+    Copysign {
+        rslt: Value,
+        ty: Type,
+        mag: Value,
+        sgn: Value,
+    },
+
+    // Misc
+    Getdataptr {
+        rslt: Value,
+        addr: Value,
+    },
+    Syscall {
+        rslt: Value,
+        nr: Value,
+        arg1: Value,
+        arg2: Value,
+        arg3: Value,
+        arg4: Value,
+        arg5: Value,
+        arg6: Value,
+    },
+}
+
+impl Display for Inst {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Inst::*;
+
+        match self {
+            // Terminator Instructions
+            Ret { val } => write!(f, "ret i64 {val}"),
+            Br { addr } => write!(f, "br label %{addr}"),
+
+            // Unary Operations
+            Fneg { rslt, ty, op } => write!(f, "{rslt} = fneg {ty} {op}"),
+
+            // Binary Operations
+            Add { rslt, ty, op1, op2 } => write!(f, "{rslt} = add {ty} {op1}, {op2}"),
+            Fadd { rslt, ty, op1, op2 } => write!(f, "{rslt} = fadd {ty} {op1}, {op2}"),
+            Sub { rslt, ty, op1, op2 } => write!(f, "{rslt} = sub {ty} {op1}, {op2}"),
+            Fsub { rslt, ty, op1, op2 } => write!(f, "{rslt} = fsub {ty} {op1}, {op2}"),
+            Mul { rslt, ty, op1, op2 } => write!(f, "{rslt} = mul {ty} {op1}, {op2}"),
+            Fmul { rslt, ty, op1, op2 } => write!(f, "{rslt} = fmul {ty} {op1}, {op2}"),
+            Udiv { rslt, ty, op1, op2 } => write!(f, "{rslt} = udiv {ty} {op1}, {op2}"),
+            Sdiv { rslt, ty, op1, op2 } => write!(f, "{rslt} = sdiv {ty} {op1}, {op2}"),
+            Fdiv { rslt, ty, op1, op2 } => write!(f, "{rslt} = fdiv {ty} {op1}, {op2}"),
+            Urem { rslt, ty, op1, op2 } => write!(f, "{rslt} = urem {ty} {op1}, {op2}"),
+            Srem { rslt, ty, op1, op2 } => write!(f, "{rslt} = srem {ty} {op1}, {op2}"),
+
+            // Bitwise Binary Operations
+            Shl { rslt, ty, op1, op2 } => write!(f, "{rslt} = shl {ty} {op1}, {op2}"),
+            Lshr { rslt, ty, op1, op2 } => write!(f, "{rslt} = lshr {ty} {op1}, {op2}"),
+            Ashr { rslt, ty, op1, op2 } => write!(f, "{rslt} = ashr {ty} {op1}, {op2}"),
+            And { rslt, ty, op1, op2 } => write!(f, "{rslt} = and {ty} {op1}, {op2}"),
+            Or { rslt, ty, op1, op2 } => write!(f, "{rslt} = or {ty} {op1}, {op2}"),
+            Xor { rslt, ty, op1, op2 } => write!(f, "{rslt} = xor {ty} {op1}, {op2}"),
+
+            // Memory Access and Addressing Operations
+            Load { rslt, ty, ptr } => write!(f, "{rslt} = load {ty}, {ty}* {ptr}"),
+            Store { ty, val, ptr } => write!(f, "store {ty} {val}, {ty}* {ptr}"),
+            Fence { mo } => write!(f, "fence {mo}"),
+            Atomicrmw { rslt, op, ty, ptr, val, mo } => write!(f, "{rslt} = atomicrmw {op} {ty}* {ptr}, {ty} {val} {mo}"),
+
+            // Conversion Operations
+            Trunc { rslt, ty1, val, ty2 } => write!(f, "{rslt} = trunc {ty1} {val} to {ty2}"),
+            Zext { rslt, ty1, val, ty2 } => write!(f, "{rslt} = zext {ty1} {val} to {ty2}"),
+            Sext { rslt, ty1, val, ty2 } => write!(f, "{rslt} = sext {ty1} {val} to {ty2}"),
+            Fptrunc { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fptrunc {ty1} {val} to {ty2}"),
+            Fpext { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fpext {ty1} {val} to {ty2}"),
+            Fptoui { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fptoui {ty1} {val} to {ty2}"),
+            Fptosi { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fptosi {ty1} {val} to {ty2}"),
+            Uitofp { rslt, ty1, val, ty2 } => write!(f, "{rslt} = uitofp {ty1} {val} to {ty2}"),
+            Sitofp { rslt, ty1, val, ty2 } => write!(f, "{rslt} = sitofp {ty1} {val} to {ty2}"),
+            Bitcast { rslt, ty1, val, ty2 } => match (ty1, ty2) {
+                (Type::Float, _) | (_, Type::Float) | (Type::Double, _) | (_, Type::Double) => write!(f, "{rslt} = bitcast {ty1} {val} to {ty2}"),
+                _ => write!(f, "{rslt} = bitcast {ty1}* {val} to {ty2}*"),
+            },
+
+            // Other Operations
+            Icmp { rslt, cond, op1, op2 } => write!(f, "{rslt} = icmp {cond} i64 {op1}, {op2}"),
+            Fcmp {rslt,fcond,op1,op2} => write!(f, "{rslt} = fcmp {fcond} i64 {op1}, {op2}"),
+            Select {rslt,cond,op1,op2} => write!(f, "{rslt} = select i1 {cond}, i64 {op1}, i64 {op2}"),
+
+            // Standard C/C++ Library Intrinsics
+            Sqrt { rslt, ty, arg } => write!(f,"{rslt} = call {ty} @llvm.sqrt.{ty}({ty} {arg})"),
+            Fma { rslt, ty, arg1, arg2, arg3 } => write!(f, "{rslt} = call {ty} @llvm.fma.{ty}({ty} {arg1}, {ty} {arg2}, {ty} {arg3})"),
+            Fabs { rslt, ty, arg } => write!(f, "{rslt} = call {ty} @llvm.fabs.{ty}({ty} {arg})"),
+            Minimum { rslt, ty, arg1, arg2 } => write!(f, "{rslt} = call {ty} @llvm.minimum.{ty}({ty} {arg1}, {ty} {arg2})"),
+            Maximum { rslt, ty, arg1, arg2 } => write!(f, "{rslt} = call {ty} @llvm.maximum.{ty}({ty} {arg1}, {ty} {arg2})"),
+            Copysign { rslt, ty, mag, sgn } => write!(f, "{rslt} = call {ty} @llvm.copysign.{ty}({ty} {mag}, {ty} {sgn})"),
+
+            // Misc
+            Getdataptr { rslt, addr } => write!(f, "{rslt} = call i8* @get_data_ptr(i64 {addr})"),
+            Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } => write!(f, "{rslt} = call i64 (i64, ...) @syscall(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
+        }
+    }
+}
+
+
 
 const SYSCALL: &str = "declare i64 @syscall(i64, ...)
 
@@ -147,18 +706,8 @@ const REGISTERS: &str = "
         
 ";
 
-#[derive(Debug, PartialEq)]
-pub struct Program {
-    pub entry: Address,
-    pub data_blocks: Vec<DataBlock>,
-    pub functions: Vec<Vec<CodeBlock>>,
-    pub targets: Vec<Address>,
-    pub parsed_funcs: HashMap<Address, String>,
-    pub parsed_irs: Vec<String>,
-}
-
 impl Display for Program {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+    fn fmt(&self, f: &mut Formatter) -> Result {
         let data_blocks = self
             .data_blocks
             .iter()
@@ -223,32 +772,7 @@ fallback:
         // Build each function
         let mut functions = String::new();
         for func in &self.functions {
-            let mut targets = String::from("switch i64 %entry, label %label_0 [");
-            for block in func {
-                for inst in &block.instruction_blocks {
-                    let Address(addr) = inst.riscv_instruction.address();
-                    targets += &format!("i64 {}, label %label_{} ", addr, addr);
-                }
-            }
-            targets.pop();
-            targets += "]";
-
-            let code_blocks = func
-                .iter()
-                .fold(String::new(), |s, b| s + &format!("{}\n", b));
-
-            let s = format!(
-                "
-define i64 @func_{}(i64 %entry, %struct.reg* %reg, %struct.freg* %freg) {{
-  {targets}
-  {code_blocks}
-label_0:
-  unreachable
-}}
-",
-                func[0].address
-            );
-            functions += &s;
+            functions += format!("{func}");
         }
 
         // Main dispatcher
@@ -258,8 +782,8 @@ label_0:
             let f = func[0].instruction_blocks[0].riscv_instruction.address();
             for block in func {
                 for b in &block.instruction_blocks {
-                    let Address(addr) = b.riscv_instruction.address();
-                    if let Some(name) = self.parsed_funcs.get(&Address(addr)) {
+                    let Addr(addr) = b.riscv_instruction.address();
+                    if let Some(name) = self.parsed_funcs.get(&Addr(addr)) {
                         table[addr as usize] = format!(
                             "i64 ptrtoint (i64 (i64, %struct.reg*, %struct.freg*)* @{name} to i64)"
                         );
@@ -330,1277 +854,5 @@ FPFUNCTIONS,
             functions,
             self.parsed_irs.join("\n"),
         )
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct CodeBlock {
-    pub section: String,
-    pub symbol: String,
-    pub address: Address,
-    pub instruction_blocks: Vec<InstructionBlock>,
-}
-
-impl Display for CodeBlock {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let mut code_block = format!("; {}: {} <{}>\n", self.address, self.section, self.symbol);
-        code_block += &format!("label_{}:
-  ; call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {})\n", self.address, self.address);
-        for inst_block in self.instruction_blocks.iter() {
-            code_block += &format!("{}", inst_block);
-        }
-        write!(f, "{}", code_block)
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct InstructionBlock {
-    pub riscv_instruction: RiscvInstruction,
-    pub instructions: Vec<Instruction>,
-}
-
-impl Display for InstructionBlock {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let mut inst_block = format!("  ; {:?}\n", self.riscv_instruction);
-        for inst in self.instructions.iter() {
-            inst_block += &format!("  {}\n", inst);
-        }
-        write!(f, "{}", inst_block)
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Value {
-    Register(Register),
-    FPRegister(FPRegister),
-    Temp(Address, usize),
-    Immediate(Immediate),
-    Address(Address),
-}
-
-impl Display for Value {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use Value::*;
-
-        match self {
-            Register(reg) => write!(f, "%{}", reg),
-            FPRegister(freg) => write!(f, "%{}", freg),
-            Temp(addr, nr) => write!(f, "%t_{}_{}", addr, nr),
-            Immediate(imm) => write!(f, "{}", imm),
-            Address(addr) => write!(f, "{}", addr),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub enum Type {
-    I1,
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    Float,
-    Double,
-}
-
-impl Display for Type {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use Type::*;
-
-        match self {
-            I1 => write!(f, "i1"),
-            I8 => write!(f, "i8"),
-            I16 => write!(f, "i16"),
-            I32 => write!(f, "i32"),
-            I64 => write!(f, "i64"),
-            I128 => write!(f, "i128"),
-            Float => write!(f, "float"),
-            Double => write!(f, "double"),
-        }
-    }
-}
-
-impl Type {
-    fn size(&self) -> usize {
-        use Type::*;
-
-        match self {
-            Float => 32,
-            Double => 64,
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Ordering {
-    Monotonic,
-    Acquire,
-    Release,
-    AcqRel,
-    SeqCst,
-}
-
-impl Display for Ordering {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use Ordering::*;
-
-        match self {
-            Monotonic => write!(f, "monotonic"),
-            Acquire => write!(f, "acquire"),
-            Release => write!(f, "release"),
-            AcqRel => write!(f, "acq_rel"),
-            SeqCst => write!(f, "seq_cst"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Operation {
-    Xchg,
-    Add,
-    And,
-    Or,
-    Xor,
-    Max,
-    Min,
-    Umax,
-    Umin,
-}
-
-impl Display for Operation {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use Operation::*;
-
-        match self {
-            Xchg => write!(f, "xchg"),
-            Add => write!(f, "add"),
-            And => write!(f, "and"),
-            Or => write!(f, "or"),
-            Xor => write!(f, "xor"),
-            Max => write!(f, "max"),
-            Min => write!(f, "min"),
-            Umax => write!(f, "umax"),
-            Umin => write!(f, "umin"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Condition {
-    Eq,
-    Ne,
-    Uge,
-    Ult,
-    Sgt,
-    Sge,
-    Slt,
-    Sle,
-}
-
-impl Display for Condition {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use Condition::*;
-
-        match self {
-            Eq => write!(f, "eq"),
-            Ne => write!(f, "ne"),
-            Uge => write!(f, "uge"),
-            Ult => write!(f, "ult"),
-            Sgt => write!(f, "sgt"),
-            Sge => write!(f, "sge"),
-            Slt => write!(f, "slt"),
-            Sle => write!(f, "sle"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum FPCondition {
-    Oeq,
-    Olt,
-    Ole,
-}
-
-impl Display for FPCondition {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use FPCondition::*;
-
-        match self {
-            Oeq => write!(f, "oeq"),
-            Olt => write!(f, "olt"),
-            Ole => write!(f, "ole"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Instruction {
-    // Terminator Instructions
-    ConBr {
-        cond: Value,
-        iftrue: Value,
-        iffalse: Value,
-    },
-    UnconBr {
-        addr: Value,
-    },
-    Switch {
-        ty: Type,
-        val: Value,
-        dflt: Value,
-        tgts: Vec<Value>,
-    },
-
-    // Unary Operations
-    Fneg {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-    },
-
-    // Binary Operations
-    Add {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Fadd {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Sub {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Fsub {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Mul {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Fmul {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Udiv {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Sdiv {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Fdiv {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Urem {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Srem {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-
-    // Bitwise Binary Operations
-    Shl {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Lshr {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Ashr {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    And {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Or {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Xor {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-
-    // Aggregate Operations
-    Extractvalue {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        idx: Value,
-    },
-
-    // Memory Access and Addressing Operations
-    Load {
-        rslt: Value,
-        ty: Type,
-        ptr: Value,
-    },
-    Store {
-        ty: Type,
-        val: Value,
-        ptr: Value,
-    },
-    Fence {
-        ord: Ordering,
-    },
-    Cmpxchg {
-        rslt: Value,
-        ty: Type,
-        ptr: Value,
-        cmp: Value,
-        new: Value,
-        succ_ord: Ordering,
-        fail_ord: Ordering,
-    },
-    Atomicrmw {
-        rslt: Value,
-        op: Operation,
-        ty: Type,
-        ptr: Value,
-        val: Value,
-        ord: Ordering,
-    },
-
-    // Conversion Operations
-    Trunc {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        ty2: Type,
-    },
-    Zext {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        ty2: Type,
-    },
-    Sext {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        ty2: Type,
-    },
-    Fptrunc {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        ty2: Type,
-    },
-    Fpext {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        ty2: Type,
-    },
-    Fptoui {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        ty2: Type,
-    },
-    Fptosi {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        ty2: Type,
-    },
-    Uitofp {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        ty2: Type,
-    },
-    Sitofp {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        ty2: Type,
-    },
-    Bitcast {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        ty2: Type,
-    },
-
-    // Other Operations
-    Icmp {
-        rslt: Value,
-        cond: Condition,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Fcmp {
-        rslt: Value,
-        fcond: FPCondition,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-
-    // Standard C/C++ Library Intrinsics
-    Sqrt {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-    },
-    Fma {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-        op3: Value,
-    },
-    Fabs {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-    },
-    Minimum {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Maximum {
-        rslt: Value,
-        ty: Type,
-        op1: Value,
-        op2: Value,
-    },
-    Copysign {
-        rslt: Value,
-        ty: Type,
-        mag: Value,
-        sgn: Value,
-    },
-
-    // System Calls
-    Syscall {
-        rslt: Value,
-        ty: Type,
-        nr: Value,
-        arg1: Value,
-        arg2: Value,
-        arg3: Value,
-        arg4: Value,
-        arg5: Value,
-        arg6: Value,
-    },
-
-    // Misc
-    Loadstack {
-        rslt: Value,
-        ty: Type,
-        stk: Value,
-    },
-    Storestack {
-        ty: Type,
-        val: Value,
-        stk: Value,
-    },
-
-    Getdataptr {
-        rslt: Value,
-        ty: Type,
-        addr: Value,
-    },
-
-    Call {
-        addr: Value,
-    },
-    SwitchCall {
-        ty: Type,
-        val: Value,
-        dflt: Value,
-        tgts: Vec<Value>,
-        next_pc: Value,
-    },
-    Ret {
-        ty: Type,
-        val: Value,
-    },
-    Unreachable {
-        addr: Value,
-    },
-}
-
-static mut T: usize = 1000;
-
-impl Display for Instruction {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use Instruction::*;
-
-        match self {
-            // Terminator Instructions
-            ConBr {
-                cond,
-                iftrue,
-                iffalse,
-            } => write!(
-                f,
-                "br i1 {}, label %label_{}, label %label_{}",
-                cond, iftrue, iffalse
-            ),
-            // {
-            //     let c = &format!("{cond}")[1..];
-            //     write!(
-            //         f,
-            //         "br i1 {cond}, label {cond}_t, label {cond}_f
-            //         {c}_t:
-            //           ret i64 {iftrue}
-            //         {c}_f:
-            //           ret i64 {iffalse}"
-            //     )
-            // }
-            UnconBr { addr } => write!(f, "br label %label_{}", addr),
-            Switch {
-                ty,
-                val,
-                dflt,
-                tgts,
-            } => {
-                // let mut s = format!("switch {} {}, label %label_{} [", ty, val, dflt);
-                // for target in tgts {
-                //     s += &format!("{} {}, label %label_{} ", ty, target, target);
-                // }
-                // s += "]";
-                let s = format!(
-                    "store i64 {}, i64* %switch_target\n  br label %label_1",
-                    val
-                );
-                write!(f, "{}", s)
-            }
-
-            // Unary Operations
-            Fneg { rslt, ty, op1 } => write!(f, "{} = fneg {} {}", rslt, ty, op1),
-
-            // Binary Operations
-            Add { rslt, ty, op1, op2 } => write!(f, "{} = add {} {}, {}", rslt, ty, op1, op2),
-            Fadd { rslt, ty, op1, op2 } => write!(f, "{} = fadd {} {}, {}", rslt, ty, op1, op2),
-            Sub { rslt, ty, op1, op2 } => write!(f, "{} = sub {} {}, {}", rslt, ty, op1, op2),
-            Fsub { rslt, ty, op1, op2 } => write!(f, "{} = fsub {} {}, {}", rslt, ty, op1, op2),
-            Mul { rslt, ty, op1, op2 } => write!(f, "{} = mul {} {}, {}", rslt, ty, op1, op2),
-            Fmul { rslt, ty, op1, op2 } => write!(f, "{} = fmul {} {}, {}", rslt, ty, op1, op2),
-            Udiv { rslt, ty, op1, op2 } => write!(f, "{} = udiv {} {}, {}", rslt, ty, op1, op2),
-            Sdiv { rslt, ty, op1, op2 } => write!(f, "{} = sdiv {} {}, {}", rslt, ty, op1, op2),
-            Fdiv { rslt, ty, op1, op2 } => write!(f, "{} = fdiv {} {}, {}", rslt, ty, op1, op2),
-            Urem { rslt, ty, op1, op2 } => write!(f, "{} = urem {} {}, {}", rslt, ty, op1, op2),
-            Srem { rslt, ty, op1, op2 } => write!(f, "{} = srem {} {}, {}", rslt, ty, op1, op2),
-
-            // Bitwise Binary Operations
-            Shl { rslt, ty, op1, op2 } => write!(f, "{} = shl {} {}, {}", rslt, ty, op1, op2),
-            Lshr { rslt, ty, op1, op2 } => write!(f, "{} = lshr {} {}, {}", rslt, ty, op1, op2),
-            Ashr { rslt, ty, op1, op2 } => write!(f, "{} = ashr {} {}, {}", rslt, ty, op1, op2),
-            And { rslt, ty, op1, op2 } => write!(f, "{} = and {} {}, {}", rslt, ty, op1, op2),
-            Or { rslt, ty, op1, op2 } => write!(f, "{} = or {} {}, {}", rslt, ty, op1, op2),
-            Xor { rslt, ty, op1, op2 } => write!(f, "{} = xor {} {}, {}", rslt, ty, op1, op2),
-
-            // Aggregate Operations
-            Extractvalue { rslt, ty, val, idx } => write!(
-                f,
-                "{} = extractvalue {{ {}, i1 }} {}, {}",
-                rslt, ty, val, idx
-            ),
-
-            // Memory Access and Addressing Operations
-            Load { rslt, ty, ptr } => {
-                // let temp = if let Value::Temp(addr, t) = rslt {
-                //     Value::Temp(*addr, t+1000)
-                // } else if let Value::Immediate(_) = rslt {
-                let t = unsafe { T };
-                unsafe {
-                    T += 1;
-                }
-                let temp = Value::Temp(Address(0), t);
-                // } else {
-                //     unreachable!()
-                // };
-                let load = match ptr {
-                    Value::Register(Register::Zero) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 0"
-                    ),
-                    Value::Register(Register::Ra) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 1"
-                    ),
-                    Value::Register(Register::Sp) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 2"
-                    ),
-                    Value::Register(Register::Gp) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 3"
-                    ),
-                    Value::Register(Register::Tp) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 4"
-                    ),
-                    Value::Register(Register::T0) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 5"
-                    ),
-                    Value::Register(Register::T1) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 6"
-                    ),
-                    Value::Register(Register::T2) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 7"
-                    ),
-                    Value::Register(Register::S0) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 8"
-                    ),
-                    Value::Register(Register::S1) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 9"
-                    ),
-                    Value::Register(Register::A0) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 10"
-                    ),
-                    Value::Register(Register::A1) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 11"
-                    ),
-                    Value::Register(Register::A2) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 12"
-                    ),
-                    Value::Register(Register::A3) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 13"
-                    ),
-                    Value::Register(Register::A4) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 14"
-                    ),
-                    Value::Register(Register::A5) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 15"
-                    ),
-                    Value::Register(Register::A6) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 16"
-                    ),
-                    Value::Register(Register::A7) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 17"
-                    ),
-                    Value::Register(Register::S2) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 18"
-                    ),
-                    Value::Register(Register::S3) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 19"
-                    ),
-                    Value::Register(Register::S4) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 20"
-                    ),
-                    Value::Register(Register::S5) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 21"
-                    ),
-                    Value::Register(Register::S6) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 22"
-                    ),
-                    Value::Register(Register::S7) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 23"
-                    ),
-                    Value::Register(Register::S8) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 24"
-                    ),
-                    Value::Register(Register::S9) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 25"
-                    ),
-                    Value::Register(Register::S10) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 26"
-                    ),
-                    Value::Register(Register::S11) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 27"
-                    ),
-                    Value::Register(Register::T3) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 28"
-                    ),
-                    Value::Register(Register::T4) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 29"
-                    ),
-                    Value::Register(Register::T5) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 30"
-                    ),
-                    Value::Register(Register::T6) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 31"
-                    ),
-
-                    Value::FPRegister(FPRegister::Ft0) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 0"
-                    ),
-                    Value::FPRegister(FPRegister::Ft1) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 1"
-                    ),
-                    Value::FPRegister(FPRegister::Ft2) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 2"
-                    ),
-                    Value::FPRegister(FPRegister::Ft3) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 3"
-                    ),
-                    Value::FPRegister(FPRegister::Ft4) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 4"
-                    ),
-                    Value::FPRegister(FPRegister::Ft5) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 5"
-                    ),
-                    Value::FPRegister(FPRegister::Ft6) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 6"
-                    ),
-                    Value::FPRegister(FPRegister::Ft7) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 7"
-                    ),
-                    Value::FPRegister(FPRegister::Fs0) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 8"
-                    ),
-                    Value::FPRegister(FPRegister::Fs1) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 9"
-                    ),
-                    Value::FPRegister(FPRegister::Fa0) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 10"
-                    ),
-                    Value::FPRegister(FPRegister::Fa1) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 11"
-                    ),
-                    Value::FPRegister(FPRegister::Fa2) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 12"
-                    ),
-                    Value::FPRegister(FPRegister::Fa3) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 13"
-                    ),
-                    Value::FPRegister(FPRegister::Fa4) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 14"
-                    ),
-                    Value::FPRegister(FPRegister::Fa5) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 15"
-                    ),
-                    Value::FPRegister(FPRegister::Fa6) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 16"
-                    ),
-                    Value::FPRegister(FPRegister::Fa7) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 17"
-                    ),
-                    Value::FPRegister(FPRegister::Fs2) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 18"
-                    ),
-                    Value::FPRegister(FPRegister::Fs3) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 19"
-                    ),
-                    Value::FPRegister(FPRegister::Fs4) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 20"
-                    ),
-                    Value::FPRegister(FPRegister::Fs5) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 21"
-                    ),
-                    Value::FPRegister(FPRegister::Fs6) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 22"
-                    ),
-                    Value::FPRegister(FPRegister::Fs7) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 23"
-                    ),
-                    Value::FPRegister(FPRegister::Fs8) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 24"
-                    ),
-                    Value::FPRegister(FPRegister::Fs9) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 25"
-                    ),
-                    Value::FPRegister(FPRegister::Fs10) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 26"
-                    ),
-                    Value::FPRegister(FPRegister::Fs11) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 27"
-                    ),
-                    Value::FPRegister(FPRegister::Ft8) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 28"
-                    ),
-                    Value::FPRegister(FPRegister::Ft9) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 29"
-                    ),
-                    Value::FPRegister(FPRegister::Ft10) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 30"
-                    ),
-                    Value::FPRegister(FPRegister::Ft11) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 31"
-                    ),
-
-                    _ => String::new(),
-                };
-                if load.is_empty() {
-                    write!(f, "{} = load {}, {}* {}", rslt, ty, ty, ptr)
-                } else {
-                    write!(f, "{load}\n  {} = load {}, {}* {}", rslt, ty, ty, temp)
-                }
-            }
-            // write!(f, "{} = load {}, {}* {}", rslt, ty, ty, ptr),
-            Store { ty, val, ptr } => {
-                // let temp = if let Value::Temp(addr, t) = val {
-                //     Value::Temp(*addr, t+1000)
-                // } else {
-                let t = unsafe { T };
-                unsafe {
-                    T += 1;
-                }
-                let temp = Value::Temp(Address(0), t);
-                // };
-                let load = match ptr {
-                    Value::Register(Register::Zero) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 0"
-                    ),
-                    Value::Register(Register::Ra) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 1"
-                    ),
-                    Value::Register(Register::Sp) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 2"
-                    ),
-                    Value::Register(Register::Gp) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 3"
-                    ),
-                    Value::Register(Register::Tp) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 4"
-                    ),
-                    Value::Register(Register::T0) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 5"
-                    ),
-                    Value::Register(Register::T1) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 6"
-                    ),
-                    Value::Register(Register::T2) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 7"
-                    ),
-                    Value::Register(Register::S0) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 8"
-                    ),
-                    Value::Register(Register::S1) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 9"
-                    ),
-                    Value::Register(Register::A0) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 10"
-                    ),
-                    Value::Register(Register::A1) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 11"
-                    ),
-                    Value::Register(Register::A2) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 12"
-                    ),
-                    Value::Register(Register::A3) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 13"
-                    ),
-                    Value::Register(Register::A4) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 14"
-                    ),
-                    Value::Register(Register::A5) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 15"
-                    ),
-                    Value::Register(Register::A6) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 16"
-                    ),
-                    Value::Register(Register::A7) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 17"
-                    ),
-                    Value::Register(Register::S2) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 18"
-                    ),
-                    Value::Register(Register::S3) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 19"
-                    ),
-                    Value::Register(Register::S4) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 20"
-                    ),
-                    Value::Register(Register::S5) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 21"
-                    ),
-                    Value::Register(Register::S6) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 22"
-                    ),
-                    Value::Register(Register::S7) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 23"
-                    ),
-                    Value::Register(Register::S8) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 24"
-                    ),
-                    Value::Register(Register::S9) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 25"
-                    ),
-                    Value::Register(Register::S10) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 26"
-                    ),
-                    Value::Register(Register::S11) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 27"
-                    ),
-                    Value::Register(Register::T3) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 28"
-                    ),
-                    Value::Register(Register::T4) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 29"
-                    ),
-                    Value::Register(Register::T5) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 30"
-                    ),
-                    Value::Register(Register::T6) => format!(
-                        "{temp} = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 31"
-                    ),
-
-                    Value::FPRegister(FPRegister::Ft0) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 0"
-                    ),
-                    Value::FPRegister(FPRegister::Ft1) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 1"
-                    ),
-                    Value::FPRegister(FPRegister::Ft2) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 2"
-                    ),
-                    Value::FPRegister(FPRegister::Ft3) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 3"
-                    ),
-                    Value::FPRegister(FPRegister::Ft4) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 4"
-                    ),
-                    Value::FPRegister(FPRegister::Ft5) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 5"
-                    ),
-                    Value::FPRegister(FPRegister::Ft6) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 6"
-                    ),
-                    Value::FPRegister(FPRegister::Ft7) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 7"
-                    ),
-                    Value::FPRegister(FPRegister::Fs0) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 8"
-                    ),
-                    Value::FPRegister(FPRegister::Fs1) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 9"
-                    ),
-                    Value::FPRegister(FPRegister::Fa0) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 10"
-                    ),
-                    Value::FPRegister(FPRegister::Fa1) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 11"
-                    ),
-                    Value::FPRegister(FPRegister::Fa2) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 12"
-                    ),
-                    Value::FPRegister(FPRegister::Fa3) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 13"
-                    ),
-                    Value::FPRegister(FPRegister::Fa4) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 14"
-                    ),
-                    Value::FPRegister(FPRegister::Fa5) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 15"
-                    ),
-                    Value::FPRegister(FPRegister::Fa6) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 16"
-                    ),
-                    Value::FPRegister(FPRegister::Fa7) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 17"
-                    ),
-                    Value::FPRegister(FPRegister::Fs2) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 18"
-                    ),
-                    Value::FPRegister(FPRegister::Fs3) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 19"
-                    ),
-                    Value::FPRegister(FPRegister::Fs4) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 20"
-                    ),
-                    Value::FPRegister(FPRegister::Fs5) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 21"
-                    ),
-                    Value::FPRegister(FPRegister::Fs6) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 22"
-                    ),
-                    Value::FPRegister(FPRegister::Fs7) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 23"
-                    ),
-                    Value::FPRegister(FPRegister::Fs8) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 24"
-                    ),
-                    Value::FPRegister(FPRegister::Fs9) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 25"
-                    ),
-                    Value::FPRegister(FPRegister::Fs10) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 26"
-                    ),
-                    Value::FPRegister(FPRegister::Fs11) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 27"
-                    ),
-                    Value::FPRegister(FPRegister::Ft8) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 28"
-                    ),
-                    Value::FPRegister(FPRegister::Ft9) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 29"
-                    ),
-                    Value::FPRegister(FPRegister::Ft10) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 30"
-                    ),
-                    Value::FPRegister(FPRegister::Ft11) => format!(
-                        "{temp} = getelementptr %struct.freg, %struct.freg* %freg, i32 0, i32 31"
-                    ),
-
-                    _ => String::new(),
-                };
-                if load.is_empty() {
-                    write!(f, "store {} {}, {}* {}", ty, val, ty, ptr)
-                } else {
-                    write!(f, "{load}\n  store {} {}, {}* {}", ty, val, ty, temp)
-                }
-            }
-            // write!(f, "store {} {}, {}* {}", ty, val, ty, ptr),
-            Fence { ord } => write!(f, "fence {}", ord),
-            Cmpxchg {
-                rslt,
-                ty,
-                ptr,
-                cmp,
-                new,
-                succ_ord,
-                fail_ord,
-            } => write!(
-                f,
-                "{} = cmpxchg {}* {}, {} {}, {} {} {} {}",
-                rslt, ty, ptr, ty, cmp, ty, new, succ_ord, fail_ord
-            ),
-            Atomicrmw {
-                rslt,
-                op,
-                ty,
-                ptr,
-                val,
-                ord,
-            } => write!(
-                f,
-                "{} = atomicrmw {} {}* {}, {} {} {}",
-                rslt, op, ty, ptr, ty, val, ord
-            ),
-
-            // Conversion Operations
-            Trunc { rslt, ty, val, ty2 } => match ty == ty2 {
-                true => write!(f, "{} = add {} {}, {}", rslt, ty, val, 0),
-                false => write!(f, "{} = trunc {} {} to {}", rslt, ty, val, ty2),
-            },
-            Zext { rslt, ty, val, ty2 } => match ty == ty2 {
-                true => write!(f, "{} = add {} {}, {}", rslt, ty, val, 0),
-                false => write!(f, "{} = zext {} {} to {}", rslt, ty, val, ty2),
-            },
-            Sext { rslt, ty, val, ty2 } => match ty == ty2 {
-                true => write!(f, "{} = add {} {}, {}", rslt, ty, val, 0),
-                false => write!(f, "{} = sext {} {} to {}", rslt, ty, val, ty2),
-            },
-            Fptrunc { rslt, ty, val, ty2 } => match ty == ty2 {
-                true => write!(f, "{} = fadd {} {}, {}", rslt, ty, val, 0),
-                false => write!(f, "{} = fptrunc {} {} to {}", rslt, ty, val, ty2),
-            },
-            Fpext { rslt, ty, val, ty2 } => match ty == ty2 {
-                true => write!(f, "{} = fadd {} {}, {}", rslt, ty, val, 0),
-                false => write!(f, "{} = fpext {} {} to {}", rslt, ty, val, ty2),
-            },
-            Fptoui { rslt, ty, val, ty2 } => {
-                write!(f, "{} = fptoui {} {} to {}", rslt, ty, val, ty2)
-            }
-            Fptosi { rslt, ty, val, ty2 } => {
-                write!(f, "{} = fptosi {} {} to {}", rslt, ty, val, ty2)
-            }
-            Uitofp { rslt, ty, val, ty2 } => {
-                write!(f, "{} = uitofp {} {} to {}", rslt, ty, val, ty2)
-            }
-            Sitofp { rslt, ty, val, ty2 } => {
-                write!(f, "{} = sitofp {} {} to {}", rslt, ty, val, ty2)
-            }
-            Bitcast { rslt, ty, val, ty2 } => match (ty, ty2) {
-                (Type::Double, _) | (_, Type::Double) | (Type::Float, _) | (_, Type::Float) => {
-                    write!(f, "{} = bitcast {} {} to {}", rslt, ty, val, ty2)
-                }
-                _ => write!(f, "{} = bitcast {}* {} to {}*", rslt, ty, val, ty2),
-            },
-
-            // Other Operations
-            Icmp {
-                rslt,
-                cond,
-                ty,
-                op1,
-                op2,
-            } => write!(f, "{} = icmp {} {} {}, {}", rslt, cond, ty, op1, op2),
-            Fcmp {
-                rslt,
-                fcond,
-                ty,
-                op1,
-                op2,
-            } => write!(f, "{} = fcmp {} {} {}, {}", rslt, fcond, ty, op1, op2),
-
-            // Standard C/C++ Library Intrinsics
-            Sqrt { rslt, ty, op1 } => write!(
-                f,
-                "{} = call {} @llvm.sqrt.f{}({} {})",
-                rslt,
-                ty,
-                ty.size(),
-                ty,
-                op1
-            ),
-            Fma {
-                rslt,
-                ty,
-                op1,
-                op2,
-                op3,
-            } => write!(
-                f,
-                "{} = call {} @llvm.fma.f{}({} {}, {} {}, {} {})",
-                rslt,
-                ty,
-                ty.size(),
-                ty,
-                op1,
-                ty,
-                op2,
-                ty,
-                op3
-            ),
-            Fabs { rslt, ty, op1 } => write!(
-                f,
-                "{} = call {} @llvm.fabs.f{}({} {})",
-                rslt,
-                ty,
-                ty.size(),
-                ty,
-                op1
-            ),
-            Minimum { rslt, ty, op1, op2 } => write!(
-                f,
-                "{} = call {} @llvm.minimum.f{}({} {}, {} {})",
-                rslt,
-                ty,
-                ty.size(),
-                ty,
-                op1,
-                ty,
-                op2
-            ),
-            Maximum { rslt, ty, op1, op2 } => write!(
-                f,
-                "{} = call {} @llvm.maximum.f{}({} {}, {} {})",
-                rslt,
-                ty,
-                ty.size(),
-                ty,
-                op1,
-                ty,
-                op2
-            ),
-            Copysign { rslt, ty, mag, sgn } => write!(
-                f,
-                "{} = call {} @llvm.copysign.f{}({} {}, {} {})",
-                rslt,
-                ty,
-                ty.size(),
-                ty,
-                mag,
-                ty,
-                sgn
-            ),
-
-            // System Calls
-            Syscall {
-                rslt,
-                ty,
-                nr,
-                arg1,
-                arg2,
-                arg3,
-                arg4,
-                arg5,
-                arg6,
-            } => write!(
-                f,
-                "{} = call {} @sys_call({} {}, {} {}, {} {}, {} {}, {} {}, {} {}, {} {})",
-                rslt, ty, ty, nr, ty, arg1, ty, arg2, ty, arg3, ty, arg4, ty, arg5, ty, arg6
-            ),
-
-            // Misc
-            Loadstack { rslt, ty, stk } => {
-                write!(f, "{} = load {}, {}* %stack_{}_{}", rslt, ty, ty, stk, ty)
-            }
-            Storestack { ty, val, stk } => {
-                write!(f, "store {} {}, {}* %stack_{}_{}", ty, val, ty, stk, ty)
-            }
-
-            Getdataptr { rslt, ty, addr } => {
-                write!(f, "{} = call i8* @get_data_ptr({} {})", rslt, ty, addr)
-            }
-
-            Call { addr } => {
-                let t = unsafe { T };
-                unsafe {
-                    T += 1;
-                }
-                write!(
-                    f,
-                    "%ret_{t} = call i64 @func_{}(i64 {addr}, %struct.reg* %reg, %struct.freg* %freg)
-  ret i64 %ret_{t}",
-                    addr
-                )
-            }
-
-            SwitchCall {
-                ty,
-                val,
-                dflt,
-                tgts,
-                next_pc,
-            } => {
-                let mut s = format!("switch {} {}, label %label_{} [", ty, val, dflt);
-                for target in tgts {
-                    s += &format!("{} {}, label %call_{next_pc}_{} ", ty, target, target);
-                }
-                s += "]\n";
-                for target in tgts {
-                    s += &format!("call_{next_pc}_{}:\n  call i64 @func_{}(%struct.reg* %reg, %struct.freg* %freg)\n  br label %label_{}\n", target, target, next_pc);
-                }
-                write!(f, "{}", s)
-            }
-
-            Ret { ty, val } => {
-                write!(f, "ret {} {}", ty, val)
-            }
-            Unreachable { addr } => {
-                write!(f, "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {addr})\nunreachable")
-            }
-        }
     }
 }
