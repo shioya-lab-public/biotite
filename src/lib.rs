@@ -9,6 +9,6 @@ mod riscv_parser;
 pub fn run(rv_src: &str, irs: &Vec<Vec<u8>>) -> String {
     let rv_prog = riscv_parser::run(rv_src);
     let src_funcs = ir_rewriter::run(&rv_prog, irs);
-    let ll_prog = llvm_translator::run(rv_prog, &src_funcs);
+    let ll_prog = llvm_translator::run(rv_prog, src_funcs);
     ll_prog.to_string()
 }

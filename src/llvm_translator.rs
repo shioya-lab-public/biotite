@@ -1,88 +1,18 @@
-use crate::llvm_isa::{
-    CodeBlock, Condition, FPCondition, Instruction, InstructionBlock, Ordering, Program, Type,
-    Value,
-};
+use crate::llvm_isa as LL;
 use crate::llvm_macro::*;
-use crate::riscv_isa::{
-    Addr, CodeBlock as RiscvCodeBlock, DataBlock, Imm, Inst as RiscvInstruction,
-    Program as RiscvProgram, Reg,
-};
-use std::collections::{HashMap, HashSet};
-use std::mem;
+use crate::riscv_isa as RV;
+use std::collections::HashMap;
 
-pub fn run(rv_prog: RiscvProgram, src_funcs: &HashMap<Addr, String>) -> Program {
-    let mut end = 0;
-    for data_block in &rv_prog.data_blocks {
-        let Addr(head) = data_block.address;
-        let len = data_block.bytes.len();
-        if head as usize + len > end {
-            end = head as usize + len;
-        }
-    }
-    let mut bytes = vec![0; end];
-    for data_block in &rv_prog.data_blocks {
-        let Addr(head) = data_block.address;
-        for (i, byte) in data_block.bytes.iter().enumerate() {
-            bytes[head as usize + i] = *byte;
-        }
-    }
-    let data_blocks = vec![DataBlock {
-        address: Addr(0),
-        section: String::new(),
-        symbol: String::new(),
-        bytes,
-    }];
-
-    let mut targets: Vec<_> = Vec::new();
-    for block in &rv_prog.code_blocks {
-        for inst in &block.instructions {
-            targets.push(inst.address());
-        }
-    }
-    targets.sort();
-    targets.dedup();
-
-    // let code_blocks = rv_program
-    //     .code_blocks
-    //     .into_iter()
-    //     .map(|b| self.translate_code_block(b))
-    //     .collect();
-    let mut func_targets = HashSet::new();
-    for func in &rv_prog.code_blocks {
-        let addr = func.instructions[0].address();
-        func_targets.insert(addr);
-    }
-
-    let mut addr = Addr(0);
-    let mut funcs = Vec::new();
-    for func in rv_prog.code_blocks {
-        if !func.symbol.is_empty() {
-            addr = func.address;
-        }
-        let func = translate_code_block(func, addr, &func_targets);
-        funcs.push(func);
-    }
-
-    Program {
-        entry: self.entry,
-        data_blocks: mem::take(&mut self.data_blocks),
-        functions: funcs,
-        targets,
-        parsed_funcs,
-        parsed_irs: Vec::new(),
+pub fn run(rv_prog: RV::Program, src_funcs: HashMap<RV::Addr, String>) -> LL::Program {
+    LL::Program {
+        entry: rv_prog.entry,
+        data_blocks: rv_prog.data_blocks,
+        funcs: rv_prog.code_blocks.into_iter().map(|b| translate_code_block(b)),
+        src_funcs,
     }
 }
 
-fn translate_code_block(
-    &mut self,
-    rv_code_block: RiscvCodeBlock,
-    func: Address,
-    func_targets: &HashSet<Address>,
-) -> Vec<CodeBlock> {
-    if let "_start" = rv_code_block.symbol.as_str() {
-        self.entry = rv_code_block.address;
-    }
-
+fn translate_code_block(code_block: RV::CodeBlock) -> Vec<LL::Func> {
     rv_code_block
         .instructions
         .into_iter()
@@ -2180,22 +2110,6 @@ mod tests {
     }
 
     #[test]
-    fn find_entry() {
-        let rv_program = RiscvProgram {
-            abi: Abi::default(),
-            data_blocks: Vec::new(),
-            code_blocks: vec![RiscvCodeBlock {
-                section: String::from(".text"),
-                symbol: String::from("_start"),
-                address: Address(0x4),
-                instructions: Vec::new(),
-            }],
-        };
-        let program = Translator::new().run(rv_program);
-        assert_eq!(program.entry, Address(0x4));
-    }
-
-    #[test]
     fn enforce_zero() {
         use Instruction::*;
         use RiscvInstruction as RI;
@@ -2248,46 +2162,6 @@ mod tests {
                 }],
             }]
         );
-    }
-
-    #[test]
-    #[ignore]
-    fn format() {
-        use RiscvInstruction as RI;
-
-        let abis = vec![
-            Abi::Ilp32,
-            Abi::Ilp32f,
-            Abi::Ilp32d,
-            Abi::Lp64,
-            Abi::Lp64f,
-            Abi::Lp64d,
-        ];
-        for abi in abis {
-            let rv_program = RiscvProgram {
-                abi,
-                data_blocks: vec![DataBlock {
-                    section: String::from(".data"),
-                    symbol: String::from(".data"),
-                    address: Address(0x0),
-                    bytes: vec![0x3, 0x2, 0x1, 0x0],
-                }],
-                code_blocks: vec![RiscvCodeBlock {
-                    section: String::from(".text"),
-                    symbol: String::from("_start"),
-                    address: Address(0x0),
-                    instructions: vec![RI::J {
-                        address: Address(0x0),
-                        raw: Raw::new(""),
-                        addr: Address(0x0),
-                    }],
-                }],
-            };
-            let program_str = format!("{}", Translator::new().run(rv_program));
-            let ref_program_str = fs::read_to_string(format!("./tests/{}.ref.ll", abi))
-                .expect("Cannot open the reference output file");
-            assert_eq!(program_str, ref_program_str);
-        }
     }
 
     build_tests! {

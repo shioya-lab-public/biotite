@@ -1,6 +1,6 @@
 use crate::riscv_isa as RV;
-use std::fmt::{Display, Formatter, Result};
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Program {
@@ -8,6 +8,233 @@ pub struct Program {
     pub data_blocks: Vec<RV::DataBlock>,
     pub funcs: Vec<Func>,
     pub src_funcs: HashMap<RV::Addr, String>,
+}
+
+impl Display for Program {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        // Merge data blocks
+        let mut memory = Vec::new();
+        for data_block in self.data_blocks {
+            let RV::Addr(start) = data_block.address;
+            let diff = start as usize - memory.len();
+            memory.extend(vec![0; diff]);
+            memory.extend(data_block.bytes);
+        }
+
+        // Append the stack
+        let stack_len = 8192 * 1024;
+        let sp = memory.len() + 8191 * 1024;
+        memory.extend(vec![0; stack_len]);
+
+        // Format the memory array
+        let memory_len = memory.len();
+        let memory_str = memory
+            .iter()
+            .map(|b| format!("i8 {b}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let memory = format!("@.memory = global [{memory_len} x i8] [{memory_str}]");
+
+        // Build `get_memory_ptr`
+        let get_memory_ptr = format!(
+            "define i8* @.get_memory_ptr(i64 %addr) {{
+  %is_static = icmp ugt i64 {memory_len}, %addr
+  br i1 %is_static, label %static, label %dynamic
+static:
+  %static_ptr = getelementptr [{memory_len} x i8], [{memory_len} x i8]* @memory, i64 0, i64 %addr
+  ret i8* %static_ptr
+dynamic:
+  %dynamic_ptr = inttoptr i64 %addr to i8*
+  ret i8* %dynamic_ptr
+}}"
+        );
+
+        // Build the main dispatcher
+        let mut dispatcher = Vec::new();
+        for func in self.funcs {
+            let last_rv_inst = func.inst_blocks.last().unwrap().rv_inst;
+            let RV::Addr(end) = last_rv_inst.address();
+            end += if last_rv_inst.is_compressed() { 2 } else { 4 };
+            let diff = end as usize - dispatcher.len();
+            dispatcher.extend(vec![String::from("i64 0"); diff]);
+            for inst_block in func.inst_blocks {
+                let RV::Addr(addr) = inst_block.rv_inst.address();
+                if let Some(name) = self.src_funcs.get(&RV::Addr(addr)) {
+                    dispatcher[addr as usize] = format!("i64 ptrtoint (i64 (i64)* @{name} to i64)");
+                } else {
+                    dispatcher[addr as usize] =
+                        format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
+                }
+            }
+        }
+        let dispatcher_len = dispatcher.len();
+        let dispatcher_str = dispatcher.join(", ");
+        let dispatcher =
+            format!("@.dispatcher = global [{dispatcher_len} x i64] [{dispatcher_str}]");
+
+        // Format other components
+        let entry = self.entry;
+        let funcs = self
+            .funcs
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let src_funcs = self
+            .src_funcs
+            .values()
+            .map(|f| f.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let system_call = include_str!("system_call.ll");
+
+        // Merge all components
+        write!(f, "define i64 @main(i32 %argc, i8** %argv) {{
+  ; Initialize the stack pointer
+  store i64 {sp}, i64* @sp
+
+  ; Initialize `argc`
+  %argc_addr = load i64, i64* @sp
+  %argc_ptr_b = call i8* @.get_memory_ptr(i64 argc_addr)
+  %argc_ptr_w = bitcast i8* %argc_ptr_b to i32*
+  store i32 %argc, i32* %argc_ptr_w
+
+  ; Initialize `argv`
+  %argv_addr = add i64 %argc_addr, 8
+  %argv_dest = call i8* @.get_memory_ptr(i64 %argv_addr)
+  %argv_src = bitcast i8** %argv to i8*
+  %num = mul i32 %argc, 8
+  call void @.memory_copy(i8* %argv_dest, i8* %argv_src, i32 %num)
+
+  ; Load the entry address
+  %entry_p= alloca i64
+  store i64 {entry}, i64* %entry_p
+  br label %loop
+
+loop:
+  %entry = load i64, i64* %entry_p
+  %func_addr_ptr = getelementptr [{dispatcher_len} x i64], [{dispatcher_len} x i64]* @dispatcher, i64 0, i64 %entry
+  %func_addr = load i64, i64* %func_addr_ptr
+  %func = inttoptr i64 %func_addr to i64 (i64)*
+  %next = call i64 %func(i64 %entry)
+  store i64 %next, i64* %entry_p
+  br label %loop
+}}
+
+{funcs}
+
+{src_funcs}
+
+{memory}
+
+{dispatcher}
+
+@.zero = global i64 zeroinitializer
+@.ra = global i64 zeroinitializer
+@.sp = global i64 zeroinitializer
+@.gp = global i64 zeroinitializer
+@.tp = global i64 zeroinitializer
+@.t0 = global i64 zeroinitializer
+@.t1 = global i64 zeroinitializer
+@.t2 = global i64 zeroinitializer
+@.s0 = global i64 zeroinitializer
+@.s1 = global i64 zeroinitializer
+@.a0 = global i64 zeroinitializer
+@.a1 = global i64 zeroinitializer
+@.a2 = global i64 zeroinitializer
+@.a3 = global i64 zeroinitializer
+@.a4 = global i64 zeroinitializer
+@.a5 = global i64 zeroinitializer
+@.a6 = global i64 zeroinitializer
+@.a7 = global i64 zeroinitializer
+@.s2 = global i64 zeroinitializer
+@.s3 = global i64 zeroinitializer
+@.s4 = global i64 zeroinitializer
+@.s5 = global i64 zeroinitializer
+@.s6 = global i64 zeroinitializer
+@.s7 = global i64 zeroinitializer
+@.s8 = global i64 zeroinitializer
+@.s9 = global i64 zeroinitializer
+@.s10 = global i64 zeroinitializer
+@.s11 = global i64 zeroinitializer
+@.t3 = global i64 zeroinitializer
+@.t4 = global i64 zeroinitializer
+@.t5 = global i64 zeroinitializer
+@.t6 = global i64 zeroinitializer
+
+@.ft0 = global double zeroinitializer
+@.ft1 = global double zeroinitializer
+@.ft2 = global double zeroinitializer
+@.ft3 = global double zeroinitializer
+@.ft4 = global double zeroinitializer
+@.ft5 = global double zeroinitializer
+@.ft6 = global double zeroinitializer
+@.ft7 = global double zeroinitializer
+@.fs0 = global double zeroinitializer
+@.fs1 = global double zeroinitializer
+@.fa0 = global double zeroinitializer
+@.fa1 = global double zeroinitializer
+@.fa2 = global double zeroinitializer
+@.fa3 = global double zeroinitializer
+@.fa4 = global double zeroinitializer
+@.fa5 = global double zeroinitializer
+@.fa6 = global double zeroinitializer
+@.fa7 = global double zeroinitializer
+@.fs2 = global double zeroinitializer
+@.fs3 = global double zeroinitializer
+@.fs4 = global double zeroinitializer
+@.fs5 = global double zeroinitializer
+@.fs6 = global double zeroinitializer
+@.fs7 = global double zeroinitializer
+@.fs8 = global double zeroinitializer
+@.fs9 = global double zeroinitializer
+@.fs10 = global double zeroinitializer
+@.fs11 = global double zeroinitializer
+@.ft8 = global double zeroinitializer
+@.ft9 = global double zeroinitializer
+@.ft10 = global double zeroinitializer
+@.ft11 = global double zeroinitializer
+
+{get_memory_ptr}
+
+define void @.memory_copy(i8* %0, i8* %1, i32 %2) {{
+  %4 = icmp sgt i32 %2, 0
+  br i1 %4, label %5, label %7
+
+5:                                                ; preds = %3
+  %6 = zext i32 %2 to i64
+  br label %8
+
+7:                                                ; preds = %8, %3
+  ret void
+
+8:                                                ; preds = %5, %8
+  %9 = phi i64 [ 0, %5 ], [ %13, %8 ]
+  %10 = getelementptr i8, i8* %1, i64 %9
+  %11 = load i8, i8* %10
+  %12 = getelementptr i8, i8* %0, i64 %9
+  store i8 %11, i8* %12
+  %13 = add i64 %9, 1
+  %14 = icmp eq i64 %13, %6
+  br i1 %14, label %7, label %8
+}}
+
+declare float @llvm.sqrt.float(float %arg)
+declare double @llvm.sqrt.double(double %arg)
+declare float @llvm.fma.float(float %arg1, float %arg2, float %arg3)
+declare double @llvm.fma.double(double %arg1, double %arg2, double %arg3)
+declare float @llvm.fabs.float(float %arg)
+declare double @llvm.fabs.double(double %arg)
+declare float @llvm.minimum.float(float %arg1, float %arg2)
+declare double @llvm.minimum.double(double %arg1, double %arg2)
+declare float @llvm.maximum.float(float %arg1, float %arg2)
+declare double @llvm.maximum.double(double %arg1, double %arg2)
+declare float @llvm.copysign.float(float %mag, float %sgn)
+declare double @llvm.copysign.double(double %mag, double %sgn)
+
+{system_call}
+")
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -23,19 +250,23 @@ impl Display for Func {
         let mut dispatcher = String::from("switch i64 %entry, label %unreachable [");
         let mut inst_blocks = String::new();
         for inst_block in self.inst_blocks {
-            let addr = inst_block.rv_inst.address();
+            let addr = Value::Addr(inst_block.rv_inst.address());
             dispatcher += &format!("i64 {addr}, label %{addr} ");
             inst_blocks += &inst_block.to_string();
         }
         dispatcher.pop();
         dispatcher += "]";
-        write!(f, "; {} {} <{}>
-define i64 @{}(i64 %entry) {{
+        write!(
+            f,
+            "; {} {} <{}>
+define i64 @.{}(i64 %entry) {{
   {dispatcher}
 unreachable:
   unreachable
-  {inst_blocks}
-}}", self.address, self.section, self.symbol, self.address)
+{inst_blocks}
+}}",
+            self.address, self.section, self.symbol, self.address
+        )
     }
 }
 
@@ -47,11 +278,13 @@ pub struct InstBlock {
 
 impl Display for InstBlock {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        let mut inst_block = format!("  ; {:?}\n", self.rv_inst);
-        for inst in self.insts {
-            inst_block += &format!("  {inst}\n");
-        }
-        write!(f, "{}", inst_block)
+        let insts_str = self
+            .insts
+            .iter()
+            .map(|i| format!("  {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        write!(f, "  ; {:?}\n{insts_str}", self.rv_inst)
     }
 }
 
@@ -98,8 +331,8 @@ impl Display for Value {
         use Value::*;
 
         match self {
-            Reg(reg) => write!(f, "@{reg}"),
-            FReg(freg) => write!(f, "@{freg}"),
+            Reg(reg) => write!(f, "@.{reg}"),
+            FReg(freg) => write!(f, "@.{freg}"),
             Imm(imm) => write!(f, "{imm}"),
             Addr(addr) => write!(f, "u{addr}"),
             Temp(addr, i) => write!(f, "%{addr}_{i}"),
@@ -473,7 +706,7 @@ pub enum Inst {
     },
 
     // Misc
-    Getdataptr {
+    Getmemptr {
         rslt: Value,
         addr: Value,
     },
@@ -557,302 +790,9 @@ impl Display for Inst {
             Copysign { rslt, ty, mag, sgn } => write!(f, "{rslt} = call {ty} @llvm.copysign.{ty}({ty} {mag}, {ty} {sgn})"),
 
             // Misc
-            Getdataptr { rslt, addr } => write!(f, "{rslt} = call i8* @get_data_ptr(i64 {addr})"),
-            Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } => write!(f, "{rslt} = call i64 (i64, ...) @syscall(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
+            Getmemptr { rslt, addr } => write!(f, "{rslt} = call i8* @get_data_ptr(i64 {addr})"),
+            Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
+                write!(f, "{rslt} = call i64 (i64, ...) @syscall(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
         }
-    }
-}
-
-
-
-const SYSCALL: &str = "declare i64 @syscall(i64, ...)
-
-%struct.tms = type { i64, i64, i64, i64 }
-
-%struct.stat = type { i64, i64, i64, i32, i32, i32, i32, i64, i64, i64, i64, %struct.timespec, %struct.timespec, %struct.timespec, [3 x i64] }
-%struct.timespec = type { i64, i64 }
-
-define i64 @sys_call(i64 %nr, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6) {
-  switch i64 %nr, label %fallback [
-    i64 93, label %SYS_exit
-    i64 169, label %SYS_gettimeofday
-    i64 214, label %SYS_brk
-    i64 57, label %SYS_close
-    i64 80, label %SYS_fstat
-    i64 62, label %SYS_lseek
-    i64 63, label %SYS_read
-    i64 64, label %SYS_write
-  ]
-
-SYS_exit:
-  %SYS_exit_rslt = call i64 (i64, ...) @syscall(i64 60, i64 %arg1)
-  ret i64 %SYS_exit_rslt
-
-SYS_gettimeofday:
-  %tms_ptr = call i8* @get_data_ptr(i64 %arg1)
-  %tms = bitcast i8* %tms_ptr to %struct.tms*
-  %SYS_gettimeofday_rslt = call i64 (i64, ...) @syscall(i64 96, %struct.tms* %tms, i64 %arg2)
-  ret i64 %SYS_gettimeofday_rslt
-
-SYS_brk:
-  %SYS_brk_rslt = call i64 (i64, ...) @syscall(i64 12, i64 %arg1)
-  ret i64 %SYS_brk_rslt
-
-SYS_close:
-  %SYS_close_rslt = call i64 (i64, ...) @syscall(i64 3, i64 %arg1)
-  ret i64 %SYS_close_rslt
-
-SYS_fstat:
-  %stat_ptr = call i8* @get_data_ptr(i64 %arg2)
-  %stat = bitcast i8* %stat_ptr to %struct.stat*
-  %SYS_fstat_rslt = call i64 (i64, ...) @syscall(i64 5, i64 %arg1, %struct.stat* %stat)
-  ret i64 %SYS_fstat_rslt
-
-SYS_lseek:
-  %SYS_lseek_rslt = call i64 (i64, ...) @syscall(i64 8, i64 %arg1, i64 %arg2, i64 %arg3)
-  ret i64 %SYS_lseek_rslt
-
-SYS_read:
-  %read_buf = call i8* @get_data_ptr(i64 %arg2)
-  %SYS_read_rslt = call i64 (i64, ...) @syscall(i64 0, i64 %arg1, i8* %read_buf, i64 %arg3)
-  ret i64 %SYS_read_rslt
-
-SYS_write:
-  %write_buf = call i8* @get_data_ptr(i64 %arg2)
-  %SYS_write_rslt = call i64 (i64, ...) @syscall(i64 1, i64 %arg1, i8* %write_buf, i64 %arg3)
-  ret i64 %SYS_write_rslt
-
-fallback:
-  unreachable
-}";
-
-const FPFUNCTIONS: &str = "declare double @llvm.sqrt.f64(double %op1)
-declare double @llvm.fma.f64(double %op1, double %op2, double %op3)
-declare double @llvm.fabs.f64(double %op1)
-declare double @llvm.minimum.f64(double %op1, double %op2)
-declare double @llvm.maximum.f64(double %op1, double %op2)
-declare double @llvm.copysign.f64(double %mag, double %sgn)";
-
-const INIT_ARGV: &str = "define void @init_argv(i32 %0, i32 %1, i8** %2) {
-    %4 = icmp sgt i32 %1, 0
-    br i1 %4, label %5, label %16
-  
-  5:                                                ; preds = %3
-    %6 = zext i32 %1 to i64
-    br label %7
-  
-  7:                                                ; preds = %5, %29
-    %8 = phi i64 [ 0, %5 ], [ %31, %29 ]
-    %9 = phi i32 [ %0, %5 ], [ %30, %29 ]
-    %10 = getelementptr inbounds i8*, i8** %2, i64 %8
-    %11 = load i8*, i8** %10
-    %12 = load i8, i8* %11
-    %13 = sext i32 %9 to i64
-    %14 = call i8* @get_data_ptr(i64 %13)
-    store i8 %12, i8* %14
-    %15 = icmp eq i8 %12, 0
-    br i1 %15, label %29, label %17
-  
-  16:                                               ; preds = %29, %3
-    ret void
-  
-  17:                                               ; preds = %7, %17
-    %18 = phi i64 [ %20, %17 ], [ %13, %7 ]
-    %19 = phi i64 [ %21, %17 ], [ 0, %7 ]
-    %20 = add i64 %18, 1
-    %21 = add nuw nsw i64 %19, 1
-    %22 = load i8*, i8** %10
-    %23 = getelementptr inbounds i8, i8* %22, i64 %21
-    %24 = load i8, i8* %23
-    %25 = call i8* @get_data_ptr(i64 %20)
-    store i8 %24, i8* %25
-    %26 = icmp eq i8 %24, 0
-    br i1 %26, label %27, label %17
-  
-  27:                                               ; preds = %17
-    %28 = trunc i64 %20 to i32
-    br label %29
-  
-  29:                                               ; preds = %27, %7
-    %30 = phi i32 [ %9, %7 ], [ %28, %27 ]
-    %31 = add nuw nsw i64 %8, 1
-    %32 = icmp eq i64 %31, %6
-    br i1 %32, label %16, label %7
-  }
-";
-
-const REGISTERS: &str = "
-
-  %reg = alloca %struct.reg
-  %freg = alloca %struct.freg
-  %reg_byte = bitcast %struct.reg* %reg to i8*
-  call void @llvm.memset.p0i8.i64(i8* align 8 %reg_byte, i8 0, i64 256, i1 false)
-  %freg_byte = bitcast %struct.freg* %freg to i8*
-  call void @llvm.memset.p0i8.i64(i8* align 8 %freg_byte, i8 0, i64 256, i1 false)
-
-  %sp = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 2
-  store i64 10240, i64* %sp
-
-  ; riscv64-unknown-elf-gcc
-  %argc_i64 = sext i32 %argc to i64
-  %argc_ptr = call i8* @get_data_ptr(i64 10240)
-  %cast_argc_ptr = bitcast i8* %argc_ptr to i64*
-  store i64 %argc_i64, i64* %cast_argc_ptr
-
-  %argv_ptr = call i8* @get_data_ptr(i64 10248)
-  %cast_argv = bitcast i8** %argv to i8*
-  %num = mul i64 %argc_i64, 8
-  call void @llvm.memcpy.p0i8.p0i8.i64(i8* %argv_ptr, i8* %cast_argv, i64 %num, i1 0)
-        
-";
-
-impl Display for Program {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        let data_blocks = self
-            .data_blocks
-            .iter()
-            .fold(String::new(), |s, b| s + &format!("{}\n", b));
-
-        let get_data_ptr = if self.data_blocks.is_empty() {
-            String::new()
-        } else {
-            let mut get_data_ptr = format!("define i8* @get_data_ptr(i64 %addr) {{\n");
-            let mut data_blocks_iter = self.data_blocks.iter();
-            let mut current = data_blocks_iter.next();
-            let mut next = data_blocks_iter.next();
-            while let Some(cur) = current {
-                if let Some(nxt) = next {
-                    let Address(addr) = cur.address;
-                    let cur_end = addr as usize + cur.bytes.len();
-                    get_data_ptr += &format!(
-                        "data_{cur}:
-  %data_{cur}_start = icmp sle i64 {cur}, %addr
-  br i1 %data_{cur}_start, label %data_{cur}_start_true, label %data_{nxt}
-data_{cur}_start_true:
-  %data_{cur}_end = icmp sgt i64 {cur_end}, %addr
-  br i1 %data_{cur}_end, label %data_{cur}_true, label %data_{nxt}
-data_{cur}_true:
-  %rel_addr_{cur} = sub i64 %addr, {cur}
-  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i64 %rel_addr_{cur}
-  ret i8* %ptr_{cur}
-",
-                        cur = cur.address,
-                        nxt = nxt.address,
-                        len = cur.bytes.len()
-                    );
-                } else {
-                    let Address(addr) = cur.address;
-                    let cur_end = addr as usize + cur.bytes.len();
-                    get_data_ptr += &format!(
-                        "data_{cur}:
-  %data_{cur}_start = icmp sle i64 {cur}, %addr
-  br i1 %data_{cur}_start, label %data_{cur}_start_true, label %fallback
-data_{cur}_start_true:
-  %data_{cur}_end = icmp sgt i64 {cur_end}, %addr
-  br i1 %data_{cur}_end, label %data_{cur}_true, label %fallback
-data_{cur}_true:
-  %rel_addr_{cur} = sub i64 %addr, {cur}
-  %ptr_{cur} = getelementptr [{len} x i8], [{len} x i8]* @data_{cur}, i64 0, i64 %rel_addr_{cur}
-  ret i8* %ptr_{cur}
-fallback:
-  %ptr = inttoptr i64 %addr to i8*
-  ret i8* %ptr
-",
-                        cur = cur.address,
-                        len = cur.bytes.len()
-                    );
-                }
-                current = next;
-                next = data_blocks_iter.next();
-            }
-            get_data_ptr += "}";
-            get_data_ptr
-        };
-
-        // Build each function
-        let mut functions = String::new();
-        for func in &self.functions {
-            functions += format!("{func}");
-        }
-
-        // Main dispatcher
-        let inst_cnt = 150000;
-        let mut table = vec![String::from("i64 0"); inst_cnt];
-        for func in &self.functions {
-            let f = func[0].instruction_blocks[0].riscv_instruction.address();
-            for block in func {
-                for b in &block.instruction_blocks {
-                    let Addr(addr) = b.riscv_instruction.address();
-                    if let Some(name) = self.parsed_funcs.get(&Addr(addr)) {
-                        table[addr as usize] = format!(
-                            "i64 ptrtoint (i64 (i64, %struct.reg*, %struct.freg*)* @{name} to i64)"
-                        );
-                    } else {
-                        table[addr as usize] = format!(
-                            "i64 ptrtoint (i64 (i64, %struct.reg*, %struct.freg*)* @func_{f} to i64)"
-                        );
-                    }
-                }
-            }
-        }
-        let table = table.join(", ");
-        let table = format!("@dispatch_table = dso_local global [{inst_cnt} x i64] [{table}]");
-
-        // Main formatting
-        write!(
-            f,
-            "{}
-
-{}
-
-{}
-
-{}
-
-%struct.reg = type {{ i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64 }}
-%struct.freg = type {{ double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double }}
-declare void @llvm.memset.p0i8.i64(i8* nocapture writeonly, i8, i64, i1 immarg)
-declare void @llvm.memcpy.p0i8.p0i8.i64(i8*, i8*, i64, i1)
-declare dso_local void @exit(i32)
-declare dso_local i32 @printf(i8*, ...)
-@.str.d = private unnamed_addr constant [14 x i8] c\"#value: %ld#\\0A\\00\", align 1
-@.str.f = private unnamed_addr constant [13 x i8] c\"#value: %f#\\0A\\00\", align 1
-@.str.s = private unnamed_addr constant [13 x i8] c\"#value: %s#\\0A\\00\", align 1
-
-{table}
-
-define i64 @main(i32 %argc, i8** %argv) {{
-{}
-
-%entry_p= alloca i64
-store i64 {}, i64* %entry_p
-br label %loop
-loop:
-%entry = load i64, i64* %entry_p
-%func_val_ptr = getelementptr [{inst_cnt} x i64], [{inst_cnt} x i64]* @dispatch_table, i64 0, i64 %entry
-%func_val = load i64, i64* %func_val_ptr
-%func_ptr = inttoptr i64 %func_val to i64 (i64, %struct.reg*, %struct.freg*)*
-%target = call i64 %func_ptr(i64 %entry, %struct.reg* %reg, %struct.freg* %freg)
-store i64 %target, i64* %entry_p
-br label %loop
-
-
-label_0:
-  unreachable
-}}
-
-{}
-
-{}
-",
-SYSCALL,
-FPFUNCTIONS,
-            get_data_ptr,
-            data_blocks,
-            REGISTERS,
-            self.entry,
-            functions,
-            self.parsed_irs.join("\n"),
-        )
     }
 }
