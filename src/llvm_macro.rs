@@ -1,384 +1,16 @@
-#![allow(unused_macros)]
-#![allow(unused_imports)]
-
-// macro_rules! _1 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Temp(*$addr, 1)
-//     };
-// }
-
-// macro_rules! _2 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Temp(*$addr, 2)
-//     };
-// }
-
-// macro_rules! _3 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Temp(*$addr, 3)
-//     };
-// }
-
-// macro_rules! _4 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Temp(*$addr, 4)
-//     };
-// }
-
-// macro_rules! _5 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Temp(*$addr, 5)
-//     };
-// }
-
-// macro_rules! _6 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Temp(*$addr, 6)
-//     };
-// }
-
-// macro_rules! _7 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Temp(*$addr, 7)
-//     };
-// }
-
-// macro_rules! _i1 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Type::I1
-//     };
-// }
-
-// macro_rules! _i8 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Type::I8
-//     };
-// }
-
-// macro_rules! _i16 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Type::I16
-//     };
-// }
-
-// macro_rules! _i64 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Type::I64
-//     };
-// }
-
-// macro_rules! _i128 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Type::I128
-//     };
-// }
-
-// macro_rules! _f {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Type::Float
-//     };
-// }
-
-// macro_rules! _d {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Type::Double
-//     };
-// }
-
-// macro_rules! default {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         $value
-//     };
-// }
-
-// macro_rules! targets {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         $value
-//     };
-// }
-
-// macro_rules! stk {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Address($value)
-//     };
-// }
-
-// macro_rules! address {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Address(*$value)
-//     };
-// }
-
-// macro_rules! a7 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Register(Register::A7)
-//     };
-// }
-
-// macro_rules! a0 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Register(Register::A0)
-//     };
-// }
-
-// macro_rules! a1 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Register(Register::A1)
-//     };
-// }
-
-// macro_rules! a2 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Register(Register::A2)
-//     };
-// }
-
-// macro_rules! a3 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Register(Register::A3)
-//     };
-// }
-
-// macro_rules! a4 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Register(Register::A4)
-//     };
-// }
-
-// macro_rules! a5 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Register(Register::A5)
-//     };
-// }
-
-// macro_rules! rd {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Register(*$value)
-//     };
-// }
-
-// macro_rules! rs1 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Register(*$value)
-//     };
-// }
-
-// macro_rules! rs2 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Register(*$value)
-//     };
-// }
-
-// macro_rules! frd {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::FPRegister(*$value)
-//     };
-// }
-
-// macro_rules! frs1 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::FPRegister(*$value)
-//     };
-// }
-
-// macro_rules! frs2 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::FPRegister(*$value)
-//     };
-// }
-
-// macro_rules! frs3 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::FPRegister(*$value)
-//     };
-// }
-
-// macro_rules! imm_12 {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Immediate(Immediate(12))
-//     };
-// }
-
-// macro_rules! addr {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Value::Address(*$value)
-//     };
-// }
-
-// macro_rules! eq {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Condition::Eq
-//     };
-// }
-
-// macro_rules! ne {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Condition::Ne
-//     };
-// }
-
-// macro_rules! uge {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Condition::Uge
-//     };
-// }
-
-// macro_rules! ult {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Condition::Ult
-//     };
-// }
-
-// macro_rules! sgt {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Condition::Sgt
-//     };
-// }
-
-// macro_rules! sge {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Condition::Sge
-//     };
-// }
-
-// macro_rules! slt {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Condition::Slt
-//     };
-// }
-
-// macro_rules! sle {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Condition::Sle
-//     };
-// }
-
-// macro_rules! oeq {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         FPCondition::Oeq
-//     };
-// }
-
-// macro_rules! olt {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         FPCondition::Olt
-//     };
-// }
-
-// macro_rules! ole {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         FPCondition::Ole
-//     };
-// }
-
-// macro_rules! monotonic {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Ordering::Monotonic
-//     };
-// }
-
-// macro_rules! acquire {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Ordering::Acquire
-//     };
-// }
-
-// macro_rules! release {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Ordering::Release
-//     };
-// }
-
-// macro_rules! acq_rel {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Ordering::AcqRel
-//     };
-// }
-
-// macro_rules! seq_cst {
-//     ( $addr:expr, $raw:expr, $value:ident ) => {
-//         Ordering::SeqCst
-//     };
-// }
-
-// macro_rules! build_instructions {
-//     ( $addr:expr, $raw:expr, $( $inst:tt { $( $field:ident: $value:ident ),* }, )* ) => {
-//         vec![
-//             $(
-//                 $inst {
-//                     $(
-//                         $field: $value!($addr, $raw, $value),
-//                     )*
-//                 },
-//             )*
-//         ]
-//     };
-// }
-
-macro_rules! _0 {
-    ( $addr:expr, $raw:expr, $value:ident ) => {
-        Value::Temp($addr, 0)
-    };
-}
-
-macro_rules! _i32 {
-    ( $addr:expr, $raw:expr, $value:ident ) => {
-        Type::I32
-    };
-}
-
-macro_rules! imm {
-    ( $addr:expr, $raw:expr, $value:ident ) => {
-        Value::Imm($value)
-    };
-}
-
-macro_rules! next_pc {
-    ( $address:expr, $is_compressed:expr, $value:ident ) => {{
-        let RV::Addr(addr) = $address;
-        let len = if $is_compressed { 2 } else { 4 };
-        Value::Addr(RV::Addr(addr + len))
-    }};
-}
-
-macro_rules! expand_field {
-    ($m:ident, $address:ident, $is_compressed:ident) => {
-        $m!($address, $is_compressed, $m)
-    };
-    ($m:block, $address:ident, $is_compressed:ident) => {
-        $m
-    };
-}
-
-macro_rules! cont {
-    ($m:ident, $address:ident, $is_compressed:ident) => {
-        Inst::Br {
-            addr: next_pc!($address, $is_compressed, $m),
-        }
-    };
-}
-
-macro_rules! jump {
-    ($m:ident, $address:ident, $is_compressed:ident) => {};
-}
-
-macro_rules! build_insts {
+macro_rules! translate_rv_inst {
     ( $scrutinee: ident,
         $(
-            $rv_inst:tt { $( $rv_field:ident ),* } => $flag:ident {
-                $(
-                    $inst:tt { $( $field:ident: $value:tt ),* },
-                )*
+            $rv_inst:tt { $( $rv_field:ident ),* } => {
+                $( $inst:tt { $( $field:ident: $value:tt ),* }, )*
             }
-        )* ) => {
+        )*
+    ) => {
         match $scrutinee {
             $(
                 RV::Inst::$rv_inst { address, is_compressed, $( $rv_field ),* } => {
                     vec![
-                        $(
-                            Inst::$inst { $( $field: expand_field!($value, address, is_compressed) ),* },
-                        )*
-                        $flag!(next_pc, address, is_compressed)
+                        $( Inst::$inst { $( $field: expand_value!($value, address, is_compressed), )* }, )*
                     ]
                 }
             )*
@@ -387,11 +19,190 @@ macro_rules! build_insts {
     };
 }
 
-// pub(crate) use {
-//     build_insts, expand_field, _d, _f, _i1, _i128, _i16, _i32, _i64, _i8, a0, a1, a2, a3, a4, a5, a7, acq_rel, acquire, addr,
-//     address, build_instructions, default, eq, frd, frs1, frs2, frs3, imm, imm_12, monotonic, ne,
-//     next_pc, oeq, ole, olt, rd, release, rs1, rs2, seq_cst, sge, sgt, sle, slt, stk, targets, uge,
-//     ult, _0, _1, _2, _3, _4, _5, _6, _7,
-// };
+macro_rules! expand_value {
+    ($value:ident, $address:expr, $is_compressed:expr) => {
+        $value!($value, $address, $is_compressed)
+    };
+    ($value:block, $address:expr, $is_compressed:expr) => {
+        $value
+    };
+}
 
-pub(crate) use {_i32, build_insts, cont, expand_field, imm, jump, next_pc, _0};
+macro_rules! i_1 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Type::I1
+    };
+}
+
+macro_rules! i_8 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Type::I8
+    };
+}
+
+macro_rules! i_16 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Type::I16
+    };
+}
+
+macro_rules! i_32 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Type::I32
+    };
+}
+
+macro_rules! i_64 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Type::I64
+    };
+}
+
+macro_rules! i_128 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Type::I128
+    };
+}
+
+macro_rules! f {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Type::Float
+    };
+}
+
+macro_rules! d {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Type::Double
+    };
+}
+
+macro_rules! rd {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Reg($value)
+    };
+}
+
+macro_rules! rs1 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Reg($value)
+    };
+}
+
+macro_rules! rs2 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Reg($value)
+    };
+}
+
+macro_rules! frd {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Reg($value)
+    };
+}
+
+macro_rules! frs1 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Reg($value)
+    };
+}
+
+macro_rules! frs2 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Reg($value)
+    };
+}
+
+macro_rules! frs3 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Reg($value)
+    };
+}
+
+macro_rules! imm {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Imm($value)
+    };
+}
+
+macro_rules! addr {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Addr($value)
+    };
+}
+
+macro_rules! _0 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 0)
+    };
+}
+macro_rules! _1 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 1)
+    };
+}
+
+macro_rules! _2 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 2)
+    };
+}
+
+macro_rules! _3 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 3)
+    };
+}
+
+macro_rules! _4 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 4)
+    };
+}
+
+macro_rules! _5 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 5)
+    };
+}
+
+macro_rules! _6 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 6)
+    };
+}
+
+macro_rules! _7 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 7)
+    };
+}
+
+macro_rules! mo {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        match $value {
+            RV::MO::Mono => MO::Mono,
+            RV::MO::Aq => MO::Aq,
+            RV::MO::Rl => MO::Rl,
+            RV::MO::AqRl => MO::AqRl,
+        }
+    };
+}
+
+macro_rules! pc {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {{
+        Value::Addr($address)
+    }};
+}
+
+macro_rules! next_pc {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {{
+        let RV::Addr(addr) = $address;
+        let len = if $is_compressed { 2 } else { 4 };
+        Value::Addr(RV::Addr(addr + len))
+    }};
+}
+
+pub(crate) use {
+    addr, d, expand_value, f, frd, frs1, frs2, frs3, i_1, i_128, i_16, i_32, i_64, i_8, imm, mo,
+    next_pc, rd, rs1, rs2, translate_rv_inst, _0, _1, _2, _3, _4, _5, _6, _7, pc
+};

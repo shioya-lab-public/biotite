@@ -152,9 +152,7 @@ macro_rules! define_insts {
                 $inst {
                     address: Addr,
                     is_compressed: bool,
-                    $(
-                        $field: $field!("type"),
-                    )*
+                    $( $field: $field!("type"), )*
                 },
             )*
         }
@@ -191,9 +189,7 @@ macro_rules! define_insts {
                 use Inst::*;
 
                 match self {
-                    $(
-                        $inst { address, .. } => *address,
-                    )*
+                    $( $inst { address, .. } => *address, )*
                 }
             }
 
@@ -201,9 +197,7 @@ macro_rules! define_insts {
                 use Inst::*;
 
                 match self {
-                    $(
-                        $inst { is_compressed, .. } => *is_compressed,
-                    )*
+                    $( $inst { is_compressed, .. } => *is_compressed, )*
                 }
             }
         }

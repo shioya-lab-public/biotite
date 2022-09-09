@@ -1,3 +1,4 @@
+use crate::llvm_macro::next_pc;
 use crate::riscv_isa as RV;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result};
@@ -14,11 +15,11 @@ impl Display for Program {
     fn fmt(&self, f: &mut Formatter) -> Result {
         // Merge data blocks
         let mut memory = Vec::new();
-        for data_block in self.data_blocks {
+        for data_block in &self.data_blocks {
             let RV::Addr(start) = data_block.address;
             let diff = start as usize - memory.len();
             memory.extend(vec![0; diff]);
-            memory.extend(data_block.bytes);
+            memory.extend(&data_block.bytes);
         }
 
         // Append the stack
@@ -41,7 +42,7 @@ impl Display for Program {
   %is_static = icmp ugt i64 {memory_len}, %addr
   br i1 %is_static, label %static, label %dynamic
 static:
-  %static_ptr = getelementptr [{memory_len} x i8], [{memory_len} x i8]* @memory, i64 0, i64 %addr
+  %static_ptr = getelementptr [{memory_len} x i8], [{memory_len} x i8]* @.memory, i64 0, i64 %addr
   ret i8* %static_ptr
 dynamic:
   %dynamic_ptr = inttoptr i64 %addr to i8*
@@ -51,13 +52,13 @@ dynamic:
 
         // Build the main dispatcher
         let mut dispatcher = Vec::new();
-        for func in self.funcs {
+        for func in &self.funcs {
             let last_rv_inst = func.inst_blocks.last().unwrap().rv_inst;
-            let RV::Addr(end) = last_rv_inst.address();
+            let RV::Addr(mut end) = last_rv_inst.address();
             end += if last_rv_inst.is_compressed() { 2 } else { 4 };
             let diff = end as usize - dispatcher.len();
             dispatcher.extend(vec![String::from("i64 0"); diff]);
-            for inst_block in func.inst_blocks {
+            for inst_block in &func.inst_blocks {
                 let RV::Addr(addr) = inst_block.rv_inst.address();
                 if let Some(name) = self.src_funcs.get(&RV::Addr(addr)) {
                     dispatcher[addr as usize] = format!("i64 ptrtoint (i64 (i64)* @{name} to i64)");
@@ -249,13 +250,19 @@ impl Display for Func {
     fn fmt(&self, f: &mut Formatter) -> Result {
         let mut dispatcher = String::from("switch i64 %entry, label %unreachable [");
         let mut inst_blocks = String::new();
-        for inst_block in self.inst_blocks {
+        for inst_block in &self.inst_blocks {
             let addr = Value::Addr(inst_block.rv_inst.address());
             dispatcher += &format!("i64 {addr}, label %{addr} ");
             inst_blocks += &inst_block.to_string();
         }
         dispatcher.pop();
         dispatcher += "]";
+        let last_rv_inst = self.inst_blocks.last().unwrap().rv_inst;
+        let next_pc = next_pc!(
+            next_pc,
+            last_rv_inst.address(),
+            last_rv_inst.is_compressed()
+        );
         write!(
             f,
             "; {} {} <{}>
@@ -263,7 +270,10 @@ define i64 @.{}(i64 %entry) {{
   {dispatcher}
 unreachable:
   unreachable
+
 {inst_blocks}
+{next_pc}:
+  ret i64 {next_pc}
 }}",
             self.address, self.section, self.symbol, self.address
         )
@@ -278,13 +288,25 @@ pub struct InstBlock {
 
 impl Display for InstBlock {
     fn fmt(&self, f: &mut Formatter) -> Result {
+        let addr = Value::Addr(self.rv_inst.address());
         let insts_str = self
             .insts
             .iter()
             .map(|i| format!("  {i}"))
             .collect::<Vec<_>>()
             .join("\n");
-        write!(f, "  ; {:?}\n{insts_str}", self.rv_inst)
+        let br = if let Some(Inst::Ret { .. }) = self.insts.last() {
+            String::from("")
+        } else {
+            let next_pc = next_pc!(
+                next_pc,
+                self.rv_inst.address(),
+                self.rv_inst.is_compressed()
+            );
+            let br = Inst::Br { addr: next_pc };
+            format!("\n{br}")
+        };
+        write!(f, "  ; {:?}\n{addr}:\n{insts_str}{br}", self.rv_inst)
     }
 }
 
@@ -720,6 +742,7 @@ pub enum Inst {
         arg5: Value,
         arg6: Value,
     },
+    Unreachable,
 }
 
 impl Display for Inst {
@@ -793,6 +816,7 @@ impl Display for Inst {
             Getmemptr { rslt, addr } => write!(f, "{rslt} = call i8* @get_data_ptr(i64 {addr})"),
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, ...) @syscall(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
+            Unreachable => write!(f, "unreachable"),
         }
     }
 }

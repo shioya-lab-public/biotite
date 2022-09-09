@@ -8,6 +8,8 @@ A binary translator that translates RISC-V to LLVM IR.
 - Little-endian statically-linked executable files
 - Arch: RV64GC, ABI: LP64D
 
+all CSR are ignored
+
 ## Testing Commands
 
 ``` Bash
@@ -35,33 +37,6 @@ CSR
 Counter
 - RDCYCLE: The execution environment should provide a means to determine the current rate (cycles/second) at which the cycle counter is incrementing.
 - RDTIME: The execution environment should provide a means of determining the period of the real-time counter (seconds/tick). The environment should provide a means to determine the accuracy of the clock.
-
-## Todo
-
-- read entry from elf?
-- Trap `argv` in address 1?
-
-- Force x0 always to be 0
-- Map RV inst to LLVM comment for easy debugging
-```
-    105ac:	4e078793          	addi	a5,a5,1248 # 104e0 <s>
-    105b0:	fef43023          	sd	a5,-32(s0)
-    105b4:	fec42783          	lw	a5,-20(s0)
-    105b8:	fe043703          	ld	a4,-32(s0)
-    105bc:	853e                	mv	a0,a5
-    105be:	9702                	jalr	a4
-```
-
-- argv is trapped for access to addr 0.
-```
-   109a8:	f2040713          	addi	a4,s0,-224
-   109ac:	9ae1b823          	sd	a4,-1616(gp) # 70a78 <Ptr_Glob>
-   109b0:	9b01b783          	ld	a5,-1616(gp) # 70a78 <Ptr_Glob>
-   109b4:	9b81b703          	ld	a4,-1608(gp) # 70a80 <Next_Ptr_Glob>
-   109b8:	e398                	sd	a4,0(a5)
-```
-
-- `1c6b6:	8e1bc9bf 00004034 	0x40348e1bc9bf`
 
 ## Reference
 

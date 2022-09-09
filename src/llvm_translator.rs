@@ -31,1210 +31,1131 @@ fn translate_rv_code_block(rv_code_block: RV::CodeBlock) -> Func {
 }
 
 fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
-    use Inst::*;
-
-    let insts = build_insts!(rv_inst,
-        Lui { rd, imm } => cont {
-            Shl { rslt: _0, ty: _i32, op1: imm, op2: {1;Value::Imm(RV::Imm(12))} },
+    let insts = translate_rv_inst!(rv_inst,
+        // RV32I
+        Lui { rd, imm } => {
+            Shl { rslt: _0, ty: i_32, op1: imm, op2: { Value::Imm(RV::Imm(12)) } },
+            Sext { rslt: _1, ty1: i_32, val: _0, ty2: i_64 },
+            Store { ty: i_64, val: _1, ptr: rd },
         }
+        Auipc { rd, imm } => {
+            Shl { rslt: _0, ty: i_32, op1: imm, op2: { Value::Imm(RV::Imm(12)) } },
+            Sext { rslt: _1, ty1: i_32, val: _0, ty2: i_64 },
+            Add { rslt: _2, ty: i_64, op1: _1, op2: pc },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Jal { rd, addr } => {
+            Store { ty: i_64, val: next_pc, ptr: rd },
+            Ret { val: addr },
+        }
+        Jalr { rd, imm, rs1 } => {
+            Store { ty: i_64, val: next_pc, ptr: rd },
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Ret { val: _1 },
+        }
+        Beq { rs1, rs2, addr } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Icmp { rslt: _2, cond: { Cond::Eq }, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Ret { val: _3 },
+        }
+        Bne { rs1, rs2, addr } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Icmp { rslt: _2, cond: { Cond::Ne }, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Ret { val: _3 },
+        }
+        Blt { rs1, rs2, addr } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Icmp { rslt: _2, cond: { Cond::Slt }, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Ret { val: _3 },
+        }
+        Bge { rs1, rs2, addr } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Icmp { rslt: _2, cond: { Cond::Sge }, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Ret { val: _3 },
+        }
+        Bltu { rs1, rs2, addr } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Icmp { rslt: _2, cond: { Cond::Ult }, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Ret { val: _3 },
+        }
+        Bgeu { rs1, rs2, addr } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Icmp { rslt: _2, cond: { Cond::Uge }, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Ret { val: _3 },
+        }
+        Lb { rd, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Load { rslt: _3, ty: i_8, ptr: _2 },
+            Sext { rslt: _4, ty1: i_8, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        Lh { rd, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_16 },
+            Load { rslt: _4, ty: i_16, ptr: _3 },
+            Sext { rslt: _5, ty1: i_16, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Lw { rd, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_32 },
+            Load { rslt: _4, ty: i_32, ptr: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Lbu { rd, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Load { rslt: _3, ty: i_8, ptr: _2 },
+            Zext { rslt: _4, ty1: i_8, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        Lhu { rd, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_16 },
+            Load { rslt: _4, ty: i_16, ptr: _3 },
+            Zext { rslt: _5, ty1: i_16, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Sb { rs2, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_8 },
+            Load { rslt: _2, ty: i_64, ptr: rs1 },
+            Add { rslt: _3, ty: i_64, op1: _2, op2: imm },
+            Getmemptr { rslt: _4, addr: _3 },
+            Store { ty: i_8, val: _1, ptr: _4 },
+        }
+        Sh { rs2, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_16 },
+            Load { rslt: _2, ty: i_64, ptr: rs1 },
+            Add { rslt: _3, ty: i_64, op1: _2, op2: imm },
+            Getmemptr { rslt: _4, addr: _3 },
+            Bitcast { rslt: _5, ty1: i_8, val: _4, ty2: i_16 },
+            Store { ty: i_16, val: _1, ptr: _5 },
+        }
+        Sw { rs2, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs1 },
+            Add { rslt: _3, ty: i_64, op1: _2, op2: imm },
+            Getmemptr { rslt: _4, addr: _3 },
+            Bitcast { rslt: _5, ty1: i_8, val: _4, ty2: i_32 },
+            Store { ty: i_32, val: _1, ptr: _5 },
+        }
+        Addi { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Store { ty: i_64, val: _1, ptr: rd },
+        }
+        Slti { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Icmp { rslt: _1, cond: { Cond::Slt }, op1: _0, op2: imm },
+            Zext { rslt: _2, ty1: i_1, val: _1, ty2: i_64 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Sltiu { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Icmp { rslt: _1, cond: { Cond::Ult }, op1: _0, op2: imm },
+            Zext { rslt: _2, ty1: i_1, val: _1, ty2: i_64 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Xori { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Xor { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Store { ty: i_64, val: _1, ptr: rd },
+        }
+        Ori { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Or { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Store { ty: i_64, val: _1, ptr: rd },
+        }
+        Andi { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            And { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Store { ty: i_64, val: _1, ptr: rd },
+        }
+        Slli { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Shl { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Store { ty: i_64, val: _1, ptr: rd },
+        }
+        Srli { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Lshr { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Store { ty: i_64, val: _1, ptr: rd },
+        }
+        Srai { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Ashr { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Store { ty: i_64, val: _1, ptr: rd },
+        }
+        Add { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Add { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Sub { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Sub { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Sll { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Shl { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Slt { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Icmp { rslt: _2, cond: { Cond::Slt }, op1: _0, op2: _1 },
+            Zext { rslt: _3, ty1: i_1, val: _2, ty2: i_64 },
+            Store { ty: i_64, val: _3, ptr: rd },
+        }
+        Sltu { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Icmp { rslt: _2, cond: { Cond::Ult }, op1: _0, op2: _1 },
+            Zext { rslt: _3, ty1: i_1, val: _2, ty2: i_64 },
+            Store { ty: i_64, val: _3, ptr: rd },
+        }
+        Xor { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Xor { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Srl { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Lshr { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Sra { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Ashr { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Or { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Or { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        And { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            And { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Fence {} => {
+            Fence { mo: { MO::AqRl } },
+        }
+        Ecall {} => {
+            Load { rslt: _0, ty: i_64, ptr: { Value::Reg(RV::Reg::A7) } },
+            Load { rslt: _1, ty: i_64, ptr: { Value::Reg(RV::Reg::A0) } },
+            Load { rslt: _2, ty: i_64, ptr: { Value::Reg(RV::Reg::A1) } },
+            Load { rslt: _3, ty: i_64, ptr: { Value::Reg(RV::Reg::A2) } },
+            Load { rslt: _4, ty: i_64, ptr: { Value::Reg(RV::Reg::A3) } },
+            Load { rslt: _5, ty: i_64, ptr: { Value::Reg(RV::Reg::A4) } },
+            Load { rslt: _6, ty: i_64, ptr: { Value::Reg(RV::Reg::A5) } },
+            Syscall { rslt: _7, nr: _0, arg1: _1, arg2: _2, arg3: _3, arg4: _4, arg5: _5, arg6: _6 },
+            Store { ty: i_64, val: _7, ptr: { Value::Reg(RV::Reg::A0) } },
+        }
+        Ebreak {} => {
+            Unreachable {},
+        }
+
+        // RV64I (in addition to RV32I)
+        Lwu { rd, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_32 },
+            Load { rslt: _4, ty: i_32, ptr: _3 },
+            Zext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Ld { rd, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_64 },
+            Load { rslt: _4, ty: i_64, ptr: _3 },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        Sd { rs2, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs2 },
+            Load { rslt: _1, ty: i_64, ptr: rs1 },
+            Add { rslt: _2, ty: i_64, op1: _1, op2: imm },
+            Getmemptr { rslt: _3, addr: _2 },
+            Bitcast { rslt: _4, ty1: i_8, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _0, ptr: _4 },
+        }
+        Addiw { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Add { rslt: _2, ty: i_32, op1: _1, op2: imm },
+            Sext { rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
+            Store { ty: i_64, val: _3, ptr: rd },
+        }
+        Slliw { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Shl { rslt: _2, ty: i_32, op1: _1, op2: imm },
+            Sext { rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
+            Store { ty: i_64, val: _3, ptr: rd },
+        }
+        Srliw { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Lshr { rslt: _2, ty: i_32, op1: _1, op2: imm },
+            Sext { rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
+            Store { ty: i_64, val: _3, ptr: rd },
+        }
+        Sraiw { rd, rs1, imm } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Ashr { rslt: _2, ty: i_32, op1: _1, op2: imm },
+            Sext { rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
+            Store { ty: i_64, val: _3, ptr: rd },
+        }
+        Addw { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
+            Add { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Subw { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
+            Sub { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Sllw { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
+            Shl { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Srlw { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
+            Lshr { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Sraw { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
+            Ashr { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+
+        // RV32/RV64 Zifencei
+        FenceI {} => {
+            Fence { mo: { MO::AqRl } },
+        }
+
+        // RV32/RV64 Zicsr
+        Csrrw { rd, csr, rs1 } => {}
+        Csrrs { rd, csr, rs1 } => {}
+        Csrrc { rd, csr, rs1 } => {}
+        Csrrwi { rd, csr, imm } => {}
+        Csrrsi { rd, csr, imm } => {}
+        Csrrci { rd, csr, imm } => {}
+
+        // RV32M
+        Mul { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Mul { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Mulh { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Sext { rslt: _1, ty1: i_64, val: _0, ty2: i_128 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Sext { rslt: _3, ty1: i_64, val: _2, ty2: i_128 },
+            Mul { rslt: _4, ty: i_128, op1: _1, op2: _3 },
+            Lshr { rslt: _5, ty: i_128, op1: _4, op2: { Value::Imm(RV::Imm(64)) } },
+            Trunc { rslt: _6, ty1: i_128, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        Mulhsu { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Sext { rslt: _1, ty1: i_64, val: _0, ty2: i_128 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Zext { rslt: _3, ty1: i_64, val: _2, ty2: i_128 },
+            Mul { rslt: _4, ty: i_128, op1: _1, op2: _3 },
+            Lshr { rslt: _5, ty: i_128, op1: _4, op2: { Value::Imm(RV::Imm(64)) } },
+            Trunc { rslt: _6, ty1: i_128, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        Mulhu { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Zext { rslt: _1, ty1: i_64, val: _0, ty2: i_128 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Zext { rslt: _3, ty1: i_64, val: _2, ty2: i_128 },
+            Mul { rslt: _4, ty: i_128, op1: _1, op2: _3 },
+            Lshr { rslt: _5, ty: i_128, op1: _4, op2: { Value::Imm(RV::Imm(64)) } },
+            Trunc { rslt: _6, ty1: i_128, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        Div { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Sdiv { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Divu { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Udiv { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Rem { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Srem { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        Remu { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Urem { rslt: _2, ty: i_64, op1: _0, op2: _1 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        
+        // RV64M (in addition to RV32M)
+        Mulw { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
+            Mul { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Divw { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
+            Sdiv { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Divuw { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
+            Udiv { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Remw { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
+            Srem { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+        Remuw { rd, rs1, rs2 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
+            Urem { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: rd },
+        }
+
+        // RV32A
+        LrW { mo, rd, rs1 } => {}
+        ScW { mo, rd, rs2, rs1 } => {}
+        AmoswapW { mo, rd, rs2, rs1 } => {}
+        AmoaddW { mo, rd, rs2, rs1 } => {}
+        AmoxorW { mo, rd, rs2, rs1 } => {}
+        AmoandW { mo, rd, rs2, rs1 } => {}
+        AmoorW { mo, rd, rs2, rs1 } => {}
+        AmominW { mo, rd, rs2, rs1 } => {}
+        AmomaxW { mo, rd, rs2, rs1 } => {}
+        AmominuW { mo, rd, rs2, rs1 } => {}
+        AmomaxuW { mo, rd, rs2, rs1 } => {}
+
+        // RV64A (in addition to RV32A)
+        LrD { mo, rd, rs1 } => {}
+        ScD { mo, rd, rs2, rs1 } => {}
+        AmoswapD { mo, rd, rs2, rs1 } => {}
+        AmoaddD { mo, rd, rs2, rs1 } => {}
+        AmoxorD { mo, rd, rs2, rs1 } => {}
+        AmoandD { mo, rd, rs2, rs1 } => {}
+        AmoorD { mo, rd, rs2, rs1 } => {}
+        AmominD { mo, rd, rs2, rs1 } => {}
+        AmomaxD { mo, rd, rs2, rs1 } => {}
+        AmominuD { mo, rd, rs2, rs1 } => {}
+        AmomaxuD { mo, rd, rs2, rs1 } => {}
+
+        // RV32F
+        Flw { frd, imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_32 },
+            Load { rslt: _4, ty: i_32, ptr: _3 },
+            Bitcast { rslt: _5, ty1: i_32, val: _4, ty2: f },
+            Fpext { rslt: _6, ty1: f, val: _5, ty2: d },
+            Store { ty: d, val: _6, ptr: frd },
+        }
+        Fsw { frs2, imm, rs1 } => {
+            Load { rslt: _0, ty: d, ptr: frs2 },
+            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
+            Bitcast { rslt: _2, ty1: f, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs1 },
+            Add { rslt: _4, ty: i_64, op1: _3, op2: imm },
+            Getmemptr { rslt: _5, addr: _4 },
+            Bitcast { rslt: _6, ty1: i_8, val: _5, ty2: i_32 },
+            Store { ty: i_32, val: _2, ptr: _6 },
+        }
+        FmaddS { frd, frs1, frs2, frs3, rm } => {
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Load { rslt: _2, ty: f, ptr: frs3 },
+            Fmul { rslt: _3, ty: f, op1: _0, op2: _1 },
+            Fadd { rslt: _4, ty: f, op1: _3, op2: _2 },
+            Store { ty: d, val: _4, ptr: frd },
+        }
+        FmsubS { frd, frs1, frs2, frs3, rm } => {
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Load { rslt: _2, ty: f, ptr: frs3 },
+            Fmul { rslt: _3, ty: f, op1: _0, op2: _1 },
+            Fsub { rslt: _4, ty: f, op1: _3, op2: _2 },
+            Store { ty: d, val: _4, ptr: frd },
+        }
+        //     Fld {
+    //         frd,
+    //         imm,
+    //         rs1,
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+    //         Getdataptr { rslt: _2, ty: i_64, addr: _1 },
+    //         Bitcast { rslt: _3, ty: i_8, val: _2, ty2: i_64 },
+    //         Load { rslt: _4, ty: i_64, ptr: _3 },
+    //         Bitcast { rslt: _5, ty: i_64, val: _4, ty2: _d },
+    //         Store { ty: _d, val: _5, ptr: frd },
+    //         
+    //     },
+    //     Fsd {
+    //         frs2,
+    //         imm,
+    //         rs1,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs2 },
+    //         Bitcast { rslt: _1, ty: _d, val: _0, ty2: i_64 },
+    //         Load { rslt: _2, ty: i_64, ptr: rs1 },
+    //         Add { rslt: _3, ty: i_64, op1: _2, op2: imm },
+    //         Getdataptr { rslt: _4, ty: i_64, addr: _3 },
+    //         Bitcast { rslt: _5, ty: i_8, val: _4, ty2: i_64 },
+    //         Store { ty: i_64, val: _1, ptr: _5 },
+    //         
+    //     },
+        
+        
+    //     FmvXD {
+    //         rd,
+    //         frs1,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Bitcast { rslt: _1, ty: _d, val: _0, ty2: i_64 },
+    //         Store { ty: i_64, val: _1, ptr: rd },
+    //         
+    //     },
+    //     FmvDX {
+    //         frd,
+    //         rs1,
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Bitcast { rslt: _1, ty: i_64, val: _0, ty2: _d },
+    //         Store { ty: _d, val: _1, ptr: frd },
+    //         
+    //     },
+    //     FmvXW {
+    //         rd,
+    //         frs1,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Bitcast { rslt: _1, ty: _d, val: _0, ty2: i_64 },
+    //         Store { ty: i_64, val: _1, ptr: rd },
+    //         
+    //     },
+    //     FmvWX {
+    //         frd,
+    //         rs1,
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Bitcast { rslt: _1, ty: i_64, val: _0, ty2: _d },
+    //         Store { ty: _d, val: _1, ptr: frd },
+    //         
+    //     },
+    //     FmulD {
+    //         frd,
+    //         frs1,
+    //         frs2,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fmul { rslt: _2, ty: _d, op1: _0, op2: _1 },
+    //         Store { ty: _d, val: _2, ptr: frd },
+    //         
+    //     },
+    //     FsubD {
+    //         frd,
+    //         frs1,
+    //         frs2,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fsub { rslt: _2, ty: _d, op1: _0, op2: _1 },
+    //         Store { ty: _d, val: _2, ptr: frd },
+    //         
+    //     },
+    //     FaddD {
+    //         frd,
+    //         frs1,
+    //         frs2,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fadd { rslt: _2, ty: _d, op1: _0, op2: _1 },
+    //         Store { ty: _d, val: _2, ptr: frd },
+    //         
+    //     },
+    //     FnegD {
+    //         frd,
+    //         frs1,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Fneg { rslt: _1, ty: _d, op1: _0 },
+    //         Store { ty: _d, val: _1, ptr: frd },
+    //         
+    //     },
+    //     FmsubD {
+    //         frd,
+    //         frs1,
+    //         frs2,
+    //         frs3,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Load { rslt: _2, ty: _d, ptr: frs3 },
+    //         Fmul { rslt: _3, ty: _d, op1: _0, op2: _1 },
+    //         Fsub { rslt: _4, ty: _d, op1: _3, op2: _2 },
+    //         Store { ty: _d, val: _4, ptr: frd },
+    //         
+    //     },
+    //     FnmsubD {
+    //         frd,
+    //         frs1,
+    //         frs2,
+    //         frs3,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Load { rslt: _2, ty: _d, ptr: frs3 },
+    //         Fmul { rslt: _3, ty: _d, op1: _0, op2: _1 },
+    //         Fneg { rslt: _4, ty: _d, op1: _3 },
+    //         Fadd { rslt: _5, ty: _d, op1: _4, op2: _2 },
+    //         Store { ty: _d, val: _5, ptr: frd },
+    //         
+    //     },
+    //     FmulS {
+    //         frd,
+    //         frs1,
+    //         frs2,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fmul { rslt: _2, ty: _d, op1: _0, op2: _1 },
+    //         Store { ty: _d, val: _2, ptr: frd },
+    //         
+    //     },
+    //     FdivD {
+    //         frd,
+    //         frs1,
+    //         frs2,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fdiv { rslt: _2, ty: _d, op1: _0, op2: _1 },
+    //         Store { ty: _d, val: _2, ptr: frd },
+    //         
+    //     },
+    //     FdivS {
+    //         frd,
+    //         frs1,
+    //         frs2,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fdiv { rslt: _2, ty: _d, op1: _0, op2: _1 },
+    //         Store { ty: _d, val: _2, ptr: frd },
+    //         
+    //     },
+
+    //     FcvtSL {
+    //         frd,
+    //         rs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Sitofp { rslt: _1, ty: i_64, val: _0, ty2: _d },
+    //         Store { ty: _d, val: _1, ptr: frd },
+    //         
+    //     },
+    //     FcvtDWu {
+    //         frd,
+    //         rs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Uitofp { rslt: _1, ty: i_64, val: _0, ty2: _d },
+    //         Store { ty: _d, val: _1, ptr: frd },
+    //         
+    //     },
+    //     FcvtDLu {
+    //         frd,
+    //         rs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Uitofp { rslt: _1, ty: i_64, val: _0, ty2: _d },
+    //         Store { ty: _d, val: _1, ptr: frd },
+    //         
+    //     },
+    //     FcvtDW {
+    //         frd,
+    //         rs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Sitofp { rslt: _1, ty: i_64, val: _0, ty2: _d },
+    //         Store { ty: _d, val: _1, ptr: frd },
+    //         
+    //     },
+    //     FcvtDL {
+    //         frd,
+    //         rs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Sitofp { rslt: _1, ty: i_64, val: _0, ty2: _d },
+    //         Store { ty: _d, val: _1, ptr: frd },
+    //         
+    //     },
+    //     FcvtWD {
+    //         rd,
+    //         frs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Fptosi { rslt: _1, ty: _d, val: _0, ty2: i_64 },
+    //         Store { ty: i_64, val: _1, ptr: rd },
+    //         
+    //     },
+    //     FcvtLD {
+    //         rd,
+    //         frs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Fptosi { rslt: _1, ty: _d, val: _0, ty2: i_64 },
+    //         Store { ty: i_64, val: _1, ptr: rd },
+    //         
+    //     },
+    //     FcvtWuD {
+    //         rd,
+    //         frs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Fptoui { rslt: _1, ty: _d, val: _0, ty2: i_64 },
+    //         Store { ty: i_64, val: _1, ptr: rd },
+    //         
+    //     },
+    //     FcvtSW {
+    //         frd,
+    //         rs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Sitofp { rslt: _1, ty: i_64, val: _0, ty2: _d },
+    //         Store { ty: _d, val: _1, ptr: frd },
+    //         
+    //     },
+    //     FcvtDS {
+    //         frd,
+    //         frs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Store { ty: _d, val: _0, ptr: frd },
+    //         
+    //     },
+    //     FcvtSD {
+    //         frd,
+    //         frs1,
+    //         rm,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Store { ty: _d, val: _0, ptr: frd },
+    //         
+    //     },
+
+    //     FmvD {
+    //         frd,
+    //         frs1,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Store { ty: _d, val: _0, ptr: frd },
+    //         
+    //     },
+    //     FeqD {
+    //         rd,
+    //         frs1,
+    //         frs2,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fcmp { rslt: _2, fcond: oeq, ty: _d, op1: _0, op2: _1 },
+    //         Zext { rslt: _3, ty: i_1, val: _2, ty2: i_64 },
+    //         Store { ty: i_64, val: _3, ptr: rd },
+    //         
+    //     },
+    //     FltD {
+    //         rd,
+    //         frs1,
+    //         frs2,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fcmp { rslt: _2, fcond: olt, ty: _d, op1: _0, op2: _1 },
+    //         Zext { rslt: _3, ty: i_1, val: _2, ty2: i_64 },
+    //         Store { ty: i_64, val: _3, ptr: rd },
+    //         
+    //     },
+    //     FleD {
+    //         rd,
+    //         frs1,
+    //         frs2,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fcmp { rslt: _2, fcond: ole, ty: _d, op1: _0, op2: _1 },
+    //         Zext { rslt: _3, ty: i_1, val: _2, ty2: i_64 },
+    //         Store { ty: i_64, val: _3, ptr: rd },
+    //         
+    //     },
+    //     FeqS {
+    //         rd,
+    //         frs1,
+    //         frs2,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fcmp { rslt: _2, fcond: oeq, ty: _d, op1: _0, op2: _1 },
+    //         Zext { rslt: _3, ty: i_1, val: _2, ty2: i_64 },
+    //         Store { ty: i_64, val: _3, ptr: rd },
+    //         
+    //     },
+    //     FltS {
+    //         rd,
+    //         frs1,
+    //         frs2,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fcmp { rslt: _2, fcond: olt, ty: _d, op1: _0, op2: _1 },
+    //         Zext { rslt: _3, ty: i_1, val: _2, ty2: i_64 },
+    //         Store { ty: i_64, val: _3, ptr: rd },
+    //         
+    //     },
+    //     FleS {
+    //         rd,
+    //         frs1,
+    //         frs2,
+    //     } => {
+    //         Load { rslt: _0, ty: _d, ptr: frs1 },
+    //         Load { rslt: _1, ty: _d, ptr: frs2 },
+    //         Fcmp { rslt: _2, fcond: ole, ty: _d, op1: _0, op2: _1 },
+    //         Zext { rslt: _3, ty: i_1, val: _2, ty2: i_64 },
+    //         Store { ty: i_64, val: _3, ptr: rd },
+    //         
+    //     },
     );
 
-    // RV::Inst::Lui {
-    //     address,
-    //     is_compressed,
-    //     rd,
-    //     imm,
-    // } => {
-    //     let _0 = Value::Temp(address, 0);
-    //     let _1 = Value::Temp(address, 1);
-    //     let RV::Addr(addr) = address;
-    //     let len = if is_compressed { 2 } else { 4 };
-    //     let next_pc = Value::Addr(RV::Addr(addr + len));
-    //     vec![
-    //         Inst::Shl { rslt: _0, ty: Type::I32, op1: Value::Imm(imm), op2: Value::Imm(RV::Imm(12)) },
-    //         Inst::Sext { rslt: _1, ty1: Type::I32, val: _0, ty2: Type::I64 },
-    //         Inst::Store { ty: Type::I64, val: _1, ptr: Value::Reg(rd) },
-    //         Inst::Br { addr: next_pc },
-    //     ]
-    // }
 
-    // let insts = match rv_inst {
-    //     // RV32I
+    
 
-    //     RI::Auipc {
-    //         address,
-    //         raw,
-    //         rd,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Shl { rslt: _0, ty: _i64, op1: imm, op2: imm_12 },
-    //         Add { rslt: _1, ty: _i64, op1: _0, op2: address },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Jal {
-    //         address,
-    //         raw,
-    //         rd,
-    //         addr,
-    //     } => build_instructions! { address, raw,
-    //         Store { ty: _i64, val: next_pc, ptr: rd },
-    //         Ret { ty: _i64, val: addr },
-    //         // Call { addr: addr },
-    //         // UnconBr { addr: next_pc },
-    //     },
-    //     RI::Jalr {
-    //         address,
-    //         raw,
-    //         rd,
-    //         imm,
-    //         rs1,
-    //     } => {
-    //         // let default = Value::Address(Address(0x1));
-    //         // let targets: Vec<_>= self
-    //         //     .inter_targets
-    //         //     .clone()
-    //         //     .into_iter()
-    //         //     .map(Value::Address)
-    //         //     .collect();
-    //         //     // if targets.len() >= 300 {
-    //         //     //     println!("jalr {:?}", address);
-    //         //     // }
-    //         build_instructions! { address, raw,
-    //             Store { ty: _i64, val: next_pc, ptr: rd },
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             // Switch { ty: _i64, val: _1, dflt: default, tgts: targets },
-    //         Ret { ty: _i64, val: _1 },
-    //         }
-    //     }
-    //     RI::ImplicitJalr {
-    //         address,
-    //         raw,
-    //         imm,
-    //         rs1,
-    //     } => {
-    //         // let default = Value::Address(Address(0x1));
-    //         // let targets: Vec<_> = self
-    //         //     .inter_targets
-    //         //     .clone()
-    //         //     .into_iter()
-    //         //     .map(Value::Address)
-    //         //     .collect();
-    //         // if targets.len() >= 300 {
-    //         //     println!("ImplicitJalr {:?}", address);
-    //         // }
-    //         let rs2 = &Register::Ra;
-    //         build_instructions! { address, raw,
-    //             Store { ty: _i64, val: next_pc, ptr: rs2 },
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             // Switch { ty: _i64, val: _1, dflt: default, tgts: targets },
-    //         Ret { ty: _i64, val: _1 },
-    //         }
-    //     }
-    //     RI::Beq {
-    //         address,
-    //         raw,
-    //         rs1,
-    //         rs2,
-    //         addr,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Icmp { rslt: _2, cond: eq, ty: _i64, op1: _0, op2: _1 },
-    //         ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
-    //     },
-    //     RI::Bne {
-    //         address,
-    //         raw,
-    //         rs1,
-    //         rs2,
-    //         addr,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Icmp { rslt: _2, cond: ne, ty: _i64, op1: _0, op2: _1 },
-    //         ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
-    //     },
-    //     RI::Blt {
-    //         address,
-    //         raw,
-    //         rs1,
-    //         rs2,
-    //         addr,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Icmp { rslt: _2, cond: slt, ty: _i64, op1: _0, op2: _1 },
-    //         ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
-    //     },
-    //     RI::Bge {
-    //         address,
-    //         raw,
-    //         rs1,
-    //         rs2,
-    //         addr,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Icmp { rslt: _2, cond: sge, ty: _i64, op1: _0, op2: _1 },
-    //         ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
-    //     },
-    //     RI::Bltu {
-    //         address,
-    //         raw,
-    //         rs1,
-    //         rs2,
-    //         addr,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Icmp { rslt: _2, cond: ult, ty: _i64, op1: _0, op2: _1 },
-    //         ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
-    //     },
-    //     RI::Bgeu {
-    //         address,
-    //         raw,
-    //         rs1,
-    //         rs2,
-    //         addr,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Icmp { rslt: _2, cond: uge, ty: _i64, op1: _0, op2: _1 },
-    //         ConBr { cond: _2, iftrue: addr, iffalse: next_pc },
-    //     },
-    //     RI::Lb {
-    //         address,
-    //         raw,
-    //         rd,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     build_instructions! { address, raw,
-    //         //         Loadstack { rslt: _0, ty: _i8, stk: stk },
-    //         //         Sext { rslt: _1, ty: _i8, val: _0, ty2: _i64 },
-    //         //         Store { ty: _i64, val: _1, ptr: rd },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             Getdataptr { rslt: _2, ty: _i64, addr: _1 },
-    //             Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i8 },
-    //             Load { rslt: _4, ty: _i8, ptr: _3 },
-    //             Sext { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
-    //             Store { ty: _i64, val: _5, ptr: rd },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Lh {
-    //         address,
-    //         raw,
-    //         rd,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     build_instructions! { address, raw,
-    //         //         Loadstack { rslt: _0, ty: _i16, stk: stk },
-    //         //         Sext { rslt: _1, ty: _i16, val: _0, ty2: _i64 },
-    //         //         Store { ty: _i64, val: _1, ptr: rd },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             Getdataptr { rslt: _2, ty: _i64, addr: _1 },
-    //             Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i16 },
-    //             Load { rslt: _4, ty: _i16, ptr: _3 },
-    //             Sext { rslt: _5, ty: _i16, val: _4, ty2: _i64 },
-    //             Store { ty: _i64, val: _5, ptr: rd },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Lw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     build_instructions! { address, raw,
-    //         //         Loadstack { rslt: _0, ty: _i32, stk: stk },
-    //         //         Sext { rslt: _1, ty: _i32, val: _0, ty2: _i64 },
-    //         //         Store { ty: _i64, val: _1, ptr: rd },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             Getdataptr { rslt: _2, ty: _i64, addr: _1 },
-    //             Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i32 },
-    //             Load { rslt: _4, ty: _i32, ptr: _3 },
-    //             Sext { rslt: _5, ty: _i32, val: _4, ty2: _i64 },
-    //             Store { ty: _i64, val: _5, ptr: rd },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Lbu {
-    //         address,
-    //         raw,
-    //         rd,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     build_instructions! { address, raw,
-    //         //         Loadstack { rslt: _0, ty: _i8, stk: stk },
-    //         //         Zext { rslt: _1, ty: _i8, val: _0, ty2: _i64 },
-    //         //         Store { ty: _i64, val: _1, ptr: rd },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             Getdataptr { rslt: _2, ty: _i64, addr: _1 },
-    //             Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i8 },
-    //             Load { rslt: _4, ty: _i8, ptr: _3 },
-    //             Zext { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
-    //             Store { ty: _i64, val: _5, ptr: rd },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Lhu {
-    //         address,
-    //         raw,
-    //         rd,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     build_instructions! { address, raw,
-    //         //         Loadstack { rslt: _0, ty: _i16, stk: stk },
-    //         //         Zext { rslt: _1, ty: _i16, val: _0, ty2: _i64 },
-    //         //         Store { ty: _i64, val: _1, ptr: rd },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             Getdataptr { rslt: _2, ty: _i64, addr: _1 },
-    //             Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i16 },
-    //             Load { rslt: _4, ty: _i16, ptr: _3 },
-    //             Zext { rslt: _5, ty: _i16, val: _4, ty2: _i64 },
-    //             Store { ty: _i64, val: _5, ptr: rd },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Sb {
-    //         address,
-    //         raw,
-    //         rs2,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     self.stack.entry(stk).or_default().insert(Type::I8);
-    //         //     build_instructions! { address, raw,
-    //         //         Load { rslt: _0, ty: _i64, ptr: rs2 },
-    //         //         Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i8 },
-    //         //         Storestack { ty: _i8, val: _1, stk: stk },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs2 },
-    //             Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i8 },
-    //             Load { rslt: _2, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _3, ty: _i64, op1: _2, op2: imm },
-    //             Getdataptr { rslt: _4, ty: _i64, addr: _3 },
-    //             Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i8 },
-    //             Store { ty: _i8, val: _1, ptr: _5 },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Sh {
-    //         address,
-    //         raw,
-    //         rs2,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     self.stack.entry(stk).or_default().insert(Type::I16);
-    //         //     build_instructions! { address, raw,
-    //         //         Load { rslt: _0, ty: _i64, ptr: rs2 },
-    //         //         Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i16 },
-    //         //         Storestack { ty: _i16, val: _1, stk: stk },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs2 },
-    //             Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i16 },
-    //             Load { rslt: _2, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _3, ty: _i64, op1: _2, op2: imm },
-    //             Getdataptr { rslt: _4, ty: _i64, addr: _3 },
-    //             Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i16 },
-    //             Store { ty: _i16, val: _1, ptr: _5 },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Sw {
-    //         address,
-    //         raw,
-    //         rs2,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     self.stack.entry(stk).or_default().insert(Type::I32);
-    //         //     build_instructions! { address, raw,
-    //         //         Load { rslt: _0, ty: _i64, ptr: rs2 },
-    //         //         Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i32 },
-    //         //         Storestack { ty: _i32, val: _1, stk: stk },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs2 },
-    //             Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i32 },
-    //             Load { rslt: _2, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _3, ty: _i64, op1: _2, op2: imm },
-    //             Getdataptr { rslt: _4, ty: _i64, addr: _3 },
-    //             Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i32 },
-    //             Store { ty: _i32, val: _1, ptr: _5 },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Addi {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Slti {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Icmp { rslt: _1, cond: slt, ty: _i64, op1: _0, op2: imm },
-    //         Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Sltiu {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Icmp { rslt: _1, cond: ult, ty: _i64, op1: _0, op2: imm },
-    //         Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Xori {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Xor { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Ori {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Or { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Andi {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         And { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Slli {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Shl { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Srli {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Lshr { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Srai {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Ashr { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Add {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Add { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Sub {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Sub { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Sll {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Shl { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Slt {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Icmp { rslt: _2, cond: slt, ty: _i64, op1: _0, op2: _1 },
-    //         Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Sltu {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Icmp { rslt: _2, cond: ult, ty: _i64, op1: _0, op2: _1 },
-    //         Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Xor {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Xor { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Srl {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Lshr { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Sra {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Ashr { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Or {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Or { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::And {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         And { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Fence { address, raw, .. } => build_instructions! { address, raw,
-    //         Fence { ord: acq_rel },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Ecall { address, raw, .. } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: a7 },
-    //         Load { rslt: _1, ty: _i64, ptr: a0 },
-    //         Load { rslt: _2, ty: _i64, ptr: a1 },
-    //         Load { rslt: _3, ty: _i64, ptr: a2 },
-    //         Load { rslt: _4, ty: _i64, ptr: a3 },
-    //         Load { rslt: _5, ty: _i64, ptr: a4 },
-    //         Load { rslt: _6, ty: _i64, ptr: a5 },
-    //         Syscall { rslt: _7, ty: _i64, nr: _0, arg1: _1, arg2: _2, arg3: _3, arg4: _4, arg5: _5, arg6: _6 },
-    //         Store { ty: _i64, val: _7, ptr: a0 },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Ebreak { address, raw, .. } => build_instructions! { address, raw,
-    //         Unreachable { addr: address },
-    //         // UnconBr { addr: next_pc },
-    //     }, //panic!("`ebreak` is not implemented"),
-
-    //     // RV64I
-    //     RI::Lwu {
-    //         address,
-    //         raw,
-    //         rd,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     build_instructions! { address, raw,
-    //         //         Loadstack { rslt: _0, ty: _i32, stk: stk },
-    //         //         Zext { rslt: _1, ty: _i32, val: _0, ty2: _i64 },
-    //         //         Store { ty: _i64, val: _1, ptr: rd },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             Getdataptr { rslt: _2, ty: _i64, addr: _1 },
-    //             Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i32 },
-    //             Load { rslt: _4, ty: _i32, ptr: _3 },
-    //             Zext { rslt: _5, ty: _i32, val: _4, ty2: _i64 },
-    //             Store { ty: _i64, val: _5, ptr: rd },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Ld {
-    //         address,
-    //         raw,
-    //         rd,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     build_instructions! { address, raw,
-    //         //         Loadstack { rslt: _0, ty: _i64, stk: stk },
-    //         //         Zext { rslt: _1, ty: _i64, val: _0, ty2: _i64 },
-    //         //         Store { ty: _i64, val: _1, ptr: rd },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             Getdataptr { rslt: _2, ty: _i64, addr: _1 },
-    //             Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i64 },
-    //             Load { rslt: _4, ty: _i64, ptr: _3 },
-    //             Sext { rslt: _5, ty: _i64, val: _4, ty2: _i64 },
-    //             Store { ty: _i64, val: _5, ptr: rd },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Sd {
-    //         address,
-    //         raw,
-    //         rs2,
-    //         imm,
-    //         rs1,
-    //     } => match rs1 {
-    //         // Register::Sp | Register::S0 => {
-    //         //     let Address(addr) = match rs1 {
-    //         //         Register::Sp => self.sp,
-    //         //         Register::S0 => self.fp,
-    //         //         _ => unreachable!(),
-    //         //     };
-    //         //     let Immediate(imm) = *imm;
-    //         //     let stk = if imm >= 0 {
-    //         //         Address(addr + imm as u64)
-    //         //     } else {
-    //         //         Address(addr - (-imm) as u64)
-    //         //     };
-    //         //     self.stack.entry(stk).or_default().insert(Type::I64);
-    //         //     build_instructions! { address, raw,
-    //         //         Load { rslt: _0, ty: _i64, ptr: rs2 },
-    //         //         Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i64 },
-    //         //         Storestack { ty: _i64, val: _1, stk: stk },
-    //         //     }
-    //         // }
-    //         _ => build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs2 },
-    //             Trunc { rslt: _1, ty: _i64, val: _0, ty2: _i64 },
-    //             Load { rslt: _2, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _3, ty: _i64, op1: _2, op2: imm },
-    //             Getdataptr { rslt: _4, ty: _i64, addr: _3 },
-    //             Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
-    //             Store { ty: _i64, val: _1, ptr: _5 },
-    //             UnconBr { addr: next_pc },
-    //         },
-    //     },
-    //     RI::Addiw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Trunc { rslt: _2, ty: _i64, val: _1, ty2: _i32 },
-    //         Sext { rslt: _3, ty: _i32, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Slliw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Shl { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Trunc { rslt: _2, ty: _i64, val: _1, ty2: _i32 },
-    //         Sext { rslt: _3, ty: _i32, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Srliw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Lshr { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Trunc { rslt: _2, ty: _i64, val: _1, ty2: _i32 },
-    //         Sext { rslt: _3, ty: _i32, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Sraiw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Ashr { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Trunc { rslt: _2, ty: _i64, val: _1, ty2: _i32 },
-    //         Sext { rslt: _3, ty: _i32, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Addw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Add { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
-    //         Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
-    //         Store { ty: _i64, val: _4, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Subw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Sub { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
-    //         Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
-    //         Store { ty: _i64, val: _4, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Sllw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Shl { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
-    //         Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
-    //         Store { ty: _i64, val: _4, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Srlw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Lshr { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
-    //         Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
-    //         Store { ty: _i64, val: _4, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Sraw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Ashr { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
-    //         Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
-    //         Store { ty: _i64, val: _4, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
+    
+        
+        
 
     //     // Pseudoinstructions
-    //     RI::Nop { address, raw } => build_instructions! { address, raw,
-    //         UnconBr { addr: next_pc },
+    //     Nop { address, raw } => {
+    //         
     //     },
-    //     RI::Li {
-    //         address,
-    //         raw,
+    //     Li {
     //         rd,
     //         imm,
-    //     } => build_instructions! { address, raw,
-    //         Store { ty: _i64, val: imm, ptr: rd },
-    //         UnconBr { addr: next_pc },
+    //     } => {
+    //         Store { ty: i_64, val: imm, ptr: rd },
+    //         
     //     },
-    //     RI::Mv {
-    //         address,
-    //         raw,
+    //     Mv {
     //         rd,
     //         rs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Store { ty: _i64, val: _0, ptr: rd },
-    //         UnconBr { addr: next_pc },
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Store { ty: i_64, val: _0, ptr: rd },
+    //         
     //     },
-    //     RI::Not {
-    //         address,
-    //         raw,
+    //     Not {
     //         rd,
     //         rs1,
     //     } => {
     //         let imm = &Immediate(-1);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Xor { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             Store { ty: _i64, val: _1, ptr: rd },
-    //             UnconBr { addr: next_pc },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Xor { rslt: _1, ty: i_64, op1: _0, op2: imm },
+    //             Store { ty: i_64, val: _1, ptr: rd },
+    //             
     //         }
     //     }
-    //     RI::Neg {
-    //         address,
-    //         raw,
+    //     Neg {
     //         rd,
     //         rs1,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Sub { rslt: _1, ty: _i64, op1: imm, op2: _0 },
-    //             Store { ty: _i64, val: _1, ptr: rd },
-    //             UnconBr { addr: next_pc },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Sub { rslt: _1, ty: i_64, op1: imm, op2: _0 },
+    //             Store { ty: i_64, val: _1, ptr: rd },
+    //             
     //         }
     //     }
-    //     RI::Negw {
-    //         address,
-    //         raw,
+    //     Negw {
     //         rd,
     //         rs1,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Sub { rslt: _1, ty: _i64, op1: imm, op2: _0 },
-    //             Trunc { rslt: _2, ty: _i64, val: _1, ty2: _i32 },
-    //             Sext { rslt: _3, ty: _i32, val: _2, ty2: _i64 },
-    //             Store { ty: _i64, val: _3, ptr: rd },
-    //             UnconBr { addr: next_pc },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Sub { rslt: _1, ty: i_64, op1: imm, op2: _0 },
+    //             Trunc { rslt: _2, ty: i_64, val: _1, ty2: i_32 },
+    //             Sext { rslt: _3, ty: i_32, val: _2, ty2: i_64 },
+    //             Store { ty: i_64, val: _3, ptr: rd },
+    //             
     //         }
     //     }
-    //     RI::SextW {
-    //         address,
-    //         raw,
+    //     SextW {
     //         rd,
     //         rs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Store { ty: _i64, val: _0, ptr: rd },
-    //         UnconBr { addr: next_pc },
+    //     } => {
+    //         Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //         Store { ty: i_64, val: _0, ptr: rd },
+    //         
     //     },
-    //     RI::Seqz {
-    //         address,
-    //         raw,
+    //     Seqz {
     //         rd,
     //         rs1,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Icmp { rslt: _1, cond: eq, ty: _i64, op1: _0, op2: imm },
-    //             Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
-    //             Store { ty: _i64, val: _2, ptr: rd },
-    //             UnconBr { addr: next_pc },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Icmp { rslt: _1, cond: eq, ty: i_64, op1: _0, op2: imm },
+    //             Zext { rslt: _2, ty: i_1, val: _1, ty2: i_64 },
+    //             Store { ty: i_64, val: _2, ptr: rd },
+    //             
     //         }
     //     }
-    //     RI::Snez {
-    //         address,
-    //         raw,
+    //     Snez {
     //         rd,
     //         rs1,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Icmp { rslt: _1, cond: ne, ty: _i64, op1: _0, op2: imm },
-    //             Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
-    //             Store { ty: _i64, val: _2, ptr: rd },
-    //             UnconBr { addr: next_pc },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Icmp { rslt: _1, cond: ne, ty: i_64, op1: _0, op2: imm },
+    //             Zext { rslt: _2, ty: i_1, val: _1, ty2: i_64 },
+    //             Store { ty: i_64, val: _2, ptr: rd },
+    //             
     //         }
     //     }
-    //     RI::Sltz {
-    //         address,
-    //         raw,
+    //     Sltz {
     //         rd,
     //         rs1,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Icmp { rslt: _1, cond: slt, ty: _i64, op1: _0, op2: imm },
-    //             Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
-    //             Store { ty: _i64, val: _2, ptr: rd },
-    //             UnconBr { addr: next_pc },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Icmp { rslt: _1, cond: slt, ty: i_64, op1: _0, op2: imm },
+    //             Zext { rslt: _2, ty: i_1, val: _1, ty2: i_64 },
+    //             Store { ty: i_64, val: _2, ptr: rd },
+    //             
     //         }
     //     }
-    //     RI::Sgtz {
-    //         address,
-    //         raw,
+    //     Sgtz {
     //         rd,
     //         rs1,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Icmp { rslt: _1, cond: sgt, ty: _i64, op1: _0, op2: imm },
-    //             Zext { rslt: _2, ty: _i1, val: _1, ty2: _i64 },
-    //             Store { ty: _i64, val: _2, ptr: rd },
-    //             UnconBr { addr: next_pc },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Icmp { rslt: _1, cond: sgt, ty: i_64, op1: _0, op2: imm },
+    //             Zext { rslt: _2, ty: i_1, val: _1, ty2: i_64 },
+    //             Store { ty: i_64, val: _2, ptr: rd },
+    //             
     //         }
     //     }
 
-    //     RI::Beqz {
-    //         address,
-    //         raw,
+    //     Beqz {
     //         rs1,
     //         addr,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Icmp { rslt: _1, cond: eq, ty: _i64, op1: _0, op2: imm },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Icmp { rslt: _1, cond: eq, ty: i_64, op1: _0, op2: imm },
     //             ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
     //         }
     //     }
-    //     RI::Bnez {
-    //         address,
-    //         raw,
+    //     Bnez {
     //         rs1,
     //         addr,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Icmp { rslt: _1, cond: ne, ty: _i64, op1: _0, op2: imm },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Icmp { rslt: _1, cond: ne, ty: i_64, op1: _0, op2: imm },
     //             ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
     //         }
     //     }
-    //     RI::Blez {
-    //         address,
-    //         raw,
+    //     Blez {
     //         rs1,
     //         addr,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Icmp { rslt: _1, cond: sle, ty: _i64, op1: _0, op2: imm },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Icmp { rslt: _1, cond: sle, ty: i_64, op1: _0, op2: imm },
     //             ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
     //         }
     //     }
-    //     RI::Bgez {
-    //         address,
-    //         raw,
+    //     Bgez {
     //         rs1,
     //         addr,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Icmp { rslt: _1, cond: sge, ty: _i64, op1: _0, op2: imm },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Icmp { rslt: _1, cond: sge, ty: i_64, op1: _0, op2: imm },
     //             ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
     //         }
     //     }
-    //     RI::Bltz {
-    //         address,
-    //         raw,
+    //     Bltz {
     //         rs1,
     //         addr,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Icmp { rslt: _1, cond: slt, ty: _i64, op1: _0, op2: imm },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Icmp { rslt: _1, cond: slt, ty: i_64, op1: _0, op2: imm },
     //             ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
     //         }
     //     }
-    //     RI::Bgtz {
-    //         address,
-    //         raw,
+    //     Bgtz {
     //         rs1,
     //         addr,
     //     } => {
     //         let imm = &Immediate(0);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Icmp { rslt: _1, cond: sgt, ty: _i64, op1: _0, op2: imm },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Icmp { rslt: _1, cond: sgt, ty: i_64, op1: _0, op2: imm },
     //             ConBr { cond: _1, iftrue: addr, iffalse: next_pc },
     //         }
     //     }
 
-    //     // RI::J { address, raw, addr } => build_instructions! { address, raw,
-    //     //     Ret { ty: _i64, val: addr },
+    //     // J { addr } => {
+    //     //     Ret { ty: i_64, val: addr },
     //     // },
-    //     RI::J { address, raw, addr } => {
+    //     J { addr } => {
     //         if func_targets.contains(&addr) {
-    //             build_instructions! { address, raw,
+    //             {
     //                 // Call { addr: addr },
-    //                 Ret{ty: _i64, val: addr},
+    //                 Ret{ty: i_64, val: addr},
     //             }
     //         } else {
-    //             build_instructions! { address, raw,
+    //             {
     //                 UnconBr { addr: addr },
-    //                 // Ret{ty: _i64, val: addr},
+    //                 // Ret{ty: i_64, val: addr},
     //             }
     //         }
     //     }
-    //     RI::Jr { address, raw, rs1 } => {
+    //     Jr { rs1 } => {
     //         // let default = Value::Address(Address(0x1));
     //         // let targets: Vec<_> = self
     //         //     .intra_targets.get(&func).cloned().unwrap_or_default()
@@ -1245,15 +1166,13 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
     //         //     // if targets.len() >= 300 {
     //         //     //     println!("jr {:?} - {}", address, targets.len());
     //         //     // }
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             // Switch { ty: _i64, val: _0, dflt: default, tgts: targets },
-    //         Ret { ty: _i64, val: _0 },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             // Switch { ty: i_64, val: _0, dflt: default, tgts: targets },
+    //         Ret { ty: i_64, val: _0 },
     //         }
     //     }
-    //     RI::OffsetJr {
-    //         address,
-    //         raw,
+    //     OffsetJr {
     //         imm,
     //         rs1,
     //     } => {
@@ -1266,14 +1185,14 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
     //         //     // if targets.len() >= 300 {
     //         //     //     println!("offsetjr {:?}", address);
     //         //     // }
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             // Switch { ty: _i64, val: _1, dflt: default, tgts: targets },
-    //         Ret { ty: _i64, val: _1 },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+    //             // Switch { ty: i_64, val: _1, dflt: default, tgts: targets },
+    //         Ret { ty: i_64, val: _1 },
     //         }
     //     }
-    //     RI::PseudoJalr { address, raw, rs1 } => {
+    //     PseudoJalr { rs1 } => {
     //         // let default = Value::Address(Address(0x1));
     //         // let targets: Vec<_> = self
     //         //     .inter_targets
@@ -1287,15 +1206,15 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
     //         //     // }
     //         let imm = &Immediate(0);
     //         let rs2 = &Register::Ra;
-    //         build_instructions! { address, raw,
-    //             Store { ty: _i64, val: next_pc, ptr: rs2 },
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             // Switch { ty: _i64, val: _1, dflt: default, tgts: targets },
-    //         Ret { ty: _i64, val: _1 },
+    //         {
+    //             Store { ty: i_64, val: next_pc, ptr: rs2 },
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+    //             // Switch { ty: i_64, val: _1, dflt: default, tgts: targets },
+    //         Ret { ty: i_64, val: _1 },
     //         }
     //     }
-    //     RI::Ret { address, raw } => {
+    //     Ret { address, raw } => {
     //         // let default = Value::Address(Address(0x1));
     //         // let mut targets: Vec<_> = self
     //         //     .ret_targets.get(&func).cloned().unwrap_or_default();
@@ -1313,756 +1232,43 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
     //         //     .collect();
 
     //         let rs1 = &Register::Ra;
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             // Switch { ty: _i64, val: _0, dflt: default, tgts: targets },
-    //         Ret { ty: _i64, val: _0 },
+    //         {
+    //             Load { rslt: _0, ty: i_64, ptr: rs1 },
+    //             // Switch { ty: i_64, val: _0, dflt: default, tgts: targets },
+    //         Ret { ty: i_64, val: _0 },
     //         }
     //     }
 
-    //     RI::PseudoFence { address, raw } => build_instructions! { address, raw,
+    //     PseudoFence { address, raw } => {
     //         Fence { ord: acq_rel },
-    //         UnconBr { addr: next_pc },
+    //         
     //     },
 
     //     // Misc
-    //     RI::Unimp { address, .. } => Vec::new(), // panic!("Encounter `unimp` at `{}`", address),
-    //     RI::Unknown { address, .. } => Vec::new(), // panic!("Encounter `unknown` at `{}`", address),
+    //     Unimp { address, .. } => Vec::new(), // panic!("Encounter `unimp` at `{}`", address),
+    //     Unknown { address, .. } => Vec::new(), // panic!("Encounter `unknown` at `{}`", address),
 
-    //     // Ad Hoc
-    //     RI::Mul {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Mul { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Mulw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Mul { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
-    //         Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
-    //         Store { ty: _i64, val: _4, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Divw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Sdiv { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
-    //         Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
-    //         Store { ty: _i64, val: _4, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Divu {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Udiv { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Divuw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Udiv { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Div {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Sdiv { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Remu {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Urem { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Remw {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Srem { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Trunc { rslt: _3, ty: _i64, val: _2, ty2: _i32 },
-    //         Sext { rslt: _4, ty: _i32, val: _3, ty2: _i64 },
-    //         Store { ty: _i64, val: _4, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Rem {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //         Srem { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //         Store { ty: _i64, val: _2, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Mulhu {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //         rs2,
-    //     } => {
-    //         let imm = &Immediate(64);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Zext { rslt: _1, ty: _i64, val: _0, ty2: _i128 },
-    //             Load { rslt: _2, ty: _i64, ptr: rs2 },
-    //             Zext { rslt: _3, ty: _i64, val: _2, ty2: _i128 },
-    //             Mul { rslt: _4, ty: _i128, op1: _1, op2: _3 },
-    //             Lshr { rslt: _5, ty: _i128, op1: _4, op2: imm },
-    //             Trunc { rslt: _6, ty: _i128, val: _5, ty2: _i64 },
-    //             Store { ty: _i64, val: _6, ptr: rd },
-    //             UnconBr { addr: next_pc },
-    //         }
-    //     }
-
-    //     RI::Fld {
-    //         address,
-    //         raw,
-    //         frd,
-    //         imm,
-    //         rs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Getdataptr { rslt: _2, ty: _i64, addr: _1 },
-    //         Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i64 },
-    //         Load { rslt: _4, ty: _i64, ptr: _3 },
-    //         Bitcast { rslt: _5, ty: _i64, val: _4, ty2: _d },
-    //         Store { ty: _d, val: _5, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Fsd {
-    //         address,
-    //         raw,
-    //         frs2,
-    //         imm,
-    //         rs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs2 },
-    //         Bitcast { rslt: _1, ty: _d, val: _0, ty2: _i64 },
-    //         Load { rslt: _2, ty: _i64, ptr: rs1 },
-    //         Add { rslt: _3, ty: _i64, op1: _2, op2: imm },
-    //         Getdataptr { rslt: _4, ty: _i64, addr: _3 },
-    //         Bitcast { rslt: _5, ty: _i8, val: _4, ty2: _i64 },
-    //         Store { ty: _i64, val: _1, ptr: _5 },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Flw {
-    //         address,
-    //         raw,
-    //         frd,
-    //         imm,
-    //         rs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Add { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //         Getdataptr { rslt: _2, ty: _i64, addr: _1 },
-    //         Bitcast { rslt: _3, ty: _i8, val: _2, ty2: _i32 },
-    //         Load { rslt: _4, ty: _i32, ptr: _3 },
-    //         Bitcast { rslt: _5, ty: _i32, val: _4, ty2: _f },
-    //         Fpext { rslt: _6, ty: _f, val: _5, ty2: _d },
-    //         Store { ty: _d, val: _6, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Fsw {
-    //         address,
-    //         raw,
-    //         frs2,
-    //         imm,
-    //         rs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs2 },
-    //         Fptrunc { rslt: _1, ty: _d, val: _0, ty2: _f },
-    //         Bitcast { rslt: _2, ty: _f, val: _1, ty2: _i32 },
-    //         Load { rslt: _3, ty: _i64, ptr: rs1 },
-    //         Add { rslt: _4, ty: _i64, op1: _3, op2: imm },
-    //         Getdataptr { rslt: _5, ty: _i64, addr: _4 },
-    //         Bitcast { rslt: _6, ty: _i8, val: _5, ty2: _i32 },
-    //         Store { ty: _i32, val: _2, ptr: _6 },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FmvXD {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Bitcast { rslt: _1, ty: _d, val: _0, ty2: _i64 },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FmvDX {
-    //         address,
-    //         raw,
-    //         frd,
-    //         rs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Bitcast { rslt: _1, ty: _i64, val: _0, ty2: _d },
-    //         Store { ty: _d, val: _1, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FmvXW {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Bitcast { rslt: _1, ty: _d, val: _0, ty2: _i64 },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FmvWX {
-    //         address,
-    //         raw,
-    //         frd,
-    //         rs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Bitcast { rslt: _1, ty: _i64, val: _0, ty2: _d },
-    //         Store { ty: _d, val: _1, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FmulD {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         frs2,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fmul { rslt: _2, ty: _d, op1: _0, op2: _1 },
-    //         Store { ty: _d, val: _2, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FsubD {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         frs2,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fsub { rslt: _2, ty: _d, op1: _0, op2: _1 },
-    //         Store { ty: _d, val: _2, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FaddD {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         frs2,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fadd { rslt: _2, ty: _d, op1: _0, op2: _1 },
-    //         Store { ty: _d, val: _2, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FnegD {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Fneg { rslt: _1, ty: _d, op1: _0 },
-    //         Store { ty: _d, val: _1, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FmaddD {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         frs2,
-    //         frs3,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Load { rslt: _2, ty: _d, ptr: frs3 },
-    //         Fmul { rslt: _3, ty: _d, op1: _0, op2: _1 },
-    //         Fadd { rslt: _4, ty: _d, op1: _3, op2: _2 },
-    //         Store { ty: _d, val: _4, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FmsubD {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         frs2,
-    //         frs3,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Load { rslt: _2, ty: _d, ptr: frs3 },
-    //         Fmul { rslt: _3, ty: _d, op1: _0, op2: _1 },
-    //         Fsub { rslt: _4, ty: _d, op1: _3, op2: _2 },
-    //         Store { ty: _d, val: _4, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FnmsubD {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         frs2,
-    //         frs3,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Load { rslt: _2, ty: _d, ptr: frs3 },
-    //         Fmul { rslt: _3, ty: _d, op1: _0, op2: _1 },
-    //         Fneg { rslt: _4, ty: _d, op1: _3 },
-    //         Fadd { rslt: _5, ty: _d, op1: _4, op2: _2 },
-    //         Store { ty: _d, val: _5, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FmulS {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         frs2,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fmul { rslt: _2, ty: _d, op1: _0, op2: _1 },
-    //         Store { ty: _d, val: _2, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FdivD {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         frs2,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fdiv { rslt: _2, ty: _d, op1: _0, op2: _1 },
-    //         Store { ty: _d, val: _2, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FdivS {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         frs2,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fdiv { rslt: _2, ty: _d, op1: _0, op2: _1 },
-    //         Store { ty: _d, val: _2, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-
-    //     RI::FcvtSL {
-    //         address,
-    //         raw,
-    //         frd,
-    //         rs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
-    //         Store { ty: _d, val: _1, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FcvtDWu {
-    //         address,
-    //         raw,
-    //         frd,
-    //         rs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Uitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
-    //         Store { ty: _d, val: _1, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FcvtDLu {
-    //         address,
-    //         raw,
-    //         frd,
-    //         rs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Uitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
-    //         Store { ty: _d, val: _1, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FcvtDW {
-    //         address,
-    //         raw,
-    //         frd,
-    //         rs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
-    //         Store { ty: _d, val: _1, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FcvtDL {
-    //         address,
-    //         raw,
-    //         frd,
-    //         rs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
-    //         Store { ty: _d, val: _1, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FcvtWD {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Fptosi { rslt: _1, ty: _d, val: _0, ty2: _i64 },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FcvtLD {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Fptosi { rslt: _1, ty: _d, val: _0, ty2: _i64 },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FcvtWuD {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Fptoui { rslt: _1, ty: _d, val: _0, ty2: _i64 },
-    //         Store { ty: _i64, val: _1, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FcvtSW {
-    //         address,
-    //         raw,
-    //         frd,
-    //         rs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //         Sitofp { rslt: _1, ty: _i64, val: _0, ty2: _d },
-    //         Store { ty: _d, val: _1, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FcvtDS {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Store { ty: _d, val: _0, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FcvtSD {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //         rm,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Store { ty: _d, val: _0, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-
-    //     RI::FmvD {
-    //         address,
-    //         raw,
-    //         frd,
-    //         frs1,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Store { ty: _d, val: _0, ptr: frd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FeqD {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //         frs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fcmp { rslt: _2, fcond: oeq, ty: _d, op1: _0, op2: _1 },
-    //         Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FltD {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //         frs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fcmp { rslt: _2, fcond: olt, ty: _d, op1: _0, op2: _1 },
-    //         Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FleD {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //         frs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fcmp { rslt: _2, fcond: ole, ty: _d, op1: _0, op2: _1 },
-    //         Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FeqS {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //         frs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fcmp { rslt: _2, fcond: oeq, ty: _d, op1: _0, op2: _1 },
-    //         Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FltS {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //         frs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fcmp { rslt: _2, fcond: olt, ty: _d, op1: _0, op2: _1 },
-    //         Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::FleS {
-    //         address,
-    //         raw,
-    //         rd,
-    //         frs1,
-    //         frs2,
-    //     } => build_instructions! { address, raw,
-    //         Load { rslt: _0, ty: _d, ptr: frs1 },
-    //         Load { rslt: _1, ty: _d, ptr: frs2 },
-    //         Fcmp { rslt: _2, fcond: ole, ty: _d, op1: _0, op2: _1 },
-    //         Zext { rslt: _3, ty: _i1, val: _2, ty2: _i64 },
-    //         Store { ty: _i64, val: _3, ptr: rd },
-    //         UnconBr { addr: next_pc },
-    //     },
-
-    //     RI::Frrm { address, raw, .. } => build_instructions! { address, raw,
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Csrs { address, raw, .. } => build_instructions! { address, raw,
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Csrrw { address, raw, .. } => build_instructions! { address, raw,
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Csrr { address, raw, .. } => build_instructions! { address, raw,
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Csrsi { address, raw, .. } => build_instructions! { address, raw,
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Csrrsi { address, raw, .. } => build_instructions! { address, raw,
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Csrrci { address, raw, .. } => build_instructions! { address, raw,
-    //         UnconBr { addr: next_pc },
-    //     },
-    //     RI::Csrrs { address, raw, .. } => build_instructions! { address, raw,
-    //         UnconBr { addr: next_pc },
-    //     },
-
-    //     RI::ZextB {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs1,
-    //     } => {
-    //         let imm = &Immediate(255);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             And { rslt: _1, ty: _i64, op1: _0, op2: imm },
-    //             Store { ty: _i64, val: _1, ptr: rd },
-    //             UnconBr { addr: next_pc },
-    //         }
-    //     }
-
-    //     RI::AmoswapD {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs2,
-    //         rs1,
-    //         ..
-    //     } => {
-    //         let imm = &Immediate(255);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Store { ty: _i64, val: _0, ptr: rd },
-    //             Store { ty: _i64, val: _0, ptr: rs1 },
-    //             UnconBr { addr: next_pc },
-    //         }
-    //     }
-    //     RI::AmoaddD {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs2,
-    //         rs1,
-    //         ..
-    //     }
-    //     | RI::AmoaddW {
-    //         address,
-    //         raw,
-    //         rd,
-    //         rs2,
-    //         rs1,
-    //         ..
-    //     } => {
-    //         let imm = &Immediate(255);
-    //         build_instructions! { address, raw,
-    //             Load { rslt: _0, ty: _i64, ptr: rs1 },
-    //             Store { ty: _i64, val: _0, ptr: rd },
-    //             Load { rslt: _1, ty: _i64, ptr: rs2 },
-    //             Add { rslt: _2, ty: _i64, op1: _0, op2: _1 },
-    //             Store { ty: _i64, val: _2, ptr: rs1 },
-    //             UnconBr { addr: next_pc },
-    //         }
-    //     }
-    // };
 
     let insts = insts
         .into_iter()
         .filter_map(|inst| match inst {
-            Load {
+            Inst::Load {
                 rslt,
                 ty,
                 ptr: Value::Reg(RV::Reg::Zero),
-            } => Some(Add {
+            } => Some(Inst::Add {
                 rslt,
                 ty,
                 op1: Value::Imm(RV::Imm(0)),
                 op2: Value::Imm(RV::Imm(0)),
             }),
-            Store {
+            Inst::Store {
                 ptr: Value::Reg(RV::Reg::Zero),
                 ..
             } => None,
             inst => Some(inst),
         })
         .collect();
-
     InstBlock { rv_inst, insts }
 }
 
@@ -2091,7 +1297,7 @@ mod tests {
                             symbol: String::from("_start"),
                             address: Address(0x0),
                             instructions: vec![
-                                RI::$rv_inst {
+                                $rv_inst {
                                     address: Address(0x0),
                                     raw: Raw::new(""),
                                     $(
@@ -2125,7 +1331,7 @@ mod tests {
                 section: String::from(".text"),
                 symbol: String::from("_start"),
                 address: Address(0x0),
-                instructions: vec![RI::Addi {
+                instructions: vec![Addi {
                     address: Address(0x0),
                     raw: Raw::new(""),
                     rd: Register::Zero,
@@ -2142,7 +1348,7 @@ mod tests {
                 symbol: String::from("_start"),
                 address: Address(0x0),
                 instruction_blocks: vec![InstructionBlock {
-                    riscv_instruction: RI::Addi {
+                    riscv_instruction: Addi {
                         address: Address(0x0),
                         raw: Raw::new(""),
                         rd: Register::Zero,

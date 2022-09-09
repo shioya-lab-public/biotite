@@ -220,9 +220,7 @@ Disassembly of section .text:
                                         $inst {
                                             address: Addr(0x10528),
                                             is_compressed: false,
-                                            $(
-                                                $field: $value,
-                                            )*
+                                            $( $field: $value, )*
                                         }
                                     ]
                                 }
