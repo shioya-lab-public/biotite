@@ -515,30 +515,213 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
 
         // RV32A
-        LrW { mo, rd, rs1 } => {}
-        ScW { mo, rd, rs2, rs1 } => {}
-        AmoswapW { mo, rd, rs2, rs1 } => {}
-        AmoaddW { mo, rd, rs2, rs1 } => {}
-        AmoxorW { mo, rd, rs2, rs1 } => {}
-        AmoandW { mo, rd, rs2, rs1 } => {}
-        AmoorW { mo, rd, rs2, rs1 } => {}
-        AmominW { mo, rd, rs2, rs1 } => {}
-        AmomaxW { mo, rd, rs2, rs1 } => {}
-        AmominuW { mo, rd, rs2, rs1 } => {}
-        AmomaxuW { mo, rd, rs2, rs1 } => {}
+        LrW { mo, rd, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_32, ptr: _2 },
+            Sext { rslt: _4, ty1: i_32, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _4, ptr: rd },
+            Store { ty: i_64, val: _4, ptr: rs },
+        }
+        ScW { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
+            Load { rslt: _5, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _6, ty1: i_64, val: _5, ty2: i_32 },
+            Cmpxchg { rslt: _7, ty: i_32, ptr: _2, cmp: _4, new: _6, mo: mo },
+            Extractvalue { rslt: _8, ty: i_32, val: _7, idx: { Value::Imm(RV::Imm(1)) } },
+            Xor { rslt: _9, ty: i_1, op1: _8, op2: { Value::Imm(RV::Imm(1)) } },
+            Zext { rslt: _10, ty1: i_1, val: _9, ty2: i_64 },
+            Store { ty: i_64, val: _10, ptr: rd },
+        }
+        AmoswapW { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
+            Atomicrmw { rslt: _5, op: { Op::Xchg }, ty: i_32, ptr: _2, val: _4, mo: mo },
+            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        AmoaddW { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
+            Atomicrmw { rslt: _5, op: { Op::Add }, ty: i_32, ptr: _2, val: _4, mo: mo },
+            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        AmoxorW { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
+            Atomicrmw { rslt: _5, op: { Op::Xor }, ty: i_32, ptr: _2, val: _4, mo: mo },
+            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        AmoandW { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
+            Atomicrmw { rslt: _5, op: { Op::And }, ty: i_32, ptr: _2, val: _4, mo: mo },
+            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        AmoorW { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
+            Atomicrmw { rslt: _5, op: { Op::Or }, ty: i_32, ptr: _2, val: _4, mo: mo },
+            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        AmominW { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
+            Atomicrmw { rslt: _5, op: { Op::Min }, ty: i_32, ptr: _2, val: _4, mo: mo },
+            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        AmomaxW { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
+            Atomicrmw { rslt: _5, op: { Op::Max }, ty: i_32, ptr: _2, val: _4, mo: mo },
+            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        AmominuW { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
+            Atomicrmw { rslt: _5, op: { Op::Umin }, ty: i_32, ptr: _2, val: _4, mo: mo },
+            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
+        AmomaxuW { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
+            Atomicrmw { rslt: _5, op: { Op::Umax }, ty: i_32, ptr: _2, val: _4, mo: mo },
+            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Store { ty: i_64, val: _6, ptr: rd },
+        }
 
         // RV64A (in addition to RV32A)
-        LrD { mo, rd, rs1 } => {}
-        ScD { mo, rd, rs2, rs1 } => {}
-        AmoswapD { mo, rd, rs2, rs1 } => {}
-        AmoaddD { mo, rd, rs2, rs1 } => {}
-        AmoxorD { mo, rd, rs2, rs1 } => {}
-        AmoandD { mo, rd, rs2, rs1 } => {}
-        AmoorD { mo, rd, rs2, rs1 } => {}
-        AmominD { mo, rd, rs2, rs1 } => {}
-        AmomaxD { mo, rd, rs2, rs1 } => {}
-        AmominuD { mo, rd, rs2, rs1 } => {}
-        AmomaxuD { mo, rd, rs2, rs1 } => {}
+        LrD { mo, rd, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: _2 },
+            Store { ty: i_64, val: _3, ptr: rd },
+            Store { ty: i_64, val: _3, ptr: rs },
+        }
+        ScD { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: rs },
+            Load { rslt: _4, ty: i_64, ptr: rs2 },
+            Cmpxchg { rslt: _5, ty: i_64, ptr: _2, cmp: _3, new: _4, mo: mo },
+            Extractvalue { rslt: _6, ty: i_64, val: _5, idx: { Value::Imm(RV::Imm(1)) } },
+            Xor { rslt: _7, ty: i_1, op1: _6, op2: { Value::Imm(RV::Imm(1)) } },
+            Zext { rslt: _8, ty1: i_1, val: _7, ty2: i_64 },
+            Store { ty: i_64, val: _8, ptr: rd },
+        }
+        AmoswapD { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Atomicrmw { rslt: _4, op: { Op::Xchg }, ty: i_64, ptr: _2, val: _3, mo: mo },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        AmoaddD { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Atomicrmw { rslt: _4, op: { Op::Add }, ty: i_64, ptr: _2, val: _3, mo: mo },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        AmoxorD { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Atomicrmw { rslt: _4, op: { Op::Xor }, ty: i_64, ptr: _2, val: _3, mo: mo },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        AmoandD { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Atomicrmw { rslt: _4, op: { Op::And }, ty: i_64, ptr: _2, val: _3, mo: mo },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        AmoorD { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Atomicrmw { rslt: _4, op: { Op::Or }, ty: i_64, ptr: _2, val: _3, mo: mo },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        AmominD { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Atomicrmw { rslt: _4, op: { Op::Min }, ty: i_64, ptr: _2, val: _3, mo: mo },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        AmomaxD { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Atomicrmw { rslt: _4, op: { Op::Max }, ty: i_64, ptr: _2, val: _3, mo: mo },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        AmominuD { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Atomicrmw { rslt: _4, op: { Op::Umin }, ty: i_64, ptr: _2, val: _3, mo: mo },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
+        AmomaxuD { mo, rd, rs2, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Getmemptr { rslt: _1, addr: _0 },
+            Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Atomicrmw { rslt: _4, op: { Op::Umax }, ty: i_64, ptr: _2, val: _3, mo: mo },
+            Store { ty: i_64, val: _4, ptr: rd },
+        }
 
         // RV32F
         Flw { frd, imm, rs1 } => {
@@ -953,8 +1136,6 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
     
         
         
-
-    //     // Pseudoinstructions
     //     Nop { address, raw } => {
     //         
     //     },
@@ -1244,7 +1425,6 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
     //         
     //     },
 
-    //     // Misc
     //     Unimp { address, .. } => Vec::new(), // panic!("Encounter `unimp` at `{}`", address),
     //     Unknown { address, .. } => Vec::new(), // panic!("Encounter `unknown` at `{}`", address),
 

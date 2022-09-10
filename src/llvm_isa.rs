@@ -196,6 +196,8 @@ loop:
 @.ft10 = global double zeroinitializer
 @.ft11 = global double zeroinitializer
 
+@.rs = global i64 zeroinitializer
+
 {get_memory_ptr}
 
 define void @.memory_copy(i8* %0, i8* %1, i32 %2) {{
@@ -307,158 +309,6 @@ impl Display for InstBlock {
             format!("\n{br}")
         };
         write!(f, "  ; {:?}\n{addr}:\n{insts_str}{br}", self.rv_inst)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum Type {
-    I1,
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    Float,
-    Double,
-}
-
-impl Display for Type {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        use Type::*;
-
-        match self {
-            I1 => write!(f, "i1"),
-            I8 => write!(f, "i8"),
-            I16 => write!(f, "i16"),
-            I32 => write!(f, "i32"),
-            I64 => write!(f, "i64"),
-            I128 => write!(f, "i128"),
-            Float => write!(f, "float"),
-            Double => write!(f, "double"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum Value {
-    Reg(RV::Reg),
-    FReg(RV::FReg),
-    Imm(RV::Imm),
-    Addr(RV::Addr),
-    Temp(RV::Addr, usize),
-}
-
-impl Display for Value {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        use Value::*;
-
-        match self {
-            Reg(reg) => write!(f, "@.{reg}"),
-            FReg(freg) => write!(f, "@.{freg}"),
-            Imm(imm) => write!(f, "{imm}"),
-            Addr(addr) => write!(f, "u{addr}"),
-            Temp(addr, i) => write!(f, "%{addr}_{i}"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum MO {
-    Mono,
-    Aq,
-    Rl,
-    AqRl,
-}
-
-impl Display for MO {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        use MO::*;
-
-        match self {
-            Mono => write!(f, "monotonic"),
-            Aq => write!(f, "acquire"),
-            Rl => write!(f, "release"),
-            AqRl => write!(f, "acq_rel"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum Op {
-    Xchg,
-    Add,
-    And,
-    Or,
-    Xor,
-    Max,
-    Min,
-    Umax,
-    Umin,
-}
-
-impl Display for Op {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        use Op::*;
-
-        match self {
-            Xchg => write!(f, "xchg"),
-            Add => write!(f, "add"),
-            And => write!(f, "and"),
-            Or => write!(f, "or"),
-            Xor => write!(f, "xor"),
-            Max => write!(f, "max"),
-            Min => write!(f, "min"),
-            Umax => write!(f, "umax"),
-            Umin => write!(f, "umin"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum Cond {
-    Eq,
-    Ne,
-    Uge,
-    Ult,
-    Sgt,
-    Sge,
-    Slt,
-    Sle,
-}
-
-impl Display for Cond {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        use Cond::*;
-
-        match self {
-            Eq => write!(f, "eq"),
-            Ne => write!(f, "ne"),
-            Uge => write!(f, "uge"),
-            Ult => write!(f, "ult"),
-            Sgt => write!(f, "sgt"),
-            Sge => write!(f, "sge"),
-            Slt => write!(f, "slt"),
-            Sle => write!(f, "sle"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum FCond {
-    Oeq,
-    Olt,
-    Ole,
-}
-
-impl Display for FCond {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        use FCond::*;
-
-        match self {
-            Oeq => write!(f, "oeq"),
-            Olt => write!(f, "olt"),
-            Ole => write!(f, "ole"),
-        }
     }
 }
 
@@ -585,6 +435,14 @@ pub enum Inst {
         op2: Value,
     },
 
+    // Aggregate Operations
+    Extractvalue {
+        rslt: Value,
+        ty: Type,
+        val: Value,
+        idx: Value,
+    },
+
     // Memory Access and Addressing Operations
     Load {
         rslt: Value,
@@ -597,6 +455,14 @@ pub enum Inst {
         ptr: Value,
     },
     Fence {
+        mo: MO,
+    },
+    Cmpxchg {
+        rslt: Value,
+        ty: Type,
+        ptr: Value,
+        cmp: Value,
+        new: Value,
         mo: MO,
     },
     Atomicrmw {
@@ -778,10 +644,14 @@ impl Display for Inst {
             Or { rslt, ty, op1, op2 } => write!(f, "{rslt} = or {ty} {op1}, {op2}"),
             Xor { rslt, ty, op1, op2 } => write!(f, "{rslt} = xor {ty} {op1}, {op2}"),
 
+            // Aggregate Operations
+            Extractvalue { rslt, ty, val, idx } => write!(f, "{rslt} = extractvalue {{ {ty}, i1 }} {val}, {idx}"),
+
             // Memory Access and Addressing Operations
             Load { rslt, ty, ptr } => write!(f, "{rslt} = load {ty}, {ty}* {ptr}"),
             Store { ty, val, ptr } => write!(f, "store {ty} {val}, {ty}* {ptr}"),
             Fence { mo } => write!(f, "fence {mo}"),
+            Cmpxchg { rslt, ty, ptr, cmp, new, mo } => write!(f, "{rslt} = cmpxchg {ty}* {ptr}, {ty} {cmp}, {ty} {new} {mo} {mo}"),
             Atomicrmw { rslt, op, ty, ptr, val, mo } => write!(f, "{rslt} = atomicrmw {op} {ty}* {ptr}, {ty} {val} {mo}"),
 
             // Conversion Operations
@@ -817,6 +687,160 @@ impl Display for Inst {
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, ...) @syscall(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
             Unreachable => write!(f, "unreachable"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum Type {
+    I1,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    Float,
+    Double,
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Type::*;
+
+        match self {
+            I1 => write!(f, "i1"),
+            I8 => write!(f, "i8"),
+            I16 => write!(f, "i16"),
+            I32 => write!(f, "i32"),
+            I64 => write!(f, "i64"),
+            I128 => write!(f, "i128"),
+            Float => write!(f, "float"),
+            Double => write!(f, "double"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum Value {
+    Reg(RV::Reg),
+    FReg(RV::FReg),
+    Imm(RV::Imm),
+    Addr(RV::Addr),
+    Temp(RV::Addr, usize),
+    RS,
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Value::*;
+
+        match self {
+            Reg(reg) => write!(f, "@.{reg}"),
+            FReg(freg) => write!(f, "@.{freg}"),
+            Imm(imm) => write!(f, "{imm}"),
+            Addr(addr) => write!(f, "u{addr}"),
+            Temp(addr, i) => write!(f, "%{addr}_{i}"),
+            RS => write!(f, "@.rs"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum MO {
+    Mono,
+    Aq,
+    Rl,
+    AqRl,
+}
+
+impl Display for MO {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use MO::*;
+
+        match self {
+            Mono => write!(f, "monotonic"),
+            Aq => write!(f, "acquire"),
+            Rl => write!(f, "release"),
+            AqRl => write!(f, "acq_rel"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum Op {
+    Xchg,
+    Add,
+    And,
+    Or,
+    Xor,
+    Max,
+    Min,
+    Umax,
+    Umin,
+}
+
+impl Display for Op {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Op::*;
+
+        match self {
+            Xchg => write!(f, "xchg"),
+            Add => write!(f, "add"),
+            And => write!(f, "and"),
+            Or => write!(f, "or"),
+            Xor => write!(f, "xor"),
+            Max => write!(f, "max"),
+            Min => write!(f, "min"),
+            Umax => write!(f, "umax"),
+            Umin => write!(f, "umin"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum Cond {
+    Eq,
+    Ne,
+    Uge,
+    Ult,
+    Sgt,
+    Sge,
+    Slt,
+    Sle,
+}
+
+impl Display for Cond {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Cond::*;
+
+        match self {
+            Eq => write!(f, "eq"),
+            Ne => write!(f, "ne"),
+            Uge => write!(f, "uge"),
+            Ult => write!(f, "ult"),
+            Sgt => write!(f, "sgt"),
+            Sge => write!(f, "sge"),
+            Slt => write!(f, "slt"),
+            Sle => write!(f, "sle"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum FCond {
+    Oeq,
+    Olt,
+    Ole,
+}
+
+impl Display for FCond {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use FCond::*;
+
+        match self {
+            Oeq => write!(f, "oeq"),
+            Olt => write!(f, "olt"),
+            Ole => write!(f, "ole"),
         }
     }
 }

@@ -96,25 +96,31 @@ macro_rules! rs2 {
 
 macro_rules! frd {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
-        Value::Reg($value)
+        Value::FReg($value)
     };
 }
 
 macro_rules! frs1 {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
-        Value::Reg($value)
+        Value::FReg($value)
     };
 }
 
 macro_rules! frs2 {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
-        Value::Reg($value)
+        Value::FReg($value)
     };
 }
 
 macro_rules! frs3 {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
-        Value::Reg($value)
+        Value::FReg($value)
+    };
+}
+
+macro_rules! rs {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::RS
     };
 }
 
@@ -177,6 +183,24 @@ macro_rules! _7 {
     };
 }
 
+macro_rules! _8 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 8)
+    };
+}
+
+macro_rules! _9 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 9)
+    };
+}
+
+macro_rules! _10 {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        Value::Temp($address, 10)
+    };
+}
+
 macro_rules! mo {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
         match $value {
@@ -204,5 +228,5 @@ macro_rules! next_pc {
 
 pub(crate) use {
     addr, d, expand_value, f, frd, frs1, frs2, frs3, i_1, i_128, i_16, i_32, i_64, i_8, imm, mo,
-    next_pc, rd, rs1, rs2, translate_rv_inst, _0, _1, _2, _3, _4, _5, _6, _7, pc
+    next_pc, rd, rs1, rs2, translate_rv_inst, _0, _1, _2, _3, _4, _5, _6, _7, pc, rs, _8, _9, _10
 };
