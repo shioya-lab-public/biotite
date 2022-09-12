@@ -10,7 +10,7 @@ lazy_static! {
     static ref SECTION_SIZE: Regex =
         Regex::new(r"\s+\S+\s+(\S+)\s+([[:xdigit:]]+)\s+([[:xdigit:]]+)").unwrap();
     static ref SYMBOL_SIZE: Regex =
-        Regex::new(r"([[:xdigit:]]+)\s+\S+\s+\S+\s+\S+\s+([[:xdigit:]]+)\s+(\S+)").unwrap();
+        Regex::new(r"([[:xdigit:]]+)\s+\S+\s+(\S+\s+)?\S+\s+([[:xdigit:]]+)\s+(\.hidden\s+)?(\S+)?").unwrap();
     static ref SECTION: Regex = Regex::new(r"Disassembly of section (\S+):").unwrap();
     static ref SYMBOL: Regex = Regex::new(r"([[:xdigit:]]+) <(\S+)>:").unwrap();
     static ref BYTES: Regex =
@@ -56,8 +56,9 @@ fn parse_symbols(src: &mut Lines) -> HashMap<(String, Addr), usize> {
     let mut src = src.skip(1);
     let mut symbols = HashMap::new();
     while let Some(caps) = SYMBOL_SIZE.captures(src.next().expect("Missing symbol table")) {
-        let symbol = (String::from(&caps[3]), Addr::new(&caps[1]));
-        let size = usize::from_str_radix(&caps[2], 16).unwrap();
+        let name = caps.get(5).map(|m| m.as_str()).unwrap_or_default();
+        let symbol = (String::from(name), Addr::new(&caps[1]));
+        let size = usize::from_str_radix(&caps[3], 16).unwrap();
         symbols.insert(symbol, size);
     }
     symbols
@@ -245,7 +246,10 @@ Idx Name                Size     VMA              Type
   21 .bss                000011d8 0000000000070e40 BSS
 
 SYMBOL TABLE:
+0000000000010556 l       .text	0000000000000000 load_gp
+0000000000000000 l    df *ABS*	0000000000000000 
 0000000000070a78 g     O .sbss	0000000000000008 _dl_tls_generation
+0000000000070b50 g     O .sbss	0000000000000008 .hidden __abort_msg
 
 Disassembly of section .bss:
 
@@ -255,6 +259,9 @@ Disassembly of section .bss:
 Disassembly of section .sbss:
 
 0000000000070a78 <_dl_tls_generation>:
+...
+
+0000000000070b50 <__abort_msg>:
 ...
 
 Disassembly of section .text:
@@ -289,6 +296,12 @@ Disassembly of section .rodata:
                         section: String::from(".sbss"),
                         symbol: String::from("_dl_tls_generation"),
                         address: Addr(0x70a78),
+                        bytes: vec![0; 0x8],
+                    },
+                    DataBlock {
+                        section: String::from(".sbss"),
+                        symbol: String::from("__abort_msg"),
+                        address: Addr(0x70b50),
                         bytes: vec![0; 0x8],
                     },
                     DataBlock {

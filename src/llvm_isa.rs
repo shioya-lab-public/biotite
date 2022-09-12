@@ -17,8 +17,7 @@ impl Display for Program {
         let mut memory = Vec::new();
         for data_block in &self.data_blocks {
             let RV::Addr(start) = data_block.address;
-            let diff = start as usize - memory.len();
-            memory.extend(vec![0; diff]);
+            memory.resize(start as usize, 0);
             memory.extend(&data_block.bytes);
         }
 
@@ -92,11 +91,11 @@ dynamic:
         // Merge all components
         write!(f, "define i64 @main(i32 %argc, i8** %argv) {{
   ; Initialize the stack pointer
-  store i64 {sp}, i64* @sp
+  store i64 {sp}, i64* @.sp
 
   ; Initialize `argc`
-  %argc_addr = load i64, i64* @sp
-  %argc_ptr_b = call i8* @.get_memory_ptr(i64 argc_addr)
+  %argc_addr = load i64, i64* @.sp
+  %argc_ptr_b = call i8* @.get_memory_ptr(i64 %argc_addr)
   %argc_ptr_w = bitcast i8* %argc_ptr_b to i32*
   store i32 %argc, i32* %argc_ptr_w
 
@@ -109,12 +108,12 @@ dynamic:
 
   ; Load the entry address
   %entry_p= alloca i64
-  store i64 {entry}, i64* %entry_p
+  store i64 u{entry}, i64* %entry_p
   br label %loop
 
 loop:
   %entry = load i64, i64* %entry_p
-  %func_addr_ptr = getelementptr [{dispatcher_len} x i64], [{dispatcher_len} x i64]* @dispatcher, i64 0, i64 %entry
+  %func_addr_ptr = getelementptr [{dispatcher_len} x i64], [{dispatcher_len} x i64]* @.dispatcher, i64 0, i64 %entry
   %func_addr = load i64, i64* %func_addr_ptr
   %func = inttoptr i64 %func_addr to i64 (i64)*
   %next = call i64 %func(i64 %entry)
@@ -255,7 +254,7 @@ impl Display for Func {
         for inst_block in &self.inst_blocks {
             let addr = Value::Addr(inst_block.rv_inst.address());
             dispatcher += &format!("i64 {addr}, label %{addr} ");
-            inst_blocks += &inst_block.to_string();
+            inst_blocks += &format!("{inst_block}\n");
         }
         dispatcher.pop();
         dispatcher += "]";
@@ -306,9 +305,9 @@ impl Display for InstBlock {
                 self.rv_inst.is_compressed()
             );
             let br = Inst::Br { addr: next_pc };
-            format!("\n{br}")
+            format!("\n  {br}")
         };
-        write!(f, "  ; {:?}\n{addr}:\n{insts_str}{br}", self.rv_inst)
+        write!(f, "; {:?}\n{addr}:\n{insts_str}{br}", self.rv_inst)
     }
 }
 
@@ -671,7 +670,7 @@ impl Display for Inst {
 
             // Other Operations
             Icmp { rslt, cond, op1, op2 } => write!(f, "{rslt} = icmp {cond} i64 {op1}, {op2}"),
-            Fcmp {rslt,fcond,op1,op2} => write!(f, "{rslt} = fcmp {fcond} i64 {op1}, {op2}"),
+            Fcmp {rslt,fcond,op1,op2} => write!(f, "{rslt} = fcmp {fcond} double {op1}, {op2}"),
             Select {rslt,cond,op1,op2} => write!(f, "{rslt} = select i1 {cond}, i64 {op1}, i64 {op2}"),
 
             // Standard C/C++ Library Intrinsics
@@ -683,7 +682,7 @@ impl Display for Inst {
             Copysign { rslt, ty, mag, sgn } => write!(f, "{rslt} = call {ty} @llvm.copysign.{ty}({ty} {mag}, {ty} {sgn})"),
 
             // Misc
-            Getmemptr { rslt, addr } => write!(f, "{rslt} = call i8* @get_data_ptr(i64 {addr})"),
+            Getmemptr { rslt, addr } => write!(f, "{rslt} = call i8* @.get_memory_ptr(i64 {addr})"),
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, ...) @syscall(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
             Unreachable => write!(f, "unreachable"),
@@ -739,7 +738,7 @@ impl Display for Value {
             FReg(freg) => write!(f, "@.{freg}"),
             Imm(imm) => write!(f, "{imm}"),
             Addr(addr) => write!(f, "u{addr}"),
-            Temp(addr, i) => write!(f, "%{addr}_{i}"),
+            Temp(addr, i) => write!(f, "%u{addr}_{i}"),
             RS => write!(f, "@.rs"),
         }
     }

@@ -14,7 +14,7 @@ macro_rules! translate_rv_inst {
                     ]
                 }
             )*
-            inst => todo!("{:?}", inst),
+            inst => unimplemented!("{inst:?}"),
         }
     };
 }

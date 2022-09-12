@@ -9,6 +9,9 @@ A binary translator that translates RISC-V to LLVM IR.
 - Arch: RV64GC, ABI: LP64D
 
 all CSR are ignored
+all rm are ignored
+fmv only sect result int val
+fclass is not supported
 
 ## Testing Commands
 
