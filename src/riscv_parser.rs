@@ -110,7 +110,7 @@ fn parse_assembly(src: &mut Lines) -> (Vec<DataBlock>, Vec<CodeBlock>) {
     let raw_block = (section, symbol, address, lines);
     if raw_block.0 == ".text" {
         code_blocks.push(raw_block);
-    } else {
+    } else if raw_block.2 != Addr(0) {
         data_blocks.push(raw_block);
     }
     (

@@ -279,6 +279,8 @@ define_insts! {
 
     // Misc
     Unimp(r"unimp"),
+    OffsetJalr(r"jalr\s+{}\({}\)", imm, rs1),
+    OffsetJr(r"jr\s+{}\({}\)", imm, rs1),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]

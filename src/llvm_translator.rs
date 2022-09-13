@@ -321,8 +321,8 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
         Addiw { rd, rs1, imm } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
-            Add { rslt: _2, ty: i_32, op1: _1, op2: imm },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Trunc { rslt: _2, ty1: i_64, val: _1, ty2: i_32 },
             Sext { rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
@@ -349,21 +349,19 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
         Addw { rd, rs1, rs2 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
-            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Add { rslt: _2, ty: i_64, op1: _0, op2: _1 },
             Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
-            Add { rslt: _4, ty: i_32, op1: _1, op2: _3 },
-            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
-            Store { ty: i_64, val: _5, ptr: rd },
+            Sext { rslt: _4, ty1: i_32, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _4, ptr: rd },
         }
         Subw { rd, rs1, rs2 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
-            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Sub { rslt: _2, ty: i_64, op1: _0, op2: _1 },
             Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
-            Sub { rslt: _4, ty: i_32, op1: _1, op2: _3 },
-            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
-            Store { ty: i_64, val: _5, ptr: rd },
+            Sext { rslt: _4, ty1: i_32, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _4, ptr: rd },
         }
         Sllw { rd, rs1, rs2 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
@@ -471,48 +469,43 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         // RV64M (in addition to RV32M)
         Mulw { rd, rs1, rs2 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
-            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Mul { rslt: _2, ty: i_64, op1: _0, op2: _1 },
             Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
-            Mul { rslt: _4, ty: i_32, op1: _1, op2: _3 },
-            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
-            Store { ty: i_64, val: _5, ptr: rd },
+            Sext { rslt: _4, ty1: i_32, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _4, ptr: rd },
         }
         Divw { rd, rs1, rs2 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
-            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Sdiv { rslt: _2, ty: i_64, op1: _0, op2: _1 },
             Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
-            Sdiv { rslt: _4, ty: i_32, op1: _1, op2: _3 },
-            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
-            Store { ty: i_64, val: _5, ptr: rd },
+            Sext { rslt: _4, ty1: i_32, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _4, ptr: rd },
         }
         Divuw { rd, rs1, rs2 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
-            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Udiv { rslt: _2, ty: i_64, op1: _0, op2: _1 },
             Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
-            Udiv { rslt: _4, ty: i_32, op1: _1, op2: _3 },
-            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
-            Store { ty: i_64, val: _5, ptr: rd },
+            Sext { rslt: _4, ty1: i_32, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _4, ptr: rd },
         }
         Remw { rd, rs1, rs2 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
-            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Srem { rslt: _2, ty: i_64, op1: _0, op2: _1 },
             Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
-            Srem { rslt: _4, ty: i_32, op1: _1, op2: _3 },
-            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
-            Store { ty: i_64, val: _5, ptr: rd },
+            Sext { rslt: _4, ty1: i_32, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _4, ptr: rd },
         }
         Remuw { rd, rs1, rs2 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
-            Load { rslt: _2, ty: i_64, ptr: rs2 },
+            Load { rslt: _1, ty: i_64, ptr: rs2 },
+            Urem { rslt: _2, ty: i_64, op1: _0, op2: _1 },
             Trunc { rslt: _3, ty1: i_64, val: _2, ty2: i_32 },
-            Urem { rslt: _4, ty: i_32, op1: _1, op2: _3 },
-            Sext { rslt: _5, ty1: i_32, val: _4, ty2: i_64 },
-            Store { ty: i_64, val: _5, ptr: rd },
+            Sext { rslt: _4, ty1: i_32, val: _3, ty2: i_64 },
+            Store { ty: i_64, val: _4, ptr: rd },
         }
 
         // RV32A
@@ -546,7 +539,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _3, ty: i_64, ptr: rs2 },
             Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
             Atomicrmw { rslt: _5, op: { Op::Xchg }, ty: i_32, ptr: _2, val: _4, mo: mo },
-            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Sext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
         AmoaddW { mo, rd, rs2, rs1 } => {
@@ -556,7 +549,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _3, ty: i_64, ptr: rs2 },
             Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
             Atomicrmw { rslt: _5, op: { Op::Add }, ty: i_32, ptr: _2, val: _4, mo: mo },
-            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Sext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
         AmoxorW { mo, rd, rs2, rs1 } => {
@@ -566,7 +559,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _3, ty: i_64, ptr: rs2 },
             Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
             Atomicrmw { rslt: _5, op: { Op::Xor }, ty: i_32, ptr: _2, val: _4, mo: mo },
-            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Sext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
         AmoandW { mo, rd, rs2, rs1 } => {
@@ -576,7 +569,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _3, ty: i_64, ptr: rs2 },
             Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
             Atomicrmw { rslt: _5, op: { Op::And }, ty: i_32, ptr: _2, val: _4, mo: mo },
-            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Sext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
         AmoorW { mo, rd, rs2, rs1 } => {
@@ -586,7 +579,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _3, ty: i_64, ptr: rs2 },
             Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
             Atomicrmw { rslt: _5, op: { Op::Or }, ty: i_32, ptr: _2, val: _4, mo: mo },
-            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Sext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
         AmominW { mo, rd, rs2, rs1 } => {
@@ -596,7 +589,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _3, ty: i_64, ptr: rs2 },
             Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
             Atomicrmw { rslt: _5, op: { Op::Min }, ty: i_32, ptr: _2, val: _4, mo: mo },
-            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Sext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
         AmomaxW { mo, rd, rs2, rs1 } => {
@@ -606,7 +599,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _3, ty: i_64, ptr: rs2 },
             Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
             Atomicrmw { rslt: _5, op: { Op::Max }, ty: i_32, ptr: _2, val: _4, mo: mo },
-            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Sext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
         AmominuW { mo, rd, rs2, rs1 } => {
@@ -616,7 +609,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _3, ty: i_64, ptr: rs2 },
             Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
             Atomicrmw { rslt: _5, op: { Op::Umin }, ty: i_32, ptr: _2, val: _4, mo: mo },
-            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Sext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
         AmomaxuW { mo, rd, rs2, rs1 } => {
@@ -626,7 +619,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _3, ty: i_64, ptr: rs2 },
             Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_32 },
             Atomicrmw { rslt: _5, op: { Op::Umax }, ty: i_32, ptr: _2, val: _4, mo: mo },
-            Zext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
+            Sext { rslt: _6, ty1: i_32, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
 
@@ -1007,7 +1000,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Load { rslt: _1, ty: d, ptr: frs2 },
             Load { rslt: _2, ty: d, ptr: frs3 },
-            Fneg { rslt: _3, ty: f, op: _2 },
+            Fneg { rslt: _3, ty: d, op: _2 },
             Fma { rslt: _4, ty: d, arg1: _0, arg2: _1, arg3: _3 },
             Store { ty: d, val: _4, ptr: frd },
         }
@@ -1094,7 +1087,9 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
         FcvtSD { frd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Store { ty: d, val: _0, ptr: frd },
+            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
+            Fpext {rslt: _2, ty1: f, val: _1, ty2: d },
+            Store { ty: d, val: _2, ptr: frd },
         }
         FcvtDS { frd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
@@ -1200,8 +1195,8 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
         Negw { rd, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
-            Sub { rslt: _2, ty: i_32, op1: { Value::Imm(RV::Imm(0)) }, op2: _1 },
+            Sub { rslt: _1, ty: i_64, op1: { Value::Imm(RV::Imm(0)) }, op2: _0 },
+            Trunc { rslt: _2, ty1: i_64, val: _1, ty2: i_32 },
             Sext { rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
@@ -1358,6 +1353,17 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
 
         // Misc
         Unimp {} => {}
+        OffsetJalr { imm, rs1 } => {
+            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(RV::Reg::Ra) } },
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Ret { val: _1 },
+        }
+        OffsetJr { imm, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Ret { val: _1 },
+        }
     );
     let insts = insts
         .into_iter()
