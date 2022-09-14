@@ -23,7 +23,7 @@ impl Display for Program {
 
         // Append the stack
         let stack_len = 8192 * 1024;
-        let sp = memory.len() + 8191 * 1024;
+        let sp = Value::Addr(RV::Addr(memory.len() as u64 + 8190 * 1024));
         memory.extend(vec![0; stack_len]);
 
         // Format the memory array
@@ -55,8 +55,7 @@ dynamic:
             let last_rv_inst = func.inst_blocks.last().unwrap().rv_inst;
             let RV::Addr(mut end) = last_rv_inst.address();
             end += if last_rv_inst.is_compressed() { 2 } else { 4 };
-            let diff = end as usize - dispatcher.len();
-            dispatcher.extend(vec![String::from("i64 0"); diff]);
+            dispatcher.resize(end as usize, String::from("i64 0"));
             for inst_block in &func.inst_blocks {
                 let RV::Addr(addr) = inst_block.rv_inst.address();
                 if let Some(name) = self.src_funcs.get(&RV::Addr(addr)) {
@@ -94,17 +93,35 @@ dynamic:
   store i64 {sp}, i64* @.sp
 
   ; Initialize `argc`
-  %argc_addr = load i64, i64* @.sp
-  %argc_ptr_b = call i8* @.get_memory_ptr(i64 %argc_addr)
-  %argc_ptr_w = bitcast i8* %argc_ptr_b to i32*
-  store i32 %argc, i32* %argc_ptr_w
+  %argc_addr = add i64 {sp}, 0
+  %argc_dest_b = call i8* @.get_memory_ptr(i64 %argc_addr)
+  %argc_dest = bitcast i8* %argc_dest_b to i32*
+  store i32 %argc, i32* %argc_dest
 
   ; Initialize `argv`
-  %argv_addr = add i64 %argc_addr, 8
-  %argv_dest = call i8* @.get_memory_ptr(i64 %argv_addr)
-  %argv_src = bitcast i8** %argv to i8*
-  %num = mul i32 %argc, 8
-  call void @.memory_copy(i8* %argv_dest, i8* %argv_src, i32 %num)
+  %argv_addr = add i64 {sp}, 8
+  %argv_dest_b = call i8* @.get_memory_ptr(i64 %argv_addr)
+  %argv_dest = bitcast i8* %argv_dest_b to i8**
+  %argv_cnt = call i64 @.copy(i8** %argv_dest, i8** %argv)
+  %argv_val = ptrtoint i8** %argv to i64
+
+  ; Initialize `envp`
+  %argv_offset = mul i64 %argv_cnt, 8
+  %envp_val = add i64 %argv_val, %argv_offset
+  %envp = inttoptr i64 %envp_val to i8**
+  %envp_addr = add i64 %argv_addr, %argv_offset
+  %envp_dest_b = call i8* @.get_memory_ptr(i64 %envp_addr)
+  %envp_dest = bitcast i8* %envp_dest_b to i8**
+  %envp_cnt = call i64 @.copy(i8** %envp_dest, i8** %envp)
+
+  ; Initialize `auxv`
+  %envp_offset = mul i64 %envp_cnt, 8
+  %auxv_val = add i64 %envp_val, %envp_offset
+  %auxv = inttoptr i64 %auxv_val to i8**
+  %auxv_addr = add i64 %envp_addr, %envp_offset
+  %auxv_dest_b = call i8* @.get_memory_ptr(i64 %auxv_addr)
+  %auxv_dest = bitcast i8* %auxv_dest_b to i8**
+  %auxv_cnt = call i64 @.copy(i8** %auxv_dest, i8** %auxv)
 
   ; Load the entry address
   %entry_p= alloca i64
@@ -199,26 +216,34 @@ loop:
 
 {get_memory_ptr}
 
-define void @.memory_copy(i8* %0, i8* %1, i32 %2) {{
-  %4 = icmp sgt i32 %2, 0
-  br i1 %4, label %5, label %7
+; long copy(char** dest, char** src) {{
+;     long i = 1;
+;     while ((*dest++ = *src++)) {{
+;         ++i;
+;     }}
+;     return i;
+; }}
+define i64 @.copy(i8** %0, i8** %1) {{
+  %3 = load i8*, i8** %1
+  store i8* %3, i8** %0
+  %4 = icmp eq i8* %3, null
+  br i1 %4, label %14, label %5
 
-5:                                                ; preds = %3
-  %6 = zext i32 %2 to i64
-  br label %8
+5:                                                ; preds = %2, %5
+  %6 = phi i64 [ %11, %5 ], [ 1, %2 ]
+  %7 = phi i8** [ %10, %5 ], [ %1, %2 ]
+  %8 = phi i8** [ %9, %5 ], [ %0, %2 ]
+  %9 = getelementptr i8*, i8** %8, i64 1
+  %10 = getelementptr i8*, i8** %7, i64 1
+  %11 = add i64 %6, 1
+  %12 = load i8*, i8** %10
+  store i8* %12, i8** %9
+  %13 = icmp eq i8* %12, null
+  br i1 %13, label %14, label %5
 
-7:                                                ; preds = %8, %3
-  ret void
-
-8:                                                ; preds = %5, %8
-  %9 = phi i64 [ 0, %5 ], [ %13, %8 ]
-  %10 = getelementptr i8, i8* %1, i64 %9
-  %11 = load i8, i8* %10
-  %12 = getelementptr i8, i8* %0, i64 %9
-  store i8 %11, i8* %12
-  %13 = add i64 %9, 1
-  %14 = icmp eq i64 %13, %6
-  br i1 %14, label %7, label %8
+14:                                               ; preds = %5, %2
+  %15 = phi i64 [ 1, %2 ], [ %11, %5 ]
+  ret i64 %15
 }}
 
 declare float @llvm.sqrt.float(float %arg)

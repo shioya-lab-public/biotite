@@ -45,22 +45,15 @@ Counter
 ``` llvm
 declare dso_local void @exit(i32)
 declare dso_local i32 @printf(i8*, ...)
-@.str.d = private unnamed_addr constant [14 x i8] c"#value: %ld#\0A\00", align 1
+@.str.d = private unnamed_addr constant [13 x i8] c"#value: %x#\0A\00", align 1
 @.str.f = private unnamed_addr constant [13 x i8] c"#value: %f#\0A\00", align 1
 @.str.s = private unnamed_addr constant [13 x i8] c"#value: %s#\0A\00", align 1
 
-%ptr_a0 = getelementptr %struct.reg, %struct.reg* %reg, i32 0, i32 10
-%val_a0 = load i64, i64* %ptr_a0
-call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %val_a0)
-%val_fa0 = load double, double* %fa0
-call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str.f, i64 0, i64 0), double %val_fa0)
-%val_s = load i64, i64* %a0
-%ptr_s = call i8* @get_data_ptr(i64 %val_s)
-call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.str.s, i64 0, i64 0), i8* %ptr_s)
-
+%val = load i64, i64* @.a0
+call i32 (i8*, ...) @printf(i8* getelementptr ([13 x i8], [13 x i8]* @.str.d, i64 0, i64 0), i64 %val)
 call void @exit(i32 0)
 
-opt --mem2reg -S dry2.ll -o dry2.o.ll
+clang -static t.c --target=riscv64 -march=rv64gc --gcc-toolchain=/opt/riscv64-elf-ubuntu-20.04-nightly-2022.06.10-nightly --sysroot=/opt/riscv64-elf-ubuntu-20.04-nightly-2022.06.10-nightly/riscv64-unknown-elf
 ```
 
 ## syscall
