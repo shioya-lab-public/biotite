@@ -4,6 +4,7 @@ declare i64 @syscall(i64, ...)
 
 %struct.stat = type { i64, i64, i64, i32, i32, i32, i32, i64, i64, i64, i64, %struct.timespec, %struct.timespec, %struct.timespec, [3 x i64] }
 %struct.timespec = type { i64, i64 }
+%struct.utsname = type { i8*, i8*, i8*, i8*, i8*, i8* }
 
 define i64 @.system_call(i64 %nr, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6) {
   switch i64 %nr, label %fallback [
@@ -15,6 +16,13 @@ define i64 @.system_call(i64 %nr, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i6
     i64 62, label %SYS_lseek
     i64 63, label %SYS_read
     i64 64, label %SYS_write
+    i64 160, label %SYS_uname
+    i64 175, label %SYS_geteuid
+    i64 174, label %SYS_getuid
+    i64 177, label %SYS_getegid
+    i64 176, label %SYS_getgid
+    i64 78, label %SYS_readlinkat
+    i64 94, label %SYS_exit_group
   ]
 
 SYS_exit:
@@ -54,6 +62,41 @@ SYS_write:
   %write_buf = call i8* @.get_memory_ptr(i64 %arg2)
   %SYS_write_rslt = call i64 (i64, ...) @syscall(i64 1, i64 %arg1, i8* %write_buf, i64 %arg3)
   ret i64 %SYS_write_rslt
+
+SYS_uname:
+  %utsname_ptr_b = call i8* @.get_memory_ptr(i64 %arg1)
+  %utsname_ptr = bitcast i8* %utsname_ptr_b to %struct.utsname*
+  %SYS_uname_rslt = call i64 (i64, ...) @syscall(i64 63, %struct.utsname* %utsname_ptr)
+  ret i64 %SYS_uname_rslt
+
+SYS_geteuid:
+  %SYS_geteuid_rslt = call i64 (i64, ...) @syscall(i64 107)
+  ret i64 %SYS_geteuid_rslt
+
+SYS_getuid:
+  %SYS_getuid_rslt = call i64 (i64, ...) @syscall(i64 102)
+  ret i64 %SYS_getuid_rslt
+
+SYS_getegid:
+  %SYS_getegid_rslt = call i64 (i64, ...) @syscall(i64 108)
+  ret i64 %SYS_getegid_rslt
+
+SYS_getgid:
+  %SYS_getgid_rslt = call i64 (i64, ...) @syscall(i64 104)
+  ret i64 %SYS_getgid_rslt
+
+SYS_readlinkat:
+  %SYS_readlinkat_dfd = trunc i64 %arg1 to i32
+  %SYS_readlinkat_path = call i8* @.get_memory_ptr(i64 %arg2)
+  %SYS_readlinkat_buf = call i8* @.get_memory_ptr(i64 %arg3)
+  %SYS_readlinkat_bufsiz = trunc i64 %arg4 to i32
+  %SYS_readlinkat_rslt = call i64 (i64, ...) @syscall(i64 267, i32 %SYS_readlinkat_dfd, i8* %SYS_readlinkat_path, i8* %SYS_readlinkat_buf, i32 %SYS_readlinkat_bufsiz)
+  ret i64 %SYS_readlinkat_rslt
+
+SYS_exit_group:
+  %SYS_exit_group_error_code = trunc i64 %arg1 to i32
+  %SYS_exit_group_rslt = call i64 (i64, ...) @syscall(i64 231, i32 %SYS_exit_group_error_code)
+  ret i64 %SYS_exit_group_rslt
 
 fallback:
   unreachable
