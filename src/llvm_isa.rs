@@ -103,25 +103,16 @@ dynamic:
   %argv_dest_b = call i8* @.get_memory_ptr(i64 %argv_addr)
   %argv_dest = bitcast i8* %argv_dest_b to i8**
   %argv_cnt = call i64 @.copy(i8** %argv_dest, i8** %argv)
-  %argv_val = ptrtoint i8** %argv to i64
 
-  ; Initialize `envp`
+  ; Create empty `envp`
+  %argv_val = ptrtoint i8** %argv_dest to i64
   %argv_offset = mul i64 %argv_cnt, 8
   %envp_val = add i64 %argv_val, %argv_offset
-  %envp = inttoptr i64 %envp_val to i8**
-  %envp_addr = add i64 %argv_addr, %argv_offset
-  %envp_dest_b = call i8* @.get_memory_ptr(i64 %envp_addr)
-  %envp_dest = bitcast i8* %envp_dest_b to i8**
-  %envp_cnt = call i64 @.copy(i8** %envp_dest, i8** %envp)
 
   ; Initialize `auxv`
-  %envp_offset = mul i64 %envp_cnt, 8
-  %auxv_val = add i64 %envp_val, %envp_offset
-  %auxv = inttoptr i64 %auxv_val to i8**
-  %auxv_addr = add i64 %envp_addr, %envp_offset
-  %auxv_dest_b = call i8* @.get_memory_ptr(i64 %auxv_addr)
-  %auxv_dest = bitcast i8* %auxv_dest_b to i8**
-  %auxv_cnt = call i64 @.copy(i8** %auxv_dest, i8** %auxv)
+  %auxv_val = add i64 %envp_val, 8
+  %auxv = inttoptr i64 %auxv_val to i64*
+  call void @.init_auxv(i64* %auxv)
 
   ; Load the entry address
   %entry_p= alloca i64
@@ -244,6 +235,44 @@ define i64 @.copy(i8** %0, i8** %1) {{
 14:                                               ; preds = %5, %2
   %15 = phi i64 [ 1, %2 ], [ %11, %5 ]
   ret i64 %15
+}}
+
+declare i64 @getauxval(i64)
+
+; void init_auxv(unsigned long *sp) {{
+;     unsigned long value;
+;     for (unsigned long entry = 1; entry < 100; ++entry) {{
+;         if ((value = getauxval(entry))) {{
+;             *sp++ = entry;
+;             *sp++ = value;
+;         }}
+;     }}
+; }}
+define void @.init_auxv(i64* %0) {{
+  br label %3
+
+2:                                                ; preds = %11
+  ret void
+
+3:                                                ; preds = %1, %11
+  %4 = phi i64 [ 1, %1 ], [ %13, %11 ]
+  %5 = phi i64* [ %0, %1 ], [ %12, %11 ]
+  %6 = call i64 @getauxval(i64 %4)
+  %7 = icmp eq i64 %6, 0
+  br i1 %7, label %11, label %8
+
+8:                                                ; preds = %3
+  %9 = getelementptr i64, i64* %5, i64 1
+  store i64 %4, i64* %5
+  %10 = getelementptr i64, i64* %5, i64 2
+  store i64 %6, i64* %9
+  br label %11
+
+11:                                               ; preds = %3, %8
+  %12 = phi i64* [ %10, %8 ], [ %5, %3 ]
+  %13 = add i64 %4, 1
+  %14 = icmp eq i64 %13, 100
+  br i1 %14, label %2, label %3
 }}
 
 declare float @llvm.sqrt.float(float %arg)

@@ -1,10 +1,10 @@
 declare i64 @syscall(i64, ...)
 
 %struct.tms = type { i64, i64, i64, i64 }
-
 %struct.stat = type { i64, i64, i64, i32, i32, i32, i32, i64, i64, i64, i64, %struct.timespec, %struct.timespec, %struct.timespec, [3 x i64] }
 %struct.timespec = type { i64, i64 }
 %struct.utsname = type { i8*, i8*, i8*, i8*, i8*, i8* }
+%struct.iovec = type { i8*, i64 }
 
 define i64 @.system_call(i64 %nr, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6) {
   switch i64 %nr, label %fallback [
@@ -23,6 +23,11 @@ define i64 @.system_call(i64 %nr, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i6
     i64 176, label %SYS_getgid
     i64 78, label %SYS_readlinkat
     i64 94, label %SYS_exit_group
+    i64 96, label %SYS_set_tid_address
+    i64 29, label %SYS_ioctl
+    i64 66, label %SYS_writev
+    i64 222, label %SYS_mmap
+    i64 153, label %SYS_times
   ]
 
 SYS_exit:
@@ -97,6 +102,54 @@ SYS_exit_group:
   %SYS_exit_group_error_code = trunc i64 %arg1 to i32
   %SYS_exit_group_rslt = call i64 (i64, ...) @syscall(i64 231, i32 %SYS_exit_group_error_code)
   ret i64 %SYS_exit_group_rslt
+
+SYS_set_tid_address:
+  %SYS_set_tid_address_tidptr_b = call i8* @.get_memory_ptr(i64 %arg1)
+  %SYS_set_tid_address_tidptr = bitcast i8* %SYS_set_tid_address_tidptr_b to i32*
+  %SYS_set_tid_address_rslt = call i64 (i64, ...) @syscall(i64 218, i32* %SYS_set_tid_address_tidptr)
+  ret i64 %SYS_set_tid_address_rslt
+
+SYS_ioctl:
+  %SYS_ioctl_fd = trunc i64 %arg1 to i32
+  %SYS_ioctl_cmd = trunc i64 %arg2 to i32
+  %SYS_ioctl_rslt = call i64 (i64, ...) @syscall(i64 16, i32 %SYS_ioctl_fd, i32 %SYS_ioctl_cmd, i64 %arg3)
+  ret i64 %SYS_ioctl_rslt
+
+SYS_writev:
+  %SYS_writev_vec_b = call i8* @.get_memory_ptr(i64 %arg2)
+  %SYS_writev_vec = bitcast i8* %SYS_writev_vec_b to %struct.iovec*
+  %i_ptr = alloca i64, i64 0
+  br label %test
+test:
+  %i = load i64, i64* %i_ptr
+  %end = icmp slt i64 %i, %arg3
+  br i1 %end, label %trans, label %call
+trans:
+  %guest_vec_ptr = getelementptr %struct.iovec, %struct.iovec* %SYS_writev_vec, i64 %i
+  %guest_vec = load %struct.iovec, %struct.iovec* %guest_vec_ptr
+  %guest_base = extractvalue %struct.iovec %guest_vec, 0
+  %guest_base_val = ptrtoint i8* %guest_base to i64
+  %host_base = call i8* @.get_memory_ptr(i64 %guest_base_val)
+  %host_vec = insertvalue %struct.iovec %guest_vec, i8* %host_base, 0 
+  store %struct.iovec %host_vec, %struct.iovec* %guest_vec_ptr
+  br label %add
+add:
+  %new_i = add i64 %i, 1
+  store i64 %new_i, i64* %i_ptr
+  br label %test
+call:
+  %SYS_writev_rslt = call i64 (i64, ...) @syscall(i64 20, i64 %arg1, %struct.iovec* %SYS_writev_vec, i64 %arg3)
+  ret i64 %SYS_writev_rslt
+
+SYS_mmap:
+  %SYS_mmap_rslt = call i64 (i64, ...) @syscall(i64 9, i64 0, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6)
+  ret i64 %SYS_mmap_rslt
+
+SYS_times:
+  %SYS_times_tms_ptr = call i8* @.get_memory_ptr(i64 %arg1)
+  %SYS_times_tms = bitcast i8* %SYS_times_tms_ptr to %struct.tms*
+  %SYS_times_rslt = call i64 (i64, ...) @syscall(i64 100, %struct.tms* %SYS_times_tms)
+  ret i64 %SYS_times_rslt
 
 fallback:
   unreachable

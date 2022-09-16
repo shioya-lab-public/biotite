@@ -64,15 +64,8 @@ The Linux system call number is different for each architecture.
     - <https://chromium.googlesource.com/chromiumos/docs/+/refs/heads/main/constants/syscalls.md>
 To call a generic `syscall` in LLVM IR, we must recover the type for each argument, possibly with some other processing, in each system call.
 
-## Endianness
+## auxvec
 
-```
-000000000001c2e0 <etens>:
-   1c2e0:	6576                	ld	a0,344(sp)
-   1c2e2:	4a92                	lw	s5,4(sp)
-   1c2e4:	804a                	c.mv	zero,s2
-   1c2e6:	c94c153f 8a20979a 	0x8a20979ac94c153f
-   1c2ee:	5202                	lw	tp,32(sp)
-   1c2f0:	c460                	sw	s0,76(s0)
-   1c2f2:	7525                	lui	a0,0xfffe9
-```
+- <https://github.com/torvalds/linux/blob/master/include/uapi/linux/auxvec.h>
+- <http://articles.manugarg.com/aboutelfauxiliaryvectors.html>
+- <https://man7.org/linux/man-pages/man3/getauxval.3.html>
