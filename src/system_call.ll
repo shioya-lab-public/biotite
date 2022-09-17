@@ -118,12 +118,13 @@ SYS_ioctl:
 SYS_writev:
   %SYS_writev_vec_b = call i8* @.get_memory_ptr(i64 %arg2)
   %SYS_writev_vec = bitcast i8* %SYS_writev_vec_b to %struct.iovec*
-  %i_ptr = alloca i64, i64 0
+  %i_ptr = alloca i64
+  store i64 0, i64* %i_ptr
   br label %test
 test:
   %i = load i64, i64* %i_ptr
-  %end = icmp slt i64 %i, %arg3
-  br i1 %end, label %trans, label %call
+  %cont = icmp slt i64 %i, %arg3
+  br i1 %cont, label %trans, label %call
 trans:
   %guest_vec_ptr = getelementptr %struct.iovec, %struct.iovec* %SYS_writev_vec, i64 %i
   %guest_vec = load %struct.iovec, %struct.iovec* %guest_vec_ptr
