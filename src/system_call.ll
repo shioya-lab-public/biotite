@@ -28,6 +28,13 @@ define i64 @.system_call(i64 %nr, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i6
     i64 66, label %SYS_writev
     i64 222, label %SYS_mmap
     i64 153, label %SYS_times
+    i64 113, label %SYS_clock_gettime
+    i64 215, label %SYS_munmap
+    i64 79, label %SYS_fstatat
+    i64 135, label %SYS_rt_sigprocmask
+    i64 172, label %SYS_getpid
+    i64 178, label %SYS_gettid
+    i64 131, label %SYS_tgkill
   ]
 
 SYS_exit:
@@ -151,6 +158,50 @@ SYS_times:
   %SYS_times_tms = bitcast i8* %SYS_times_tms_ptr to %struct.tms*
   %SYS_times_rslt = call i64 (i64, ...) @syscall(i64 100, %struct.tms* %SYS_times_tms)
   ret i64 %SYS_times_rslt
+
+SYS_clock_gettime:
+  %which_clock = trunc i64 %arg1 to i32
+  %tp_b = call i8* @.get_memory_ptr(i64 %arg2)
+  %tp = bitcast i8* %tp_b to %struct.timespec*
+  %SYS_clock_gettime_rslt = call i64 (i64, ...) @syscall(i64 228, i32 %which_clock, %struct.timespec* %tp)
+  ret i64 %SYS_clock_gettime_rslt
+
+SYS_munmap:
+  %SYS_munmap_rslt = call i64 (i64, ...) @syscall(i64 11, i64 %arg1, i64 %arg2)
+  ret i64 %SYS_munmap_rslt
+
+SYS_fstatat:
+  %SYS_fstatat_dfd = trunc i64 %arg1 to i32
+  %SYS_fstatat_filename = call i8* @.get_memory_ptr(i64 %arg2)
+  %SYS_fstatat_statbuf_b = call i8* @.get_memory_ptr(i64 %arg3)
+  %SYS_fstatat_statbuf = bitcast i8* %SYS_fstatat_statbuf_b to %struct.stat*
+  %SYS_fstatat_flag = trunc i64 %arg4 to i32
+  %SYS_fstatat_rslt = call i64 (i64, ...) @syscall(i64 262, i32 %SYS_fstatat_dfd, i8* %SYS_fstatat_filename, %struct.stat* %SYS_fstatat_statbuf, i32 %SYS_fstatat_flag)
+  ret i64 %SYS_fstatat_rslt
+
+SYS_rt_sigprocmask:
+  %SYS_rt_sigprocmask_how = trunc i64 %arg1 to i32
+  %SYS_rt_sigprocmask_set_b = call i8* @.get_memory_ptr(i64 %arg2)
+  %SYS_rt_sigprocmask_set = bitcast i8* %SYS_rt_sigprocmask_set_b to i64*
+  %SYS_rt_sigprocmask_oset_b = call i8* @.get_memory_ptr(i64 %arg3)
+  %SYS_rt_sigprocmask_oset = bitcast i8* %SYS_rt_sigprocmask_oset_b to i64*
+  %SYS_rt_sigprocmask_rslt = call i64 (i64, ...) @syscall(i64 14, i32 %SYS_rt_sigprocmask_how, i64* %SYS_rt_sigprocmask_set, i64* %SYS_rt_sigprocmask_oset, i64 %arg4)
+  ret i64 %SYS_rt_sigprocmask_rslt
+
+SYS_getpid:
+  %SYS_getpid_rslt = call i64 (i64, ...) @syscall(i64 39)
+  ret i64 %SYS_getpid_rslt
+
+SYS_gettid:
+  %SYS_gettid_rslt = call i64 (i64, ...) @syscall(i64 186)
+  ret i64 %SYS_gettid_rslt
+
+SYS_tgkill:
+  %SYS_tgkill_tgid = trunc i64 %arg1 to i32
+  %SYS_tgkill_pid = trunc i64 %arg2 to i32
+  %SYS_tgkill_sig = trunc i64 %arg3 to i32
+  %SYS_tgkill_rslt = call i64 (i64, ...) @syscall(i64 234, i32 %SYS_tgkill_tgid, i32 %SYS_tgkill_pid, i32 %SYS_tgkill_sig)
+  ret i64 %SYS_tgkill_rslt
 
 fallback:
   unreachable

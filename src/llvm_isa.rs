@@ -239,40 +239,52 @@ define i64 @.copy(i8** %0, i8** %1) {{
 
 declare i64 @getauxval(i64)
 
+; #include <sys/auxv.h>
+; 
 ; void init_auxv(unsigned long *sp) {{
-;     unsigned long value;
-;     for (unsigned long entry = 1; entry < 100; ++entry) {{
-;         if ((value = getauxval(entry))) {{
+;     unsigned long entries[24] = {{
+;         0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+;         10, 11, 12, 13, 14, 15, 16, 17, 23, 24,
+;         25, 26, 31, 51
+;     }};
+;     for (int i = 0; i < 24; ++i) {{
+;         unsigned long entry = entries[i];
+;         unsigned long value = getauxval(entry);
+;         if (value) {{
 ;             *sp++ = entry;
 ;             *sp++ = value;
 ;         }}
 ;     }}
 ; }}
+@.init_auxv.entries = constant [24 x i64] [i64 0, i64 1, i64 2, i64 3, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9, i64 10, i64 11, i64 12, i64 13, i64 14, i64 15, i64 16, i64 17, i64 23, i64 24, i64 25, i64 26, i64 31, i64 51]
+
 define void @.init_auxv(i64* %0) {{
   br label %3
 
-2:                                                ; preds = %11
+2:                                                ; preds = %13
   ret void
 
-3:                                                ; preds = %1, %11
-  %4 = phi i64 [ 1, %1 ], [ %13, %11 ]
-  %5 = phi i64* [ %0, %1 ], [ %12, %11 ]
-  %6 = call i64 @getauxval(i64 %4)
-  %7 = icmp eq i64 %6, 0
-  br i1 %7, label %11, label %8
+3:                                                ; preds = %1, %13
+  %4 = phi i64 [ 0, %1 ], [ %15, %13 ]
+  %5 = phi i64* [ %0, %1 ], [ %14, %13 ]
+  %6 = getelementptr [24 x i64], [24 x i64]* @.init_auxv.entries, i64 0, i64 %4
+  %7 = load i64, i64* %6
+  %8 = call i64 @getauxval(i64 %7)
+  %9 = icmp eq i64 %8, 0
+  br i1 %9, label %13, label %10
 
-8:                                                ; preds = %3
-  %9 = getelementptr i64, i64* %5, i64 1
-  store i64 %4, i64* %5
-  %10 = getelementptr i64, i64* %5, i64 2
-  store i64 %6, i64* %9
-  br label %11
+10:                                               ; preds = %3
+  %11 = getelementptr i64, i64* %5, i64 1
+  store i64 %7, i64* %5
+  %12 = getelementptr i64, i64* %5, i64 2
+  store i64 %8, i64* %11
+  br label %13
 
-11:                                               ; preds = %3, %8
-  %12 = phi i64* [ %10, %8 ], [ %5, %3 ]
-  %13 = add i64 %4, 1
-  %14 = icmp eq i64 %13, 100
-  br i1 %14, label %2, label %3
+13:                                               ; preds = %10, %3
+  %14 = phi i64* [ %12, %10 ], [ %5, %3 ]
+  %15 = add i64 %4, 1
+  %16 = icmp eq i64 %15, 24
+  br i1 %16, label %2, label %3
 }}
 
 declare float @llvm.sqrt.float(float %arg)

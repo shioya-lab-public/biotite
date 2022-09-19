@@ -397,12 +397,24 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
 
         // RV32/RV64 Zicsr
-        Csrrw { rd, csr, rs1 } => {}
-        Csrrs { rd, csr, rs1 } => {}
-        Csrrc { rd, csr, rs1 } => {}
-        Csrrwi { rd, csr, imm } => {}
-        Csrrsi { rd, csr, imm } => {}
-        Csrrci { rd, csr, imm } => {}
+        Csrrw { rd, csr, rs1 } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
+        Csrrs { rd, csr, rs1 } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
+        Csrrc { rd, csr, rs1 } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
+        Csrrwi { rd, csr, imm } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
+        Csrrsi { rd, csr, imm } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
+        Csrrci { rd, csr, imm } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
 
         // RV32M
         Mul { rd, rs1, rs2 } => {
@@ -1326,11 +1338,19 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Fence { mo: { MO::AqRl } },
         }
 
-        Rdinstret { rd } => {}
-        Rdcycle { rd } => {}
-        Rdtime { rd } => {}
+        Rdinstret { rd } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
+        Rdcycle { rd } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
+        Rdtime { rd } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
 
-        Csrr { rd, csr } => {}
+        Csrr { rd, csr } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
         Csrw { csr, rs1 } => {}
         Csrs { csr, rs1 } => {}
         Csrc { csr, rs1 } => {}
@@ -1339,16 +1359,28 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         Csrsi { csr, imm } => {}
         Csrci { csr, imm } => {}
 
-        Frcsr { rd } => {}
-        Fscsr { rd, rs1 } => {}
+        Frcsr { rd } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
+        Fscsr { rd, rs1 } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
         PseudoFscsr { rs1 } => {}
 
-        Frrm { rd } => {}
-        Fsrm { rd, rs1 } => {}
+        Frrm { rd } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
+        Fsrm { rd, rs1 } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
         PseudoFsrm { rs1 } => {}
 
-        Frflags { rd } => {}
-        Fsflags { rd, rs1 } => {}
+        Frflags { rd } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
+        Fsflags { rd, rs1 } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
         PseudoFsflags { rs1 } => {}
 
         // Misc
