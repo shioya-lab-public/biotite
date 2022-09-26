@@ -9,8 +9,10 @@ use std::str::Lines;
 lazy_static! {
     static ref SECTION_SIZE: Regex =
         Regex::new(r"\s+\S+\s+(\S+)\s+([[:xdigit:]]+)\s+([[:xdigit:]]+)").unwrap();
-    static ref SYMBOL_SIZE: Regex =
-        Regex::new(r"([[:xdigit:]]+)\s+\S+\s+(\S+\s+)?\S+\s+([[:xdigit:]]+)\s+(\.hidden\s+)?(\S+)?").unwrap();
+    static ref SYMBOL_SIZE: Regex = Regex::new(
+        r"([[:xdigit:]]+)\s+\S+\s+(\S+\s+)?\S+\s+([[:xdigit:]]+)\s+(\.hidden\s+)?(\S+)?"
+    )
+    .unwrap();
     static ref SECTION: Regex = Regex::new(r"Disassembly of section (\S+):").unwrap();
     static ref SYMBOL: Regex = Regex::new(r"([[:xdigit:]]+) <(\S+)>:").unwrap();
     static ref BYTES: Regex =

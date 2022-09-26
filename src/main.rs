@@ -12,6 +12,9 @@ struct Args {
 
     #[clap(long)]
     irs: Vec<PathBuf>,
+
+    #[clap(long)]
+    arch: String,
 }
 
 fn main() {
@@ -22,7 +25,7 @@ fn main() {
         .iter()
         .map(|path| fs::read(path).expect("Unable to read LLVM IR"))
         .collect();
-    let ll_src = riscv2llvm::run(&rv_src, &irs);
+    let ll_src = riscv2llvm::run(&rv_src, &irs, &args.arch);
     let output = args
         .output
         .unwrap_or_else(|| args.input.with_extension("ll"));

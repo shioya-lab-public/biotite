@@ -9,6 +9,7 @@ pub struct Program {
     pub data_blocks: Vec<RV::DataBlock>,
     pub funcs: Vec<Func>,
     pub src_funcs: HashMap<RV::Addr, String>,
+    pub syscall: String,
 }
 
 impl Display for Program {
@@ -85,7 +86,7 @@ dynamic:
             .map(|f| f.as_str())
             .collect::<Vec<_>>()
             .join("\n\n");
-        let system_call = include_str!("system_call.ll");
+        let syscall = &self.syscall;
 
         // Merge all components
         write!(f, "define i64 @main(i32 %argc, i8** %argv) {{
@@ -300,7 +301,7 @@ declare double @llvm.maximum.double(double %arg1, double %arg2)
 declare float @llvm.copysign.float(float %mag, float %sgn)
 declare double @llvm.copysign.double(double %mag, double %sgn)
 
-{system_call}
+{syscall}
 ")
     }
 }

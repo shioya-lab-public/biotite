@@ -4,16 +4,17 @@ use crate::riscv_isa as RV;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-pub fn run(rv_prog: RV::Program, src_funcs: HashMap<RV::Addr, String>) -> Program {
+pub fn run(rv_prog: RV::Program, src_funcs: HashMap<RV::Addr, String>, syscall: String) -> Program {
     Program {
         entry: rv_prog.entry,
         data_blocks: rv_prog.data_blocks,
         funcs: rv_prog
-        .code_blocks
-        .into_par_iter()
-        .map(translate_rv_code_block)
-        .collect(),
+            .code_blocks
+            .into_par_iter()
+            .map(translate_rv_code_block)
+            .collect(),
         src_funcs,
+        syscall,
     }
 }
 
@@ -477,7 +478,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Urem { rslt: _2, ty: i_64, op1: _0, op2: _1 },
             Store { ty: i_64, val: _2, ptr: rd },
         }
-        
+
         // RV64M (in addition to RV32M)
         Mulw { rd, rs1, rs2 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },

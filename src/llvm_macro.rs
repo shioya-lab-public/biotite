@@ -228,5 +228,5 @@ macro_rules! next_pc {
 
 pub(crate) use {
     addr, d, expand_value, f, frd, frs1, frs2, frs3, i_1, i_128, i_16, i_32, i_64, i_8, imm, mo,
-    next_pc, rd, rs1, rs2, translate_rv_inst, _0, _1, _2, _3, _4, _5, _6, _7, pc, rs, _8, _9, _10
+    next_pc, pc, rd, rs, rs1, rs2, translate_rv_inst, _0, _1, _10, _2, _3, _4, _5, _6, _7, _8, _9,
 };

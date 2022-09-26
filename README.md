@@ -56,12 +56,8 @@ clang -static t.c --target=riscv64 -march=rv64gc --gcc-toolchain=/opt/riscv64-el
 
 ## syscall
 
-The Linux system call number is different for each architecture.
-    - `SYS_write` in spike pk is 64, but in x64 is 1.
-    - <https://github.com/westerndigitalcorporation/RISC-V-Linux/blob/master/riscv-pk/pk/syscall.h>
-    - <https://chromium.googlesource.com/chromiumos/docs/+/refs/heads/main/constants/syscalls.md>
-    - <https://github.com/riscv-software-src/riscv-pk/blob/master/pk/syscall.h>
-To call a generic `syscall` in LLVM IR, we must recover the type for each argument, possibly with some other processing, in each system call.
+- <https://github.com/riscv-software-src/riscv-pk/blob/7e9b671c0415dfd7b562ac934feb9380075d4aa2/pk/syscall.h>
+- <https://chromium.googlesource.com/chromiumos/docs/+/a2622281357e45f2b2c74cdc4b428b0d1294488d/constants/syscalls.md>
 
 ## auxvec
 
