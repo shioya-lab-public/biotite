@@ -39,6 +39,8 @@ impl Display for Program {
         // Build `get_memory_ptr`
         let get_memory_ptr = format!(
             "define i8* @.get_memory_ptr(i64 %addr) {{
+  %is_zero = icmp eq i64 0, %addr
+  br i1 %is_zero, label %dynamic, label %static
   %is_static = icmp ugt i64 {memory_len}, %addr
   br i1 %is_static, label %static, label %dynamic
 static:
