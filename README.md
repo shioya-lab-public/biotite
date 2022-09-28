@@ -19,6 +19,8 @@ fclass is not supported
 llvm-objdump -fhtDz test
 ```
 
+We need static linking to make PT_TLS available in AT_PHDR.
+
 ## RISC-V Notes
 
 - The base integer instruction sets use a two’s-complement representation for signed integer values.

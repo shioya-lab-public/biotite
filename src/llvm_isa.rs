@@ -24,7 +24,8 @@ impl Display for Program {
 
         // Append the stack
         let stack_len = 8192 * 1024;
-        let sp = Value::Addr(RV::Addr(memory.len() as u64 + 8190 * 1024));
+        let sp = Value::Addr(RV::Addr(memory.len() as u64 + 8188 * 1024));
+        let phdr = Value::Addr(RV::Addr(memory.len() as u64 + 8190 * 1024));
         memory.extend(vec![0; stack_len]);
 
         // Format the memory array
@@ -40,11 +41,12 @@ impl Display for Program {
         let get_memory_ptr = format!(
             "define i8* @.get_memory_ptr(i64 %addr) {{
   %is_zero = icmp eq i64 0, %addr
-  br i1 %is_zero, label %dynamic, label %static
-  %is_static = icmp ugt i64 {memory_len}, %addr
+  br i1 %is_zero, label %dynamic, label %test_static
+test_static:
+  %is_static = icmp ugt i64 u0x{memory_len:x}, %addr
   br i1 %is_static, label %static, label %dynamic
 static:
-  %static_ptr = getelementptr [{memory_len} x i8], [{memory_len} x i8]* @.memory, i64 0, i64 %addr
+  %static_ptr = getelementptr [u0x{memory_len:x} x i8], [u0x{memory_len:x} x i8]* @.memory, i64 0, i64 %addr
   ret i8* %static_ptr
 dynamic:
   %dynamic_ptr = inttoptr i64 %addr to i8*
@@ -115,7 +117,8 @@ dynamic:
   ; Initialize `auxv`
   %auxv_val = add i64 %envp_val, 8
   %auxv = inttoptr i64 %auxv_val to i64*
-  call void @.init_auxv(i64* %auxv)
+  %host_phdr = call i8* @.get_memory_ptr(i64 {phdr})
+  call void @.init_auxv(i64* %auxv, i64 {phdr}, i8* %host_phdr)
 
   ; Load the entry address
   %entry_p= alloca i64
@@ -240,17 +243,26 @@ define i64 @.copy(i8** %0, i8** %1) {{
   ret i64 %15
 }}
 
-declare i64 @getauxval(i64)
-
 ; #include <sys/auxv.h>
 ; 
-; void init_auxv(unsigned long *sp) {{
-;     unsigned long entries[24] = {{
-;         0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-;         10, 11, 12, 13, 14, 15, 16, 17, 23, 24,
-;         25, 26, 31, 51
+; void init_auxv(unsigned long* sp, unsigned long guest_phdr, unsigned char* host_phdr) {{
+;     // Initialize `AT_PHDR`.
+;     unsigned char* phdr = (unsigned char*) getauxval(3);
+;     unsigned long phent = getauxval(4);
+;     unsigned long phnum = getauxval(5);
+;     for (int i = 0; i < phent * phnum; ++i) {{
+;         *host_phdr++ = *phdr++;
+;     }}
+;     *sp++ = 3;
+;     *sp++ = guest_phdr;
+; 
+;     // Initialize other entries.
+;     unsigned long entries[23] = {{
+;         0, 1, 2, 4, 5, 6, 7, 8, 9, 10,
+;         11, 12, 13, 14, 15, 16, 17, 23, 24, 25,
+;         26, 31, 51
 ;     }};
-;     for (int i = 0; i < 24; ++i) {{
+;     for (int i = 0; i < 23; ++i) {{
 ;         unsigned long entry = entries[i];
 ;         unsigned long value = getauxval(entry);
 ;         if (value) {{
@@ -259,35 +271,66 @@ declare i64 @getauxval(i64)
 ;         }}
 ;     }}
 ; }}
-@.init_auxv.entries = constant [24 x i64] [i64 0, i64 1, i64 2, i64 3, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9, i64 10, i64 11, i64 12, i64 13, i64 14, i64 15, i64 16, i64 17, i64 23, i64 24, i64 25, i64 26, i64 31, i64 51]
 
-define void @.init_auxv(i64* %0) {{
-  br label %3
+declare i64 @getauxval(i64)
 
-2:                                                ; preds = %13
+@.init_auxv.entries = constant [23 x i64] [i64 0, i64 1, i64 2, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9, i64 10, i64 11, i64 12, i64 13, i64 14, i64 15, i64 16, i64 17, i64 23, i64 24, i64 25, i64 26, i64 31, i64 51], align 16
+
+define void @.init_auxv(i64* %0, i64 %1, i8* %2) {{
+  %4 = call i64 @getauxval(i64 3)
+  %5 = call i64 @getauxval(i64 4)
+  %6 = call i64 @getauxval(i64 5)
+  %7 = mul i64 %6, %5
+  %8 = icmp eq i64 %7, 0
+  br i1 %8, label %11, label %9
+
+9:                                                ; preds = %3
+  %10 = inttoptr i64 %4 to i8*
+  br label %14
+
+11:                                               ; preds = %14, %3
+  %12 = getelementptr i64, i64* %0, i64 1
+  store i64 3, i64* %0
+  %13 = getelementptr i64, i64* %0, i64 2
+  store i64 %1, i64* %12
+  br label %24
+
+14:                                               ; preds = %9, %14
+  %15 = phi i64 [ 0, %9 ], [ %21, %14 ]
+  %16 = phi i8* [ %2, %9 ], [ %20, %14 ]
+  %17 = phi i8* [ %10, %9 ], [ %18, %14 ]
+  %18 = getelementptr i8, i8* %17, i64 1
+  %19 = load i8, i8* %17
+  %20 = getelementptr i8, i8* %16, i64 1
+  store i8 %19, i8* %16
+  %21 = add i64 %15, 1
+  %22 = icmp eq i64 %21, %7
+  br i1 %22, label %11, label %14
+
+23:                                               ; preds = %34
   ret void
 
-3:                                                ; preds = %1, %13
-  %4 = phi i64 [ 0, %1 ], [ %15, %13 ]
-  %5 = phi i64* [ %0, %1 ], [ %14, %13 ]
-  %6 = getelementptr [24 x i64], [24 x i64]* @.init_auxv.entries, i64 0, i64 %4
-  %7 = load i64, i64* %6
-  %8 = call i64 @getauxval(i64 %7)
-  %9 = icmp eq i64 %8, 0
-  br i1 %9, label %13, label %10
+24:                                               ; preds = %11, %34
+  %25 = phi i64 [ 0, %11 ], [ %36, %34 ]
+  %26 = phi i64* [ %13, %11 ], [ %35, %34 ]
+  %27 = getelementptr [23 x i64], [23 x i64]* @.init_auxv.entries, i64 0, i64 %25
+  %28 = load i64, i64* %27
+  %29 = call i64 @getauxval(i64 %28)
+  %30 = icmp eq i64 %29, 0
+  br i1 %30, label %34, label %31
 
-10:                                               ; preds = %3
-  %11 = getelementptr i64, i64* %5, i64 1
-  store i64 %7, i64* %5
-  %12 = getelementptr i64, i64* %5, i64 2
-  store i64 %8, i64* %11
-  br label %13
+31:                                               ; preds = %24
+  %32 = getelementptr i64, i64* %26, i64 1
+  store i64 %28, i64* %26
+  %33 = getelementptr i64, i64* %26, i64 2
+  store i64 %29, i64* %32
+  br label %34
 
-13:                                               ; preds = %10, %3
-  %14 = phi i64* [ %12, %10 ], [ %5, %3 ]
-  %15 = add i64 %4, 1
-  %16 = icmp eq i64 %15, 24
-  br i1 %16, label %2, label %3
+34:                                               ; preds = %31, %24
+  %35 = phi i64* [ %33, %31 ], [ %26, %24 ]
+  %36 = add i64 %25, 1
+  %37 = icmp eq i64 %36, 23
+  br i1 %37, label %23, label %24
 }}
 
 declare float @llvm.sqrt.float(float %arg)

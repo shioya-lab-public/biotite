@@ -1,4 +1,4 @@
-pub fn build(arch: &str) -> String {
+pub fn run(arch: &str) -> String {
     let (structs, syscalls) = match arch {
         "x86_64" => (
             crate::syscall_x86_64::STRUCTS,
