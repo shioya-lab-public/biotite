@@ -12,6 +12,7 @@ all CSR are ignored
 all rm are ignored
 fmv only sect result int val
 fclass is not supported
+TLS is not supported, which is mainly because currently `llvm-objdump-14` cannot dump the `.tdata` section produced by RISC-V GCC, so we cannot properly initialize the `PT_TLS` segment of the `AT_PHDR` entry in `auxv`. Currently, the host `auxv` is used for initialization, so we need static linking in the host to make `PT_TLS` available in `AT_PHDR`.
 
 ## Testing Commands
 
@@ -19,7 +20,7 @@ fclass is not supported
 llvm-objdump -fhtDz test
 ```
 
-We need static linking to make PT_TLS available in AT_PHDR.
+
 
 ## RISC-V Notes
 
