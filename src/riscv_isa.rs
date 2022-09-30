@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Debug, PartialEq, Eq)]
 pub struct Program {
     pub entry: Addr,
+    pub tdata: Addr,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
 }
@@ -521,7 +522,7 @@ impl Display for FReg {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct Imm(pub i64);
 
 impl Imm {
@@ -539,7 +540,7 @@ impl Display for Imm {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct Addr(pub u64);
 
 impl Addr {

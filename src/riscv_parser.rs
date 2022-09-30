@@ -4,7 +4,6 @@ use rayon::prelude::*;
 use regex::Regex;
 use std::collections::HashMap;
 use std::mem;
-use std::str::Lines;
 
 lazy_static! {
     static ref SECTION_SIZE: Regex =
@@ -17,23 +16,28 @@ lazy_static! {
     static ref SYMBOL: Regex = Regex::new(r"([[:xdigit:]]+) <(\S+)>:").unwrap();
     static ref BYTES: Regex =
         Regex::new(r"\s+[[:xdigit:]]+:\s+(([[:xdigit:]][[:xdigit:]] )+)").unwrap();
+    static ref GCC_BYTES: Regex = Regex::new(r"\s+[[:xdigit:]]+:\s+([[:xdigit:]]+)").unwrap();
 }
 
-pub fn run(src: &str) -> Program {
+pub fn run(src: &str, tdata: &Option<String>) -> Program {
     let mut src = src.lines();
     let entry = parse_entry(&mut src);
     let sections = parse_sections(&mut src);
     let symbols = parse_symbols(&mut src);
-    let (mut data_blocks, code_blocks) = parse_assembly(&mut src);
+    let (mut data_blocks, code_blocks) = parse_assembly(&mut src, false);
     expand_data_blocks(&mut data_blocks, &sections, &symbols);
+    let (tdata_addr, tdata_blocks) = parse_tdata(tdata);
+    data_blocks.extend(tdata_blocks);
+    data_blocks.sort_unstable_by_key(|b| b.address);
     Program {
         entry,
+        tdata: tdata_addr,
         data_blocks,
         code_blocks,
     }
 }
 
-fn parse_entry(src: &mut Lines) -> Addr {
+fn parse_entry<'a>(src: &mut impl Iterator<Item = &'a str>) -> Addr {
     let mut src = src.skip(3);
     Addr::new(
         src.next()
@@ -43,7 +47,7 @@ fn parse_entry(src: &mut Lines) -> Addr {
     )
 }
 
-fn parse_sections(src: &mut Lines) -> HashMap<(String, Addr), usize> {
+fn parse_sections<'a>(src: &mut impl Iterator<Item = &'a str>) -> HashMap<(String, Addr), usize> {
     let mut src = src.skip(4);
     let mut sections = HashMap::new();
     while let Some(caps) = SECTION_SIZE.captures(src.next().expect("Missing section header")) {
@@ -54,7 +58,7 @@ fn parse_sections(src: &mut Lines) -> HashMap<(String, Addr), usize> {
     sections
 }
 
-fn parse_symbols(src: &mut Lines) -> HashMap<(String, Addr), usize> {
+fn parse_symbols<'a>(src: &mut impl Iterator<Item = &'a str>) -> HashMap<(String, Addr), usize> {
     let mut src = src.skip(1);
     let mut symbols = HashMap::new();
     while let Some(caps) = SYMBOL_SIZE.captures(src.next().expect("Missing symbol table")) {
@@ -66,7 +70,10 @@ fn parse_symbols(src: &mut Lines) -> HashMap<(String, Addr), usize> {
     symbols
 }
 
-fn parse_assembly(src: &mut Lines) -> (Vec<DataBlock>, Vec<CodeBlock>) {
+fn parse_assembly<'a>(
+    src: &mut impl Iterator<Item = &'a str>,
+    is_gcc: bool,
+) -> (Vec<DataBlock>, Vec<CodeBlock>) {
     let mut data_blocks = Vec::new();
     let mut code_blocks = Vec::new();
     let mut section = String::new();
@@ -116,22 +123,39 @@ fn parse_assembly(src: &mut Lines) -> (Vec<DataBlock>, Vec<CodeBlock>) {
         data_blocks.push(raw_block);
     }
     (
-        data_blocks.into_par_iter().map(parse_data_block).collect(),
+        data_blocks
+            .into_par_iter()
+            .map(|b| parse_data_block(b, is_gcc))
+            .collect(),
         code_blocks.into_par_iter().map(parse_code_block).collect(),
     )
 }
 
 fn parse_data_block(
     (section, symbol, address, lines): (String, String, Addr, Vec<&str>),
+    is_gcc: bool,
 ) -> DataBlock {
     let mut bytes = Vec::new();
     if lines.len() > 1 || lines[0] != "..." {
         for line in lines {
-            let caps = BYTES.captures(line).unwrap();
-            for byte_str in caps[1].split(' ').filter(|s| !s.is_empty()) {
-                let byte = u8::from_str_radix(byte_str, 16)
-                    .unwrap_or_else(|_| panic!("Invalid byte `{byte_str}`"));
-                bytes.push(byte);
+            if is_gcc {
+                let bytes_str = &GCC_BYTES.captures(line).unwrap()[1];
+                let mut i = 0;
+                let mut bs = Vec::new();
+                while i < bytes_str.len() {
+                    let b = u8::from_str_radix(&bytes_str[i..i + 2], 16).unwrap();
+                    bs.push(b);
+                    i += 2;
+                }
+                bs.reverse();
+                bytes.extend(bs);
+            } else {
+                let caps = BYTES.captures(line).unwrap();
+                for byte_str in caps[1].split(' ').filter(|s| !s.is_empty()) {
+                    let byte = u8::from_str_radix(byte_str, 16)
+                        .unwrap_or_else(|_| panic!("Invalid byte `{byte_str}`"));
+                    bytes.push(byte);
+                }
             }
         }
     }
@@ -175,6 +199,19 @@ fn expand_data_blocks(
             };
             data_block.bytes = vec![0; size];
         }
+    }
+}
+
+fn parse_tdata(tdata: &Option<String>) -> (Addr, Vec<DataBlock>) {
+    if let Some(tdata) = tdata {
+        let mut lines = tdata.lines().skip(4);
+        let (data_blocks, _) = parse_assembly(&mut lines, true);
+        if data_blocks.len() == 0 {
+            panic!("Invalid `.tdata`");
+        }
+        (data_blocks[0].address, data_blocks)
+    } else {
+        (Addr(0), Vec::new())
     }
 }
 

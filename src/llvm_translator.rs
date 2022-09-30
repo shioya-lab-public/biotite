@@ -7,6 +7,7 @@ use std::collections::HashMap;
 pub fn run(rv_prog: RV::Program, src_funcs: HashMap<RV::Addr, String>, syscall: String) -> Program {
     Program {
         entry: rv_prog.entry,
+        tdata: rv_prog.tdata,
         data_blocks: rv_prog.data_blocks,
         funcs: rv_prog
             .code_blocks
