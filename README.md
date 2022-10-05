@@ -16,7 +16,8 @@ fclass is not supported
 ## Testing Commands
 
 ``` Bash
-llvm-objdump -fhtDz test
+llvm-objdump -fhtDz --mattr=a,c,d,f,m test
+llvm-objdump -sj.tdata test
 ```
 
 We need to use RISC-V GCC objdump to dump the `.tdata` section, so we can properly initialize the `PT_TLS` segment of the `AT_PHDR` entry in `auxv`. Also, we need static linking in the host to make `PT_TLS` available in `AT_PHDR`.

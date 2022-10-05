@@ -16,7 +16,7 @@ lazy_static! {
     static ref SYMBOL: Regex = Regex::new(r"([[:xdigit:]]+) <(\S+)>:").unwrap();
     static ref BYTES: Regex =
         Regex::new(r"\s+[[:xdigit:]]+:\s+(([[:xdigit:]][[:xdigit:]] )+)").unwrap();
-    static ref GCC_BYTES: Regex = Regex::new(r"\s+[[:xdigit:]]+:\s+([[:xdigit:]]+)").unwrap();
+    static ref CONTENTS: Regex = Regex::new(r"\s+([[:xdigit:]]+)\s+(.{35})").unwrap();
 }
 
 pub fn run(src: &str, tdata: &Option<String>) -> Program {
@@ -24,11 +24,17 @@ pub fn run(src: &str, tdata: &Option<String>) -> Program {
     let entry = parse_entry(&mut src);
     let sections = parse_sections(&mut src);
     let symbols = parse_symbols(&mut src);
-    let (mut data_blocks, code_blocks) = parse_assembly(&mut src, false);
+    let (mut data_blocks, code_blocks) = parse_assembly(&mut src);
     expand_data_blocks(&mut data_blocks, &sections, &symbols);
-    let (tdata_addr, tdata_blocks) = parse_tdata(tdata);
-    data_blocks.extend(tdata_blocks);
-    data_blocks.sort_unstable_by_key(|b| b.address);
+    let tdata_addr = match tdata {
+        Some(tdata) => {
+            let (tdata_addr, tdata_block) = parse_tdata(tdata);
+            data_blocks.push(tdata_block);
+            data_blocks.sort_unstable_by_key(|b| b.address);
+            tdata_addr
+        }
+        None => Addr(0),
+    };
     Program {
         entry,
         tdata: tdata_addr,
@@ -70,10 +76,7 @@ fn parse_symbols<'a>(src: &mut impl Iterator<Item = &'a str>) -> HashMap<(String
     symbols
 }
 
-fn parse_assembly<'a>(
-    src: &mut impl Iterator<Item = &'a str>,
-    is_gcc: bool,
-) -> (Vec<DataBlock>, Vec<CodeBlock>) {
+fn parse_assembly<'a>(src: &mut impl Iterator<Item = &'a str>) -> (Vec<DataBlock>, Vec<CodeBlock>) {
     let mut data_blocks = Vec::new();
     let mut code_blocks = Vec::new();
     let mut section = String::new();
@@ -123,39 +126,22 @@ fn parse_assembly<'a>(
         data_blocks.push(raw_block);
     }
     (
-        data_blocks
-            .into_par_iter()
-            .map(|b| parse_data_block(b, is_gcc))
-            .collect(),
+        data_blocks.into_par_iter().map(parse_data_block).collect(),
         code_blocks.into_par_iter().map(parse_code_block).collect(),
     )
 }
 
 fn parse_data_block(
     (section, symbol, address, lines): (String, String, Addr, Vec<&str>),
-    is_gcc: bool,
 ) -> DataBlock {
     let mut bytes = Vec::new();
     if lines.len() > 1 || lines[0] != "..." {
         for line in lines {
-            if is_gcc {
-                let bytes_str = &GCC_BYTES.captures(line).unwrap()[1];
-                let mut i = 0;
-                let mut bs = Vec::new();
-                while i < bytes_str.len() {
-                    let b = u8::from_str_radix(&bytes_str[i..i + 2], 16).unwrap();
-                    bs.push(b);
-                    i += 2;
-                }
-                bs.reverse();
-                bytes.extend(bs);
-            } else {
-                let caps = BYTES.captures(line).unwrap();
-                for byte_str in caps[1].split(' ').filter(|s| !s.is_empty()) {
-                    let byte = u8::from_str_radix(byte_str, 16)
-                        .unwrap_or_else(|_| panic!("Invalid byte `{byte_str}`"));
-                    bytes.push(byte);
-                }
+            let caps = BYTES.captures(line).unwrap();
+            for byte_str in caps[1].split(' ').filter(|s| !s.is_empty()) {
+                let byte = u8::from_str_radix(byte_str, 16)
+                    .unwrap_or_else(|_| panic!("Invalid byte `{byte_str}`"));
+                bytes.push(byte);
             }
         }
     }
@@ -202,16 +188,35 @@ fn expand_data_blocks(
     }
 }
 
-fn parse_tdata(tdata: &Option<String>) -> (Addr, Vec<DataBlock>) {
-    if let Some(tdata) = tdata {
-        let mut lines = tdata.lines().skip(4);
-        let (data_blocks, _) = parse_assembly(&mut lines, true);
-        if data_blocks.len() == 0 {
-            panic!("Invalid `.tdata`");
+fn parse_tdata(tdata: &str) -> (Addr, DataBlock) {
+    let lines = tdata.lines().skip(3).filter(|l| !l.is_empty());
+    let mut addr = None;
+    let mut bytes = Vec::new();
+    for line in lines {
+        let caps = CONTENTS.captures(line).unwrap();
+        if addr.is_none() {
+            addr = Some(Addr(u64::from_str_radix(&caps[1], 16).unwrap()));
         }
-        (data_blocks[0].address, data_blocks)
+        let byte_str: String = caps[2].chars().filter(|c| !c.is_whitespace()).collect();
+        let mut i = 0;
+        while i < byte_str.len() {
+            let byte = u8::from_str_radix(&byte_str[i..i + 2], 16).unwrap();
+            bytes.push(byte);
+            i += 2;
+        }
+    }
+    if let Some(addr) = addr {
+        (
+            addr,
+            DataBlock {
+                section: String::from(".tdata"),
+                symbol: String::from(".tdata"),
+                address: addr,
+                bytes,
+            },
+        )
     } else {
-        (Addr(0), Vec::new())
+        panic!("Empty `.tdata`");
     }
 }
 
