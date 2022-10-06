@@ -52,9 +52,9 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Ret { val: addr },
         }
         Jalr { rd, imm, rs1 } => {
-            Store { ty: i_64, val: next_pc, ptr: rd },
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Store { ty: i_64, val: next_pc, ptr: rd },
             Ret { val: _1 },
         }
         Beq { rs1, rs2, addr } => {
@@ -1327,8 +1327,8 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Ret { val: _0 },
         }
         PseudoJalr { rs1 } => {
-            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(RV::Reg::Ra) } },
             Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(RV::Reg::Ra) } },
             Ret { val: _0 },
         }
         Ret {} => {
@@ -1388,9 +1388,9 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         // Misc
         Unimp {} => {}
         OffsetJalr { imm, rs1 } => {
-            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(RV::Reg::Ra) } },
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(RV::Reg::Ra) } },
             Ret { val: _1 },
         }
         OffsetJr { imm, rs1 } => {
