@@ -106,15 +106,25 @@ lazy_static! {
         (
             "fstat",
             80,
-            "  %statbuf = call i8* @.get_memory_ptr(i64 %arg2)
-  %rslt = call i64 (i64, ...) @syscall(i64 5, i64 %arg1, i8* %statbuf)"
+            "  %pad_addr = add i64 %arg2, 120
+  %pad_b = call i8* @.get_memory_ptr(i64 %pad_addr)
+  %pad = bitcast i8* %pad_b to i192*
+  %pad_val = load i192, i192* %pad
+  %statbuf = call i8* @.get_memory_ptr(i64 %arg2)
+  %rslt = call i64 (i64, ...) @syscall(i64 5, i64 %arg1, i8* %statbuf)
+  store i192 %pad_val, i192* %pad"
         ),
         (
             "fstatat",
             79,
-            "  %filename = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %pad_addr = add i64 %arg3, 120
+  %pad_b = call i8* @.get_memory_ptr(i64 %pad_addr)
+  %pad = bitcast i8* %pad_b to i192*
+  %pad_val = load i192, i192* %pad
+  %filename = call i8* @.get_memory_ptr(i64 %arg2)
   %statbuf = call i8* @.get_memory_ptr(i64 %arg3)
-  %rslt = call i64 (i64, ...) @syscall(i64 262, i64 %arg1, i8* %filename, i8* %statbuf, i64 %arg4)"
+  %rslt = call i64 (i64, ...) @syscall(i64 262, i64 %arg1, i8* %filename, i8* %statbuf, i64 %arg4)
+  store i192 %pad_val, i192* %pad"
         ),
         (
             "faccessat",
@@ -417,16 +427,26 @@ call:
         (
             "stat",
             1038,
-            "  %filename = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %pad_addr = add i64 %arg2, 120
+  %pad_b = call i8* @.get_memory_ptr(i64 %pad_addr)
+  %pad = bitcast i8* %pad_b to i192*
+  %pad_val = load i192, i192* %pad
+  %filename = call i8* @.get_memory_ptr(i64 %arg1)
   %statbuf = call i8* @.get_memory_ptr(i64 %arg2)
-  %rslt = call i64 (i64, ...) @syscall(i64 4, i8* %filename, i8* %statbuf)"
+  %rslt = call i64 (i64, ...) @syscall(i64 4, i8* %filename, i8* %statbuf)
+  store i192 %pad_val, i192* %pad"
         ),
         (
             "lstat",
             1039,
-            "  %filename = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %pad_addr = add i64 %arg2, 120
+  %pad_b = call i8* @.get_memory_ptr(i64 %pad_addr)
+  %pad = bitcast i8* %pad_b to i192*
+  %pad_val = load i192, i192* %pad
+  %filename = call i8* @.get_memory_ptr(i64 %arg1)
   %statbuf = call i8* @.get_memory_ptr(i64 %arg2)
-  %rslt = call i64 (i64, ...) @syscall(i64 6, i8* %filename, i8* %statbuf)"
+  %rslt = call i64 (i64, ...) @syscall(i64 6, i8* %filename, i8* %statbuf)
+  store i192 %pad_val, i192* %pad"
         ),
         (
             "time",

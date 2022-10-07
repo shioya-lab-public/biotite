@@ -935,7 +935,9 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Zext { rslt: _3, ty1: i_1, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
-        // `fclass.s` is not supported.
+        FclassS { rd, frs1 } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
         FcvtSW { frd, rs1, rm } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
@@ -1130,7 +1132,9 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Zext { rslt: _3, ty1: i_1, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
-        // `fclass.d` is not supported.
+        FclassD { rd, frs1 } => {
+            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+        }
         FcvtWD { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Fptosi { rslt: _1, ty1: d, val: _0, ty2: i_32 },
