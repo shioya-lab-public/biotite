@@ -12,15 +12,18 @@ all CSR are ignored
 all rm are ignored
 fmv only sect result int val
 fclass is not supported
+mprotect always return 0, because it fails for legal input in RISC-V
 
 ## Testing Commands
 
 ``` Bash
 llvm-objdump -fhtDz --mattr=a,c,d,f,m test
 llvm-objdump -sj.tdata test
+clang -static test.ll -lm
 ```
 
 We need to use RISC-V GCC objdump to dump the `.tdata` section, so we can properly initialize the `PT_TLS` segment of the `AT_PHDR` entry in `auxv`. Also, we need static linking in the host to make `PT_TLS` available in `AT_PHDR`.
+
 
 
 ## RISC-V Notes
@@ -68,3 +71,48 @@ clang -static t.c --target=riscv64 -march=rv64gc --gcc-toolchain=/opt/riscv64-el
 - <https://github.com/torvalds/linux/blob/master/include/uapi/linux/auxvec.h>
 - <http://articles.manugarg.com/aboutelfauxiliaryvectors.html>
 - <https://man7.org/linux/man-pages/man3/getauxval.3.html>
+
+``` C
+#include <elf.h>
+#include <sys/auxv.h>
+
+void init_auxv(unsigned long* sp, unsigned long guest_phdr, unsigned char* host_phdr_b, unsigned long tdata) {
+    // Initialize `AT_PHDR`.
+    Elf64_Phdr* host_phdr = (Elf64_Phdr*) host_phdr_b;
+    Elf64_Phdr* phdr = (Elf64_Phdr*) getauxval(AT_PHDR);
+    unsigned long phnum = getauxval(AT_PHNUM);
+    if (phdr && phnum) {
+        for (int i = 0; i < phnum; ++i) {
+            if (phdr->p_type == PT_TLS) {
+                *host_phdr = *phdr++;
+                host_phdr->p_vaddr = tdata;
+                ++host_phdr;
+            } else if (phdr->p_type == PT_GNU_RELRO) {
+                *host_phdr = *phdr++;
+                host_phdr->p_vaddr = tdata;
+                host_phdr->p_memsz = 0xac8;
+                ++host_phdr;
+            } else {
+                *host_phdr++ = *phdr++;
+            }
+        }
+        *sp++ = AT_PHDR;
+        *sp++ = guest_phdr;
+    }
+
+    // Initialize other entries.
+    unsigned long entries[23] = {
+        0, 1, 2, 4, 5, 6, 7, 8, 9, 10,
+        11, 12, 13, 14, 15, 16, 17, 23, 24, 25,
+        26, 31, 51
+    };
+    for (int i = 0; i < 23; ++i) {
+        unsigned long entry = entries[i];
+        unsigned long value = getauxval(entry);
+        if (value) {
+            *sp++ = entry;
+            *sp++ = value;
+        }
+    }
+}
+```

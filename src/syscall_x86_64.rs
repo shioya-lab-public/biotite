@@ -203,8 +203,7 @@ lazy_static! {
         (
             "mprotect",
             226,
-            "  %start = call i8* @.get_memory_ptr(i64 %arg1)
-  %rslt = call i64 (i64, ...) @syscall(i64 10, i8* %start, i64 %arg2, i64 %arg3)"
+            "  %rslt = add i64 0, 0"
         ),
         (
             "prlimit64",
