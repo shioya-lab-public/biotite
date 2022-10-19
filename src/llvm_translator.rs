@@ -61,42 +61,42 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Load { rslt: _1, ty: i_64, ptr: rs2 },
             Icmp { rslt: _2, cond: { Cond::Eq }, op1: _0, op2: _1 },
-            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Select { rslt: _3, cond: _2, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _3 },
         }
         Bne { rs1, rs2, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Load { rslt: _1, ty: i_64, ptr: rs2 },
             Icmp { rslt: _2, cond: { Cond::Ne }, op1: _0, op2: _1 },
-            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Select { rslt: _3, cond: _2, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _3 },
         }
         Blt { rs1, rs2, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Load { rslt: _1, ty: i_64, ptr: rs2 },
             Icmp { rslt: _2, cond: { Cond::Slt }, op1: _0, op2: _1 },
-            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Select { rslt: _3, cond: _2, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _3 },
         }
         Bge { rs1, rs2, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Load { rslt: _1, ty: i_64, ptr: rs2 },
             Icmp { rslt: _2, cond: { Cond::Sge }, op1: _0, op2: _1 },
-            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Select { rslt: _3, cond: _2, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _3 },
         }
         Bltu { rs1, rs2, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Load { rslt: _1, ty: i_64, ptr: rs2 },
             Icmp { rslt: _2, cond: { Cond::Ult }, op1: _0, op2: _1 },
-            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Select { rslt: _3, cond: _2, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _3 },
         }
         Bgeu { rs1, rs2, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Load { rslt: _1, ty: i_64, ptr: rs2 },
             Icmp { rslt: _2, cond: { Cond::Uge }, op1: _0, op2: _1 },
-            Select { rslt: _3, cond: _2, op1: addr, op2: next_pc },
+            Select { rslt: _3, cond: _2, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _3 },
         }
         Lb { rd, imm, rs1 } => {
@@ -880,18 +880,20 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
             Load { rslt: _2, ty: d, ptr: frs2 },
             Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Minimum { rslt: _4, ty: f, arg1: _1, arg2: _3 },
-            Fpext { rslt: _5, ty1: f, val: _4, ty2: d },
-            Store { ty: d, val: _5, ptr: frd },
+            Fcmp { rslt: _4, fcond: { FCond::Olt }, op1: _1, op2: _3 },
+            Select { rslt: _5, cond: _4, ty: f, op1: _1, op2: _3 },
+            Fpext { rslt: _6, ty1: f, val: _5, ty2: d },
+            Store { ty: d, val: _6, ptr: frd },
         }
         FmaxS { frd, frs1, frs2 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
             Load { rslt: _2, ty: d, ptr: frs2 },
             Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Maximum { rslt: _4, ty: f, arg1: _1, arg2: _3 },
-            Fpext { rslt: _5, ty1: f, val: _4, ty2: d },
-            Store { ty: d, val: _5, ptr: frd },
+            Fcmp { rslt: _4, fcond: { FCond::Olt }, op1: _1, op2: _3 },
+            Select { rslt: _5, cond: _4, ty: f, op1: _3, op2: _1 },
+            Fpext { rslt: _6, ty1: f, val: _5, ty2: d },
+            Store { ty: d, val: _6, ptr: frd },
         }
         FcvtWS { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
@@ -1092,14 +1094,16 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         FminD { frd, frs1, frs2 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Load { rslt: _1, ty: d, ptr: frs2 },
-            Minimum { rslt: _2, ty: d, arg1: _0, arg2: _1 },
-            Store { ty: d, val: _2, ptr: frd },
+            Fcmp { rslt: _2, fcond: { FCond::Olt }, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, ty: d, op1: _0, op2: _1 },
+            Store { ty: d, val: _3, ptr: frd },
         }
         FmaxD { frd, frs1, frs2 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Load { rslt: _1, ty: d, ptr: frs2 },
-            Maximum { rslt: _2, ty: d, arg1: _0, arg2: _1 },
-            Store { ty: d, val: _2, ptr: frd },
+            Fcmp { rslt: _2, fcond: { FCond::Olt }, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, ty: d, op1: _1, op2: _0 },
+            Store { ty: d, val: _3, ptr: frd },
         }
         FcvtSD { frd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
@@ -1285,37 +1289,37 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         Beqz { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Icmp { rslt: _1, cond: { Cond::Eq }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
-            Select { rslt: _2, cond: _1, op1: addr, op2: next_pc },
+            Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
         Bnez { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Icmp { rslt: _1, cond: { Cond::Ne }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
-            Select { rslt: _2, cond: _1, op1: addr, op2: next_pc },
+            Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
         Blez { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Icmp { rslt: _1, cond: { Cond::Sle }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
-            Select { rslt: _2, cond: _1, op1: addr, op2: next_pc },
+            Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
         Bgez { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Icmp { rslt: _1, cond: { Cond::Sge }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
-            Select { rslt: _2, cond: _1, op1: addr, op2: next_pc },
+            Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
         Bltz { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Icmp { rslt: _1, cond: { Cond::Slt }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
-            Select { rslt: _2, cond: _1, op1: addr, op2: next_pc },
+            Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
         Bgtz { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Icmp { rslt: _1, cond: { Cond::Sgt }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
-            Select { rslt: _2, cond: _1, op1: addr, op2: next_pc },
+            Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
 

@@ -372,10 +372,6 @@ declare float @llvm.fma.float(float %arg1, float %arg2, float %arg3)
 declare double @llvm.fma.double(double %arg1, double %arg2, double %arg3)
 declare float @llvm.fabs.float(float %arg)
 declare double @llvm.fabs.double(double %arg)
-declare float @llvm.minimum.float(float %arg1, float %arg2)
-declare double @llvm.minimum.double(double %arg1, double %arg2)
-declare float @llvm.maximum.float(float %arg1, float %arg2)
-declare double @llvm.maximum.double(double %arg1, double %arg2)
 declare float @llvm.copysign.float(float %mag, float %sgn)
 declare double @llvm.copysign.double(double %mag, double %sgn)
 
@@ -696,6 +692,7 @@ pub enum Inst {
     Select {
         rslt: Value,
         cond: Value,
+        ty: Type,
         op1: Value,
         op2: Value,
     },
@@ -717,18 +714,6 @@ pub enum Inst {
         rslt: Value,
         ty: Type,
         arg: Value,
-    },
-    Minimum {
-        rslt: Value,
-        ty: Type,
-        arg1: Value,
-        arg2: Value,
-    },
-    Maximum {
-        rslt: Value,
-        ty: Type,
-        arg1: Value,
-        arg2: Value,
     },
     Copysign {
         rslt: Value,
@@ -816,14 +801,12 @@ impl Display for Inst {
             // Other Operations
             Icmp { rslt, cond, op1, op2 } => write!(f, "{rslt} = icmp {cond} i64 {op1}, {op2}"),
             Fcmp {rslt,fcond,op1,op2} => write!(f, "{rslt} = fcmp {fcond} double {op1}, {op2}"),
-            Select {rslt,cond,op1,op2} => write!(f, "{rslt} = select i1 {cond}, i64 {op1}, i64 {op2}"),
+            Select {rslt,cond, ty, op1,op2} => write!(f, "{rslt} = select i1 {cond}, {ty} {op1}, {ty} {op2}"),
 
             // Standard C/C++ Library Intrinsics
             Sqrt { rslt, ty, arg } => write!(f,"{rslt} = call {ty} @llvm.sqrt.{ty}({ty} {arg})"),
             Fma { rslt, ty, arg1, arg2, arg3 } => write!(f, "{rslt} = call {ty} @llvm.fma.{ty}({ty} {arg1}, {ty} {arg2}, {ty} {arg3})"),
             Fabs { rslt, ty, arg } => write!(f, "{rslt} = call {ty} @llvm.fabs.{ty}({ty} {arg})"),
-            Minimum { rslt, ty, arg1, arg2 } => write!(f, "{rslt} = call {ty} @llvm.minimum.{ty}({ty} {arg1}, {ty} {arg2})"),
-            Maximum { rslt, ty, arg1, arg2 } => write!(f, "{rslt} = call {ty} @llvm.maximum.{ty}({ty} {arg1}, {ty} {arg2})"),
             Copysign { rslt, ty, mag, sgn } => write!(f, "{rslt} = call {ty} @llvm.copysign.{ty}({ty} {mag}, {ty} {sgn})"),
 
             // Misc
