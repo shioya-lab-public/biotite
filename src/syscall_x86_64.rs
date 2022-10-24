@@ -319,7 +319,9 @@ call:
             78,
             "  %path = call i8* @.get_memory_ptr(i64 %arg2)
   %buf = call i8* @.get_memory_ptr(i64 %arg3)
-  %rslt = call i64 (i64, ...) @syscall(i64 267, i64 %arg1, i8* %path, i8* %buf, i64 %arg4)"
+  %_rslt = call i64 (i64, ...) @syscall(i64 267, i64 %arg1, i8* %path, i8* %buf, i64 %arg4)
+  %is_err = icmp eq i64 %_rslt, -1
+  %rslt = select i1 %is_err, i64 -22, i64 %_rslt"
         ),
         (
             "rt_sigprocmask",

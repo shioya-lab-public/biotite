@@ -13,6 +13,7 @@ all rm are ignored
 fmv only sect result int val
 fclass is not supported
 mprotect always return 0, because it fails for legal input in RISC-V
+readlinkat will change the return value to -22 if its -1, as RISC-V seems to require this particular value
 
 ## Testing Commands
 
