@@ -3,7 +3,31 @@ use lazy_static::lazy_static;
 pub const STRUCTS: &str = "%.SYS.sigaction = type { i8*, i8*, i32, i8* }
 %.SYS.iovec = type { i8*, i64 }
 %.SYS.dirent = type { i64, i64, i16, i8, i8* }
-%.SYS.robust_list_head = type { i8*, i64, i8* }";
+%.SYS.robust_list_head = type { i8*, i64, i8* }
+
+%.x86_64.stat = type { i64, i64, i64, i32, i32, i32, i32, i64 }
+%.riscv64.stat = type { i64, i64, i32, i32, i32, i32, i64 }
+
+define void @.conv_stat(i8* %x86_64_statbuf_b) {
+    %x86_64_statbuf = bitcast i8* %x86_64_statbuf_b to %.x86_64.stat*
+    %x86_64_stat = load %.x86_64.stat, %.x86_64.stat* %x86_64_statbuf
+    %_st_nlink = extractvalue %.x86_64.stat %x86_64_stat, 2
+    %st_nlink = trunc i64 %_st_nlink to i32
+    %st_mode = extractvalue %.x86_64.stat %x86_64_stat, 3
+    %st_uid = extractvalue %.x86_64.stat %x86_64_stat, 4
+    %st_gid = extractvalue %.x86_64.stat %x86_64_stat, 5
+    %st_rdev = extractvalue %.x86_64.stat %x86_64_stat, 7
+
+    %riscv64_statbuf = bitcast i8* %x86_64_statbuf_b to %.riscv64.stat*
+    %riscv64_stat = load %.riscv64.stat, %.riscv64.stat* %riscv64_statbuf
+    %riscv64_stat1 = insertvalue %.riscv64.stat %riscv64_stat, i32 %st_mode, 2
+    %riscv64_stat2 = insertvalue %.riscv64.stat %riscv64_stat1, i32 %st_nlink, 3
+    %riscv64_stat3 = insertvalue %.riscv64.stat %riscv64_stat2, i32 %st_uid, 4
+    %riscv64_stat4 = insertvalue %.riscv64.stat %riscv64_stat3, i32 %st_gid, 5
+    %riscv64_stat5 = insertvalue %.riscv64.stat %riscv64_stat4, i64 %st_rdev, 6
+    store %.riscv64.stat %riscv64_stat5, %.riscv64.stat* %riscv64_statbuf
+    ret void
+}";
 
 lazy_static! {
     pub static ref SYSCALLS: Vec<(&'static str, i32, &'static str)> = vec![
@@ -112,6 +136,7 @@ lazy_static! {
   %pad_val = load i192, i192* %pad
   %statbuf = call i8* @.get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 5, i64 %arg1, i8* %statbuf)
+  call void @.conv_stat(i8* %statbuf)
   store i192 %pad_val, i192* %pad"
         ),
         (
@@ -124,6 +149,7 @@ lazy_static! {
   %filename = call i8* @.get_memory_ptr(i64 %arg2)
   %statbuf = call i8* @.get_memory_ptr(i64 %arg3)
   %rslt = call i64 (i64, ...) @syscall(i64 262, i64 %arg1, i8* %filename, i8* %statbuf, i64 %arg4)
+  call void @.conv_stat(i8* %statbuf)
   store i192 %pad_val, i192* %pad"
         ),
         (
@@ -302,7 +328,7 @@ call:
   %host_field_4 = call i8* @.get_memory_ptr(i64 %field_4_val)
   %dirent_4 = insertvalue %.SYS.dirent %dirent, i8* %host_field_4, 4
   store %.SYS.dirent %dirent_4, %.SYS.dirent* %dirent_ptr
-  %rslt = call i64 (i64, ...) @syscall(i64 78, i64 %arg1, i8* %dirent_ptr_b, i64 %arg3)"
+  %rslt = call i64 (i64, ...) @syscall(i64 217, i64 %arg1, i8* %dirent_ptr_b, i64 %arg3)"
         ),
         (
             "dup",
@@ -435,6 +461,7 @@ call:
   %filename = call i8* @.get_memory_ptr(i64 %arg1)
   %statbuf = call i8* @.get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 4, i8* %filename, i8* %statbuf)
+  call void @.conv_stat(i8* %statbuf)
   store i192 %pad_val, i192* %pad"
         ),
         (
@@ -447,6 +474,7 @@ call:
   %filename = call i8* @.get_memory_ptr(i64 %arg1)
   %statbuf = call i8* @.get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 6, i8* %filename, i8* %statbuf)
+  call void @.conv_stat(i8* %statbuf)
   store i192 %pad_val, i192* %pad"
         ),
         (

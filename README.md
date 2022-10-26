@@ -14,6 +14,9 @@ fmv only sect result int val
 fclass is not supported
 mprotect always return 0, because it fails for legal input in RISC-V
 readlinkat will change the return value to -22 if its -1, as RISC-V seems to require this particular value
+Adjust the layout of `struct stat`
+    https://codebrowser.dev/linux/linux/arch/x86/include/uapi/asm/stat.h.html
+    https://github.com/riscv-collab/riscv-gnu-toolchain/blob/master/linux-headers/include/asm-generic/stat.h
 
 ## Testing Commands
 
@@ -54,6 +57,7 @@ Counter
 declare dso_local void @exit(i32)
 declare dso_local i32 @printf(i8*, ...)
 @.str.d = private unnamed_addr constant [14 x i8] c"#value: %lx#\0A\00", align 1
+@.str.s = private unnamed_addr constant [14 x i8] c"#value: %s #\0A\00", align 1
 
 %val = load i64, i64* @.a0
 call i32 (i8*, ...) @printf(i8* getelementptr ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %val)
