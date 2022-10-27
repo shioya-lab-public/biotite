@@ -13,8 +13,8 @@ pub struct Program {
     pub syscall: String,
 }
 
-impl Display for Program {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+impl Program {
+    pub fn in_parts(&self, parts: usize) -> Vec<String> {
         // Merge data blocks
         let mut memory = Vec::new();
         for data_block in &self.data_blocks {
@@ -54,8 +54,9 @@ dynamic:
 }}"
         );
 
-        // Build the main dispatcher
+        // Build the main dispatcher and function declarations
         let mut dispatcher = Vec::new();
+        let mut func_decls = String::new();
         for func in &self.funcs {
             let last_rv_inst = func.inst_blocks.last().unwrap().rv_inst;
             let RV::Addr(mut end) = last_rv_inst.address();
@@ -70,32 +71,27 @@ dynamic:
                         format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
                 }
             }
+            func_decls.push_str(&format!("declare i64 @.{}(i64)\n", func.address));
         }
         let dispatcher_len = dispatcher.len();
         let dispatcher_str = dispatcher.join(", ");
         let dispatcher =
             format!("@.dispatcher = global [{dispatcher_len} x i64] [{dispatcher_str}]");
-        
-        // Format rounding functions
-        let roundWS = Self::format_round("i32", "float", "fptosi");
-        let roundWuS = Self::format_round("i32", "float", "fptoui");
-        let roundLS = Self::format_round("i64", "float", "fptosi");
-        let roundLuS = Self::format_round("i64", "float", "fptoui");
-        let roundWD = Self::format_round("i32", "double", "fptosi");
-        let roundWuD = Self::format_round("i32", "double", "fptoui");
-        let roundLD = Self::format_round("i64", "double", "fptosi");
-        let roundLuD = Self::format_round("i64", "double", "fptoui");
-        let round = format!("{roundWS}\n\n{roundWuS}\n\n{roundLS}\n\n{roundLuS}\n\n{roundWD}\n\n{roundWuD}\n\n{roundLD}\n\n{roundLuD}");
 
-        // Format other components
+        // Format rounding functions
+        let round_ws = Self::format_round("i32", "float", "fptosi");
+        let round_wus = Self::format_round("i32", "float", "fptoui");
+        let round_ls = Self::format_round("i64", "float", "fptosi");
+        let round_lus = Self::format_round("i64", "float", "fptoui");
+        let round_wd = Self::format_round("i32", "double", "fptosi");
+        let round_wud = Self::format_round("i32", "double", "fptoui");
+        let round_ld = Self::format_round("i64", "double", "fptosi");
+        let round_lud = Self::format_round("i64", "double", "fptoui");
+        let round = format!("{round_ws}\n\n{round_wus}\n\n{round_ls}\n\n{round_lus}\n\n{round_wd}\n\n{round_wud}\n\n{round_ld}\n\n{round_lud}");
+
+        // Format other supporting components
         let entry = self.entry;
         let tdata = self.tdata;
-        let funcs = self
-            .funcs
-            .iter()
-            .map(|f| f.to_string())
-            .collect::<Vec<_>>()
-            .join("\n\n");
         let src_funcs = self
             .src_funcs
             .values()
@@ -104,8 +100,8 @@ dynamic:
             .join("\n\n");
         let syscall = &self.syscall;
 
-        // Merge all components
-        write!(f, "define i64 @main(i32 %argc, i8** %argv) {{
+        // Merge all supporting components
+        let mut prog = vec![format!("define i64 @main(i32 %argc, i8** %argv) {{
   ; Initialize the stack pointer
   store i64 {sp}, i64* @.sp
 
@@ -147,7 +143,7 @@ loop:
   br label %loop
 }}
 
-{funcs}
+{func_decls}
 
 {src_funcs}
 
@@ -377,6 +373,15 @@ define void @.memcpy(i8* %0, i8* %1, i64 %2) {{
   br i1 %14, label %5, label %6
 }}
 
+{round}
+
+{syscall}
+")];
+
+        // Format other functions in parts
+        let decls = "declare i8* @.get_memory_ptr(i64)
+declare i64 @.system_call(i64, i64, i64, i64, i64, i64, i64)
+
 declare float @llvm.sqrt.float(float %arg)
 declare double @llvm.sqrt.double(double %arg)
 declare float @llvm.fma.float(float %arg1, float %arg2, float %arg3)
@@ -386,16 +391,97 @@ declare double @llvm.fabs.double(double %arg)
 declare float @llvm.copysign.float(float %mag, float %sgn)
 declare double @llvm.copysign.double(double %mag, double %sgn)
 
-{round}
+declare i32 @.round_i32_float_fptosi(float, i1)
+declare i32 @.round_i32_float_fptoui(float, i1)
+declare i64 @.round_i64_float_fptosi(float, i1)
+declare i64 @.round_i64_float_fptoui(float, i1)
+declare i32 @.round_i32_double_fptosi(double, i1)
+declare i32 @.round_i32_double_fptoui(double, i1)
+declare i64 @.round_i64_double_fptosi(double, i1)
+declare i64 @.round_i64_double_fptoui(double, i1)
 
-{syscall}
-")
+@.zero = external global i64
+@.ra = external global i64
+@.sp = external global i64
+@.gp = external global i64
+@.tp = external global i64
+@.t0 = external global i64
+@.t1 = external global i64
+@.t2 = external global i64
+@.s0 = external global i64
+@.s1 = external global i64
+@.a0 = external global i64
+@.a1 = external global i64
+@.a2 = external global i64
+@.a3 = external global i64
+@.a4 = external global i64
+@.a5 = external global i64
+@.a6 = external global i64
+@.a7 = external global i64
+@.s2 = external global i64
+@.s3 = external global i64
+@.s4 = external global i64
+@.s5 = external global i64
+@.s6 = external global i64
+@.s7 = external global i64
+@.s8 = external global i64
+@.s9 = external global i64
+@.s10 = external global i64
+@.s11 = external global i64
+@.t3 = external global i64
+@.t4 = external global i64
+@.t5 = external global i64
+@.t6 = external global i64
+
+@.ft0 = external global double
+@.ft1 = external global double
+@.ft2 = external global double
+@.ft3 = external global double
+@.ft4 = external global double
+@.ft5 = external global double
+@.ft6 = external global double
+@.ft7 = external global double
+@.fs0 = external global double
+@.fs1 = external global double
+@.fa0 = external global double
+@.fa1 = external global double
+@.fa2 = external global double
+@.fa3 = external global double
+@.fa4 = external global double
+@.fa5 = external global double
+@.fa6 = external global double
+@.fa7 = external global double
+@.fs2 = external global double
+@.fs3 = external global double
+@.fs4 = external global double
+@.fs5 = external global double
+@.fs6 = external global double
+@.fs7 = external global double
+@.fs8 = external global double
+@.fs9 = external global double
+@.fs10 = external global double
+@.fs11 = external global double
+@.ft8 = external global double
+@.ft9 = external global double
+@.ft10 = external global double
+@.ft11 = external global double
+
+@.rs = external global i64";
+        let part_len = (self.funcs.len() as f64 / parts as f64).ceil() as usize;
+        let funcs = self.funcs.chunks(part_len).map(|fs| {
+            fs.iter()
+                .map(|f| f.to_string())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        }).map(|part| format!("{decls}\n\n{part}"));
+
+        prog.extend(funcs);
+        prog
     }
-}
 
-impl Program {
     fn format_round(int: &str, fp: &str, func: &str) -> String {
-        format!("define {int} @.round_{int}_{fp}_{func}({fp} %0, i1 %1) {{
+        format!(
+            "define {int} @.round_{int}_{fp}_{func}({fp} %0, i1 %1) {{
   %3 = {func} {fp} %0 to {int}
   %4 = fcmp ule {fp} %0, 0.000000e+00
   %5 = or i1 %4, %1
@@ -420,7 +506,8 @@ impl Program {
 18:                                               ; preds = %12, %10
   %19 = phi {int} [ %11, %10 ], [ %17, %12 ]
   ret {int} %19
-}}")
+}}"
+        )
     }
 }
 

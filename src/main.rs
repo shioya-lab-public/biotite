@@ -16,6 +16,9 @@ struct Args {
     #[clap(long)]
     irs: Vec<PathBuf>,
 
+    #[clap(long, default_value_t = 1)]
+    parts: usize,
+
     #[clap(short, long)]
     output: Option<PathBuf>,
 }
@@ -31,9 +34,12 @@ fn main() {
         .iter()
         .map(|path| fs::read(path).expect("Unable to read LLVM IR"))
         .collect();
-    let ll_src = riscv2llvm::run(&args.arch, &rv_src, &tdata_src, &irs);
-    let output = args
-        .output
-        .unwrap_or_else(|| args.input.with_extension("ll"));
-    fs::write(&output, &ll_src).expect("Unable to write the output file");
+    let ll_srcs = riscv2llvm::run(&args.arch, &rv_src, &tdata_src, &irs, args.parts);
+    for (part, ll_src) in ll_srcs.into_iter().enumerate() {
+        let ext = format!("{part}.ll");
+        let output = args
+            .output.clone()
+            .unwrap_or_else(|| args.input.with_extension(ext));
+        fs::write(&output, &ll_src).expect("Unable to write the output file");
+    }
 }
