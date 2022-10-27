@@ -75,6 +75,17 @@ dynamic:
         let dispatcher_str = dispatcher.join(", ");
         let dispatcher =
             format!("@.dispatcher = global [{dispatcher_len} x i64] [{dispatcher_str}]");
+        
+        // Format rounding functions
+        let roundWS = Self::format_round("i32", "float", "fptosi");
+        let roundWuS = Self::format_round("i32", "float", "fptoui");
+        let roundLS = Self::format_round("i64", "float", "fptosi");
+        let roundLuS = Self::format_round("i64", "float", "fptoui");
+        let roundWD = Self::format_round("i32", "double", "fptosi");
+        let roundWuD = Self::format_round("i32", "double", "fptoui");
+        let roundLD = Self::format_round("i64", "double", "fptosi");
+        let roundLuD = Self::format_round("i64", "double", "fptoui");
+        let round = format!("{roundWS}\n\n{roundWuS}\n\n{roundLS}\n\n{roundLuS}\n\n{roundWD}\n\n{roundWuD}\n\n{roundLD}\n\n{roundLuD}");
 
         // Format other components
         let entry = self.entry;
@@ -375,8 +386,41 @@ declare double @llvm.fabs.double(double %arg)
 declare float @llvm.copysign.float(float %mag, float %sgn)
 declare double @llvm.copysign.double(double %mag, double %sgn)
 
+{round}
+
 {syscall}
 ")
+    }
+}
+
+impl Program {
+    fn format_round(int: &str, fp: &str, func: &str) -> String {
+        format!("define {int} @.round_{int}_{fp}_{func}({fp} %0, i1 %1) {{
+  %3 = {func} {fp} %0 to {int}
+  %4 = fcmp ule {fp} %0, 0.000000e+00
+  %5 = or i1 %4, %1
+  %6 = xor i1 %5, true
+  %7 = sitofp {int} %3 to {fp}
+  %8 = fcmp une {fp} %7, %0
+  %9 = select i1 %6, i1 %8, i1 false
+  br i1 %9, label %10, label %12
+
+10:                                               ; preds = %2
+  %11 = add {int} %3, 1
+  br label %18
+
+12:                                               ; preds = %2
+  %13 = fcmp olt {fp} %0, 0.000000e+00
+  %14 = and i1 %13, %1
+  %15 = select i1 %14, i1 %8, i1 false
+  %16 = sext i1 %15 to {int}
+  %17 = add {int} %16, %3
+  br label %18
+
+18:                                               ; preds = %12, %10
+  %19 = phi {int} [ %11, %10 ], [ %17, %12 ]
+  ret {int} %19
+}}")
     }
 }
 
@@ -650,12 +694,14 @@ pub enum Inst {
         ty1: Type,
         val: Value,
         ty2: Type,
+        rm: RV::RM,
     },
     Fptosi {
         rslt: Value,
         ty1: Type,
         val: Value,
         ty2: Type,
+        rm: RV::RM,
     },
     Uitofp {
         rslt: Value,
@@ -789,8 +835,16 @@ impl Display for Inst {
             Sext { rslt, ty1, val, ty2 } => write!(f, "{rslt} = sext {ty1} {val} to {ty2}"),
             Fptrunc { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fptrunc {ty1} {val} to {ty2}"),
             Fpext { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fpext {ty1} {val} to {ty2}"),
-            Fptoui { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fptoui {ty1} {val} to {ty2}"),
-            Fptosi { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fptosi {ty1} {val} to {ty2}"),
+            Fptoui { rslt, ty1, val, ty2, rm } => match rm {
+                RV::RM::Rdn => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptoui({ty1} {val}, i1 1)"),
+                RV::RM::Rup => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptoui({ty1} {val}, i1 0)"),
+                _ => write!(f, "{rslt} = fptoui {ty1} {val} to {ty2}"),
+            }
+            Fptosi { rslt, ty1, val, ty2, rm } => match rm {
+                RV::RM::Rdn => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptosi({ty1} {val}, i1 1)"),
+                RV::RM::Rup => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptosi({ty1} {val}, i1 0)"),
+                _ => write!(f, "{rslt} = fptosi {ty1} {val} to {ty2}"),
+            }
             Uitofp { rslt, ty1, val, ty2 } => write!(f, "{rslt} = uitofp {ty1} {val} to {ty2}"),
             Sitofp { rslt, ty1, val, ty2 } => write!(f, "{rslt} = sitofp {ty1} {val} to {ty2}"),
             Bitcast { rslt, ty1, val, ty2 } => match (ty1, ty2) {

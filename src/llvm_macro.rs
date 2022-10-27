@@ -213,9 +213,9 @@ macro_rules! mo {
 }
 
 macro_rules! pc {
-    ( $value:ident, $address:expr, $is_compressed:expr ) => {{
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
         Value::Addr($address)
-    }};
+    };
 }
 
 macro_rules! next_pc {
@@ -226,7 +226,13 @@ macro_rules! next_pc {
     }};
 }
 
+macro_rules! rm {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        $value
+    };
+}
+
 pub(crate) use {
     addr, d, expand_value, f, frd, frs1, frs2, frs3, i_1, i_128, i_16, i_32, i_64, i_8, imm, mo,
-    next_pc, pc, rd, rs, rs1, rs2, translate_rv_inst, _0, _1, _10, _2, _3, _4, _5, _6, _7, _8, _9,
+    next_pc, pc, rd, rs, rs1, rs2, translate_rv_inst, _0, _1, _10, _2, _3, _4, _5, _6, _7, _8, _9, rm
 };

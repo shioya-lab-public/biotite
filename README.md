@@ -9,7 +9,7 @@ A binary translator that translates RISC-V to LLVM IR.
 - Arch: RV64GC, ABI: LP64D
 
 all CSR are ignored
-all rm are ignored
+all rm are ignored, except RDN and RUP for all 8 fp-to-int instructions
 fmv only sect result int val
 fclass is not supported
 mprotect always return 0, because it fails for legal input in RISC-V
@@ -58,9 +58,12 @@ declare dso_local void @exit(i32)
 declare dso_local i32 @printf(i8*, ...)
 @.str.d = private unnamed_addr constant [14 x i8] c"#value: %lx#\0A\00", align 1
 @.str.s = private unnamed_addr constant [14 x i8] c"#value: %s #\0A\00", align 1
+@.str.f = private unnamed_addr constant [14 x i8] c"#value: %f #\0A\00", align 1
 
 %val = load i64, i64* @.a0
 call i32 (i8*, ...) @printf(i8* getelementptr ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %val)
+%valf0 = load double, double* @.fa0
+call i32 (i8*, ...) @printf(i8* getelementptr ([14 x i8], [14 x i8]* @.str.f, i64 0, i64 0), double %valf0)
 call void @exit(i32 0)
 
 clang -static t.c --target=riscv64 -march=rv64gc --gcc-toolchain=/opt/riscv64-elf-ubuntu-20.04-nightly-2022.06.10-nightly --sysroot=/opt/riscv64-elf-ubuntu-20.04-nightly-2022.06.10-nightly/riscv64-unknown-elf
@@ -89,18 +92,13 @@ void init_auxv(unsigned long* sp, unsigned long guest_phdr, unsigned char* host_
     if (phdr && phnum) {
         for (int i = 0; i < phnum; ++i) {
             if (phdr->p_type == PT_TLS) {
-                *host_phdr = *phdr++;
-                host_phdr->p_vaddr = tdata;
-                ++host_phdr;
-            } else if (phdr->p_type == PT_GNU_RELRO) {
-                *host_phdr = *phdr++;
-                host_phdr->p_vaddr = tdata;
-                host_phdr->p_memsz = 0xac8;
-                ++host_phdr;
-            } else {
-                *host_phdr++ = *phdr++;
-            }
-        }
+                *host_phdr = *ph
+    Fptosi {
+        rslt: Value,
+        ty1: Type,
+        val: Value,
+        ty2: Type,
+    },
         *sp++ = AT_PHDR;
         *sp++ = guest_phdr;
     }
@@ -118,6 +116,21 @@ void init_auxv(unsigned long* sp, unsigned long guest_phdr, unsigned char* host_
             *sp++ = entry;
             *sp++ = value;
         }
+    }
+}
+```
+
+``` C
+#include <stdbool.h>
+
+long round(double f, bool is_rdn) {
+    long i = f;
+    if (f > 0 && !is_rdn && f != i) {
+        return i + 1;
+    } else if (f < 0 && is_rdn && f != i) {
+        return i - 1;
+    } else {
+        return i;
     }
 }
 ```

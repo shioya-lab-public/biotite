@@ -898,14 +898,14 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         FcvtWS { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fptosi { rslt: _2, ty1: f, val: _1, ty2: i_32 },
+            Fptosi { rslt: _2, ty1: f, val: _1, ty2: i_32, rm: rm },
             Sext {rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
         FcvtWuS { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fptoui { rslt: _2, ty1: f, val: _1, ty2: i_32 },
+            Fptoui { rslt: _2, ty1: f, val: _1, ty2: i_32, rm: rm },
             Zext {rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
@@ -966,13 +966,13 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         FcvtLS { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fptosi { rslt: _2, ty1: f, val: _1, ty2: i_64 },
+            Fptosi { rslt: _2, ty1: f, val: _1, ty2: i_64, rm: rm },
             Store { ty: i_64, val: _2, ptr: rd },
         }
         FcvtLuS { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fptoui { rslt: _2, ty1: f, val: _1, ty2: i_64 },
+            Fptoui { rslt: _2, ty1: f, val: _1, ty2: i_64, rm: rm },
             Store { ty: i_64, val: _2, ptr: rd },
         }
         FcvtSL { frd, rs1, rm } => {
@@ -1141,13 +1141,13 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
         FcvtWD { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptosi { rslt: _1, ty1: d, val: _0, ty2: i_32 },
+            Fptosi { rslt: _1, ty1: d, val: _0, ty2: i_32, rm: rm },
             Sext {rslt: _2, ty1: i_32, val: _1, ty2: i_64 },
             Store { ty: i_64, val: _2, ptr: rd },
         }
         FcvtWuD { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptoui { rslt: _1, ty1: d, val: _0, ty2: i_32 },
+            Fptoui { rslt: _1, ty1: d, val: _0, ty2: i_32, rm: rm },
             Zext {rslt: _2, ty1: i_32, val: _1, ty2: i_64 },
             Store { ty: i_64, val: _2, ptr: rd },
         }
@@ -1167,12 +1167,12 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         // RV64D (in addition to RV32D)
         FcvtLD { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptosi { rslt: _1, ty1: d, val: _0, ty2: i_64 },
+            Fptosi { rslt: _1, ty1: d, val: _0, ty2: i_64, rm: rm },
             Store { ty: i_64, val: _1, ptr: rd },
         }
         FcvtLuD { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptoui { rslt: _1, ty1: d, val: _0, ty2: i_64 },
+            Fptoui { rslt: _1, ty1: d, val: _0, ty2: i_64, rm: rm },
             Store { ty: i_64, val: _1, ptr: rd },
         }
         FmvXD { rd, frs1 } => {
