@@ -23,7 +23,8 @@ Adjust the layout of `struct stat`
 ``` Bash
 llvm-objdump -fhtDz --mattr=a,c,d,f,m test
 llvm-objdump -sj.tdata test
-clang -static test.ll -lm
+llc -filetype=obj test.ll
+clang -static test.o -lm
 ```
 
 We need to use RISC-V GCC objdump to dump the `.tdata` section, so we can properly initialize the `PT_TLS` segment of the `AT_PHDR` entry in `auxv`. Also, we need static linking in the host to make `PT_TLS` available in `AT_PHDR`.
