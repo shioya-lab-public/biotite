@@ -468,12 +468,16 @@ declare i64 @.round_i64_double_fptoui(double, i1)
 
 @.rs = external global i64";
         let part_len = (self.funcs.len() as f64 / parts as f64).ceil() as usize;
-        let funcs = self.funcs.chunks(part_len).map(|fs| {
-            fs.iter()
-                .map(|f| f.to_string())
-                .collect::<Vec<_>>()
-                .join("\n\n")
-        }).map(|part| format!("{decls}\n\n{part}"));
+        let funcs = self
+            .funcs
+            .chunks(part_len)
+            .map(|fs| {
+                fs.iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
+            })
+            .map(|part| format!("{decls}\n\n{part}"));
 
         prog.extend(funcs);
         prog
@@ -568,7 +572,9 @@ impl Display for InstBlock {
             .map(|i| format!("  {i}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let br = if let Some(Inst::Ret { .. }) = self.insts.last() {
+        let br = if let Some(Inst::Ret { .. }) | Some(Inst::ConBr { .. }) | Some(Inst::Br { .. }) =
+            self.insts.last()
+        {
             String::from("")
         } else {
             let next_pc = next_pc!(
@@ -583,11 +589,16 @@ impl Display for InstBlock {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Inst {
     // Terminator Instructions
     Ret {
         val: Value,
+    },
+    ConBr {
+        cond: Value,
+        iftrue: Value,
+        iffalse: Value,
     },
     Br {
         addr: Value,
@@ -880,6 +891,7 @@ impl Display for Inst {
         match self {
             // Terminator Instructions
             Ret { val } => write!(f, "ret i64 {val}"),
+            ConBr { cond, iftrue, iffalse } => write!(f, "br i1 {cond}, label %{iftrue}, label %{iffalse}"),
             Br { addr } => write!(f, "br label %{addr}"),
 
             // Unary Operations
@@ -988,7 +1000,7 @@ impl Display for Type {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Value {
     Reg(RV::Reg),
     FReg(RV::FReg),
@@ -996,6 +1008,7 @@ pub enum Value {
     Addr(RV::Addr),
     Temp(RV::Addr, usize),
     RS,
+    Label(String),
 }
 
 impl Display for Value {
@@ -1009,6 +1022,7 @@ impl Display for Value {
             Addr(addr) => write!(f, "u{addr}"),
             Temp(addr, i) => write!(f, "%u{addr}_{i}"),
             RS => write!(f, "@.rs"),
+            Label(label) => write!(f, "{label}"),
         }
     }
 }
