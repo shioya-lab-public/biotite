@@ -1,11 +1,12 @@
 mod direct_branches;
 mod direct_jumps;
+mod native_stack;
 
 use crate::llvm_isa::Program;
 
 pub fn optimize(prog: Program, opts: &Vec<String>) -> Program {
     let opts: Vec<_> = opts.iter().map(|opt| opt.as_str()).collect();
-    let available_opts = vec!["direct_jumps", "direct_branches"];
+    let available_opts = vec!["direct_jumps", "direct_branches", "native_stack"];
     match opts[..] {
         [] | ["all"] => available_opts
             .iter()
@@ -19,6 +20,7 @@ fn call_opt(prog: Program, opt: &str) -> Program {
     match opt {
         "direct_jumps" => direct_jumps::direct_jumps(prog),
         "direct_branches" => direct_branches::direct_branches(prog),
+        "native_stack" => native_stack::native_stack(prog),
         _ => panic!("Unknown optimization `{opt}`"),
     }
 }

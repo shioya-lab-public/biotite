@@ -521,10 +521,23 @@ pub struct Func {
     pub symbol: String,
     pub address: RV::Addr,
     pub inst_blocks: Vec<InstBlock>,
+    pub stack_vars: Vec<Value>,
 }
 
 impl Display for Func {
     fn fmt(&self, f: &mut Formatter) -> Result {
+        let allocas = self
+            .stack_vars
+            .iter()
+            .map(|var| {
+                if let Value::Stack(_, _, width) = var {
+                    format!("{var} = internal global i{width} 0")
+                } else {
+                    unreachable!()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         let mut dispatcher = String::from("switch i64 %entry, label %unreachable [");
         let mut inst_blocks = String::new();
         for inst_block in &self.inst_blocks {
@@ -543,6 +556,7 @@ impl Display for Func {
         write!(
             f,
             "; {} {} <{}>
+{allocas}
 define i64 @.{}(i64 %entry) {{
   {dispatcher}
 unreachable:
@@ -1008,7 +1022,7 @@ pub enum Value {
     Addr(RV::Addr),
     Temp(RV::Addr, usize),
     RS,
-    Label(String),
+    Stack(RV::Addr, usize, usize),
 }
 
 impl Display for Value {
@@ -1022,7 +1036,7 @@ impl Display for Value {
             Addr(addr) => write!(f, "u{addr}"),
             Temp(addr, i) => write!(f, "%u{addr}_{i}"),
             RS => write!(f, "@.rs"),
-            Label(label) => write!(f, "{label}"),
+            Stack(addr, offset, width) => write!(f, "@.{addr}.{offset}.i{width}"),
         }
     }
 }

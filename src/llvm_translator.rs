@@ -29,6 +29,7 @@ fn translate_rv_code_block(rv_code_block: RV::CodeBlock) -> Func {
             .into_iter()
             .map(translate_rv_inst)
             .collect(),
+        stack_vars: Vec::new(),
     }
 }
 

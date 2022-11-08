@@ -45,7 +45,8 @@ fn main() {
         let output = args
             .output
             .clone()
-            .unwrap_or_else(|| args.input.with_extension(ext));
+            .unwrap_or(args.input.clone())
+            .with_extension(ext);
         fs::write(&output, &ll_src).expect("Unable to write the output file");
     }
 }
