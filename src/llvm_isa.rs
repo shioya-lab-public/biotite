@@ -11,27 +11,16 @@ pub struct Program {
     pub funcs: Vec<Func>,
     pub src_funcs: HashMap<RV::Addr, String>,
     pub syscall: String,
+    pub memory: Vec<u8>,
+    pub sp: Value,
+    pub phdr: Value,
 }
 
 impl Program {
     pub fn in_parts(&self, parts: usize) -> Vec<String> {
-        // Merge data blocks
-        let mut memory = Vec::new();
-        for data_block in &self.data_blocks {
-            let RV::Addr(start) = data_block.address;
-            memory.resize(start as usize, 0);
-            memory.extend(&data_block.bytes);
-        }
-
-        // Append the stack
-        let stack_len = 8192 * 1024;
-        let sp = Value::Addr(RV::Addr(memory.len() as u64 + 8188 * 1024));
-        let phdr = Value::Addr(RV::Addr(memory.len() as u64 + 8190 * 1024));
-        memory.extend(vec![0; stack_len]);
-
         // Format the memory array
-        let memory_len = memory.len();
-        let memory_str = memory
+        let memory_len = self.memory.len();
+        let memory_str = self.memory
             .iter()
             .map(|b| format!("i8 {b}"))
             .collect::<Vec<_>>()
@@ -99,6 +88,8 @@ dynamic:
             .collect::<Vec<_>>()
             .join("\n\n");
         let syscall = &self.syscall;
+        let sp = self.sp;
+        let phdr = self.phdr;
 
         // Merge all supporting components
         let mut prog = vec![format!("define i64 @main(i32 %argc, i8** %argv) {{
@@ -379,7 +370,8 @@ define void @.memcpy(i8* %0, i8* %1, i64 %2) {{
 ")];
 
         // Format other functions in parts
-        let decls = "declare i8* @.get_memory_ptr(i64)
+        let decls = format!("declare i8* @.get_memory_ptr(i64)
+@.memory = external global [{memory_len} x i8]
 declare i64 @.system_call(i64, i64, i64, i64, i64, i64, i64)
 
 declare float @llvm.sqrt.float(float %arg)
@@ -466,7 +458,7 @@ declare i64 @.round_i64_double_fptoui(double, i1)
 @.ft10 = external global double
 @.ft11 = external global double
 
-@.rs = external global i64";
+@.rs = external global i64");
         let part_len = (self.funcs.len() as f64 / parts as f64).ceil() as usize;
         let funcs = self
             .funcs
@@ -885,6 +877,11 @@ pub enum Inst {
         rslt: Value,
         addr: Value,
     },
+    Getdataptr {
+        rslt: Value,
+        len: usize,
+        addr: Value,
+    },
     Syscall {
         rslt: Value,
         nr: Value,
@@ -978,6 +975,7 @@ impl Display for Inst {
 
             // Misc
             Getmemptr { rslt, addr } => write!(f, "{rslt} = call i8* @.get_memory_ptr(i64 {addr})"),
+            Getdataptr { rslt, len, addr } => write!(f, "{rslt} = getelementptr [u0x{len:x} x i8], [u0x{len:x} x i8]* @.memory, i64 0, i64 {addr}"),
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, i64, i64, i64, i64, i64, i64) @.system_call(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
             Unreachable => write!(f, "unreachable"),
@@ -1014,7 +1012,7 @@ impl Display for Type {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Value {
     Reg(RV::Reg),
     FReg(RV::FReg),

@@ -2,6 +2,7 @@ use crate::llvm_isa as ll;
 use crate::riscv_isa as rv;
 
 pub fn native_stack(mut prog: ll::Program) -> ll::Program {
+    let mut t = 67;
     'outer: for func in &mut prog.funcs {
         let mut allocs = Vec::new();
         let mut frees = Vec::new();
@@ -116,6 +117,13 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
         }) {
             continue;
         }
+
+        if t == 1 {
+            println!("{}", func.symbol);
+        } else if t == 0 {
+            continue;
+        }
+        t -= 1;
 
         let max_offset = frees[0];
         func.stack_vars = vars
@@ -429,7 +437,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rd,
                     ..
-                }  if imm < max_offset => {
+                } if imm < max_offset && rd != rv::Reg::Ra => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -449,7 +457,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rs2,
                     ..
-                }  if imm < max_offset => {
+                }  if imm < max_offset && rs2 != rv::Reg::Ra  => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),

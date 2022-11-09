@@ -5,6 +5,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 
 pub fn run(rv_prog: RV::Program, src_funcs: HashMap<RV::Addr, String>, syscall: String) -> Program {
+    let (memory, sp, phdr) = build_memory(&rv_prog.data_blocks);
     Program {
         entry: rv_prog.entry,
         tdata: rv_prog.tdata,
@@ -16,7 +17,28 @@ pub fn run(rv_prog: RV::Program, src_funcs: HashMap<RV::Addr, String>, syscall: 
             .collect(),
         src_funcs,
         syscall,
+        memory,
+        sp,
+        phdr,
     }
+}
+
+fn build_memory(data_blocks: &Vec<RV::DataBlock>) -> (Vec<u8>, Value, Value) {
+    // Merge data blocks
+    let mut memory = Vec::new();
+    for data_block in data_blocks {
+        let RV::Addr(start) = data_block.address;
+        memory.resize(start as usize, 0);
+        memory.extend(&data_block.bytes);
+    }
+
+    // Append the stack
+    let stack_len = 8192 * 1024;
+    let sp = Value::Addr(RV::Addr(memory.len() as u64 + 8188 * 1024));
+    let phdr = Value::Addr(RV::Addr(memory.len() as u64 + 8190 * 1024));
+    memory.extend(vec![0; stack_len]);
+
+    (memory, sp, phdr)
 }
 
 fn translate_rv_code_block(rv_code_block: RV::CodeBlock) -> Func {
