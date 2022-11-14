@@ -67,6 +67,16 @@ call i32 (i8*, ...) @printf(i8* getelementptr ([14 x i8], [14 x i8]* @.str.d, i6
 call i32 (i8*, ...) @printf(i8* getelementptr ([14 x i8], [14 x i8]* @.str.f, i64 0, i64 0), double %valf0)
 call void @exit(i32 0)
 
+declare i32 @fflush(%struct._IO_FILE* noundef)
+%struct._IO_FILE = type { i32, i8*, i8*, i8*, i8*, i8*, i8*, i8*, i8*, i8*, i8*, i8*, %struct._IO_marker*, %struct._IO_FILE*, i32, i32, i64, i16, i8, [1 x i8], i8*, i64, %struct._IO_codecvt*, %struct._IO_wide_data*, %struct._IO_FILE*, i8*, i64, i32, [20 x i8] }
+%struct._IO_marker = type opaque
+%struct._IO_codecvt = type opaque
+%struct._IO_wide_data = type opaque
+@stdout = external global %struct._IO_FILE*, align 8
+
+%a = load %struct._IO_FILE*, %struct._IO_FILE** @stdout, align 8
+call i32 @fflush(%struct._IO_FILE* %a)
+
 clang -static t.c --target=riscv64 -march=rv64gc --gcc-toolchain=/opt/riscv64-elf-ubuntu-20.04-nightly-2022.06.10-nightly --sysroot=/opt/riscv64-elf-ubuntu-20.04-nightly-2022.06.10-nightly/riscv64-unknown-elf
 ```
 

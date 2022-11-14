@@ -14,6 +14,7 @@ pub struct Program {
     pub memory: Vec<u8>,
     pub sp: Value,
     pub phdr: Value,
+    pub func_syms: HashMap<(String, RV::Addr), bool>,
 }
 
 impl Program {
@@ -45,6 +46,7 @@ dynamic:
 
         // Build the main dispatcher and function declarations
         let mut dispatcher = Vec::new();
+        let mut func_dispatcher = Vec::new();
         let mut func_decls = String::new();
         for func in &self.funcs {
             let last_rv_inst = func.inst_blocks.last().unwrap().rv_inst;
@@ -61,11 +63,19 @@ dynamic:
                 }
             }
             func_decls.push_str(&format!("declare i64 @.{}(i64)\n", func.address));
+            func_dispatcher.resize(end as usize, String::from("i64 0"));
+            let RV::Addr(addr) = func.inst_blocks[0].rv_inst.address();
+            func_dispatcher[addr as usize] =
+                        format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
         }
         let dispatcher_len = dispatcher.len();
         let dispatcher_str = dispatcher.join(", ");
         let dispatcher =
             format!("@.dispatcher = global [{dispatcher_len} x i64] [{dispatcher_str}]");
+        let func_dispatcher_len = func_dispatcher.len();
+        let func_dispatcher_str = func_dispatcher.join(", ");
+        let func_dispatcher =
+            format!("@.func_dispatcher = global [{func_dispatcher_len} x i64] [{func_dispatcher_str}]");
 
         // Format rounding functions
         let round_ws = Self::format_round("i32", "float", "fptosi");
@@ -141,6 +151,22 @@ loop:
 {memory}
 
 {dispatcher}
+
+{func_dispatcher}
+
+define i64 @.dispatch_func(i64 %func) {{
+  %func_addr_ptr = getelementptr [{func_dispatcher_len} x i64], [{func_dispatcher_len} x i64]* @.func_dispatcher, i64 0, i64 %func
+  %func_addr = load i64, i64* %func_addr_ptr
+  %fail = icmp eq i64 %func_addr, 0
+  br i1 %fail, label %native_ret, label %call_func
+native_ret:
+  ret i64 0
+call_func:
+  %func_ptr = inttoptr i64 %func_addr to i64 (i64)*
+  %rslt = call i64 %func_ptr(i64 %func)
+  %ra = load i64, i64* @.ra
+  ret i64 %ra 
+}}
 
 @.zero = global i64 zeroinitializer
 @.ra = global i64 zeroinitializer
@@ -373,6 +399,7 @@ define void @.memcpy(i8* %0, i8* %1, i64 %2) {{
         let decls = format!("declare i8* @.get_memory_ptr(i64)
 @.memory = external global [{memory_len} x i8]
 declare i64 @.system_call(i64, i64, i64, i64, i64, i64, i64)
+declare i64 @.dispatch_func(i64)
 
 declare float @llvm.sqrt.float(float %arg)
 declare double @llvm.sqrt.double(double %arg)
@@ -514,6 +541,7 @@ pub struct Func {
     pub address: RV::Addr,
     pub inst_blocks: Vec<InstBlock>,
     pub stack_vars: Vec<Value>,
+    pub dynamic: bool
 }
 
 impl Display for Func {
@@ -530,7 +558,7 @@ impl Display for Func {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        let mut dispatcher = String::from("switch i64 %entry, label %unreachable [");
+        let mut dispatcher = String::from("switch i64 %addr, label %func_dispatcher [");
         let mut inst_blocks = String::new();
         for inst_block in &self.inst_blocks {
             let addr = Value::Addr(inst_block.rv_inst.address());
@@ -550,9 +578,22 @@ impl Display for Func {
             "; {} {} <{}>
 {allocas}
 define i64 @.{}(i64 %entry) {{
+  %entry_ptr= alloca i64
+  store i64 %entry, i64* %entry_ptr
+  br label %u0x0
+u0x0:
+  %addr = load i64, i64* %entry_ptr
   {dispatcher}
-unreachable:
-  unreachable
+func_dispatcher:
+  %func = load i64, i64* %entry_ptr
+  %ra = call i64 @.dispatch_func(i64 %func)
+  %fail = icmp eq i64 %ra, 0
+  br i1 %fail, label %native_ret, label %cont
+native_ret:
+  ret i64 0
+cont:
+  store i64 %ra, i64* %entry_ptr
+  br label %u0x0
 
 {inst_blocks}
 {next_pc}:
@@ -563,7 +604,7 @@ unreachable:
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct InstBlock {
     pub rv_inst: RV::Inst,
     pub insts: Vec<Inst>,
@@ -591,7 +632,11 @@ impl Display for InstBlock {
             let br = Inst::Br { addr: next_pc };
             format!("\n  {br}")
         };
-        write!(f, "; {:?}\n{addr}:\n{insts_str}{br}", self.rv_inst)
+        write!(f, "; {:?}\n{addr}:
+;call i32 (i8*, ...) @printf(i8* getelementptr ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {addr})
+;%{addr}_a = load %struct._IO_FILE*, %struct._IO_FILE** @stdout, align 8
+;call i32 @fflush(%struct._IO_FILE* %{addr}_a)
+{insts_str}{br}", self.rv_inst)
     }
 }
 
@@ -846,6 +891,10 @@ pub enum Inst {
         op1: Value,
         op2: Value,
     },
+    Call {
+        rslt: Value,
+        func: Value,
+    },
 
     // Standard C/C++ Library Intrinsics
     Sqrt {
@@ -966,6 +1015,7 @@ impl Display for Inst {
             Icmp { rslt, cond, op1, op2 } => write!(f, "{rslt} = icmp {cond} i64 {op1}, {op2}"),
             Fcmp {rslt,fcond,op1,op2} => write!(f, "{rslt} = fcmp {fcond} double {op1}, {op2}"),
             Select {rslt,cond, ty, op1,op2} => write!(f, "{rslt} = select i1 {cond}, {ty} {op1}, {ty} {op2}"),
+            Call { rslt, func } => write!(f, "{rslt} = call i64 @.{}(i64 {func})", &format!("{func}")[1..]),
 
             // Standard C/C++ Library Intrinsics
             Sqrt { rslt, ty, arg } => write!(f,"{rslt} = call {ty} @llvm.sqrt.{ty}({ty} {arg})"),
@@ -1021,6 +1071,7 @@ pub enum Value {
     Temp(RV::Addr, usize),
     RS,
     Stack(RV::Addr, usize, usize),
+    EntryPtr,
 }
 
 impl Display for Value {
@@ -1035,6 +1086,7 @@ impl Display for Value {
             Temp(addr, i) => write!(f, "%u{addr}_{i}"),
             RS => write!(f, "@.rs"),
             Stack(addr, offset, width) => write!(f, "@.{addr}.{offset}.i{width}"),
+            EntryPtr => write!(f, "%entry_ptr"),
         }
     }
 }

@@ -20,6 +20,7 @@ pub fn run(rv_prog: RV::Program, src_funcs: HashMap<RV::Addr, String>, syscall: 
         memory,
         sp,
         phdr,
+        func_syms: rv_prog.func_syms,
     }
 }
 
@@ -52,6 +53,7 @@ fn translate_rv_code_block(rv_code_block: RV::CodeBlock) -> Func {
             .map(translate_rv_inst)
             .collect(),
         stack_vars: Vec::new(),
+        dynamic: true,
     }
 }
 

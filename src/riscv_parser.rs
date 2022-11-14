@@ -40,6 +40,7 @@ pub fn run(src: &str, tdata: &Option<String>) -> Program {
         tdata: tdata_addr,
         data_blocks,
         code_blocks,
+        func_syms: symbols.into_iter().map(|((name, addr), (_, is_func))| ((name, addr), is_func)).collect(),
     }
 }
 
@@ -64,14 +65,15 @@ fn parse_sections<'a>(src: &mut impl Iterator<Item = &'a str>) -> HashMap<(Strin
     sections
 }
 
-fn parse_symbols<'a>(src: &mut impl Iterator<Item = &'a str>) -> HashMap<(String, Addr), usize> {
+fn parse_symbols<'a>(src: &mut impl Iterator<Item = &'a str>) -> HashMap<(String, Addr), (usize, bool)> {
     let mut src = src.skip(1);
     let mut symbols = HashMap::new();
     while let Some(caps) = SYMBOL_SIZE.captures(src.next().expect("Missing symbol table")) {
         let name = caps.get(5).map(|m| m.as_str()).unwrap_or_default();
         let symbol = (String::from(name), Addr::new(&caps[1]));
         let size = usize::from_str_radix(&caps[3], 16).unwrap();
-        symbols.insert(symbol, size);
+        let is_func = caps.get(2).map(|m| m.as_str()).unwrap_or_default().trim();
+        symbols.insert(symbol, (size, is_func == "F"));
     }
     symbols
 }
@@ -167,14 +169,14 @@ fn parse_code_block(
 fn expand_data_blocks(
     data_blocks: &mut Vec<DataBlock>,
     sections: &HashMap<(String, Addr), usize>,
-    symbols: &HashMap<(String, Addr), usize>,
+    symbols: &HashMap<(String, Addr), (usize, bool)>,
 ) {
     for data_block in data_blocks {
         if data_block.bytes.is_empty() {
             let symbol = data_block.symbol.clone();
             let address = data_block.address;
             let size = match symbols.get(&(symbol, address)) {
-                Some(size) => *size,
+                Some((size, _)) => *size,
                 None => {
                     let section = data_block.section.clone();
                     match sections.get(&(section, address)) {
