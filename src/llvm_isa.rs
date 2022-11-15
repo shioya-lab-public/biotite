@@ -550,8 +550,8 @@ impl Display for Func {
             .stack_vars
             .iter()
             .map(|var| {
-                if let Value::Stack(_, _, width) = var {
-                    format!("{var} = internal global i{width} 0")
+                if let Value::Stack(_, width) = var {
+                    format!("{var} = alloca i{width}")
                 } else {
                     unreachable!()
                 }
@@ -596,8 +596,9 @@ cont:
         write!(
             f,
             "; {} {} <{}>
-{allocas}
+
 define i64 @.{}(i64 %entry) {{
+{allocas}
 {prologue}
 
 {inst_blocks}
@@ -1078,7 +1079,7 @@ pub enum Value {
     Addr(RV::Addr),
     Temp(RV::Addr, usize),
     RS,
-    Stack(RV::Addr, usize, usize),
+    Stack(usize, usize),
     EntryPtr,
 }
 
@@ -1093,7 +1094,7 @@ impl Display for Value {
             Addr(addr) => write!(f, "u{addr}"),
             Temp(addr, i) => write!(f, "%u{addr}_{i}"),
             RS => write!(f, "@.rs"),
-            Stack(addr, offset, width) => write!(f, "@.{addr}.{offset}.i{width}"),
+            Stack(offset, width) => write!(f, "%stack.{offset}.i{width}"),
             EntryPtr => write!(f, "%entry_ptr"),
         }
     }

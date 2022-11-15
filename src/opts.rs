@@ -9,7 +9,7 @@ use crate::llvm_isa::Program;
 
 pub fn optimize(prog: Program, opts: &Vec<String>) -> Program {
     let opts: Vec<_> = opts.iter().map(|opt| opt.as_str()).collect();
-    let available_opts = vec!["split_functions", "direct_jumps", "direct_branches"/*, "native_stack"*/, "static_data", "trans_static_dyn_funcs"];
+    let available_opts = vec!["split_functions", "direct_jumps", "direct_branches", "native_stack", "static_data", "trans_static_dyn_funcs"];
     match opts[..] {
         [] | ["all"] => available_opts
             .iter()

@@ -2,7 +2,6 @@ use crate::llvm_isa as ll;
 use crate::riscv_isa as rv;
 
 pub fn native_stack(mut prog: ll::Program) -> ll::Program {
-    let mut t = 67;
     'outer: for func in &mut prog.funcs {
         let mut allocs = Vec::new();
         let mut frees = Vec::new();
@@ -35,7 +34,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
                     ..
-                } => vars.push((imm, 1)),
+                } => vars.push((imm, 8)),
                 rv::Inst::Lh {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
@@ -50,7 +49,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
                     ..
-                } => vars.push((imm, 2)),
+                } => vars.push((imm, 16)),
                 rv::Inst::Lw {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
@@ -75,7 +74,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
                     ..
-                } => vars.push((imm, 4)),
+                } => vars.push((imm, 32)),
                 rv::Inst::Ld {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
@@ -95,7 +94,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
                     ..
-                } => vars.push((imm, 8)),
+                } => vars.push((imm, 64)),
                 inst => if contains_sp(inst) {continue 'outer},
             }
         }
@@ -118,18 +117,11 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
             continue;
         }
 
-        // if t == 1 {
-        //     println!("{}", func.symbol);
-        // } else if t == 0 {
-        //     continue;
-        // }
-        // t -= 1;
-
         let max_offset = frees[0];
         func.stack_vars = vars
             .into_iter()
             .take_while(|(i, _)| *i < max_offset)
-            .map(|(offset, bytes)| ll::Value::Stack(func.address, offset as usize, (bytes * 8) as usize))
+            .map(|(offset, width)| ll::Value::Stack(offset as usize, width as usize))
             .collect();
         for block in &mut func.inst_blocks {
             match block.rv_inst {
@@ -144,7 +136,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
                             ty: ll::Type::I8,
-                            ptr: ll::Value::Stack(func.address, imm as usize, 8),
+                            ptr: ll::Value::Stack(imm as usize, 8),
                         },
                         ll::Inst::Sext {
                             rslt: ll::Value::Temp(address, 1),
@@ -170,7 +162,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
                             ty: ll::Type::I8,
-                            ptr: ll::Value::Stack(func.address, imm as usize, 8),
+                            ptr: ll::Value::Stack(imm as usize, 8),
                         },
                         ll::Inst::Zext {
                             rslt: ll::Value::Temp(address, 1),
@@ -207,7 +199,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Store {
                             ty: ll::Type::I8,
                             val: ll::Value::Temp(address, 1),
-                            ptr: ll::Value::Stack(func.address, imm as usize, 8),
+                            ptr: ll::Value::Stack(imm as usize, 8),
                         },
                     ]
                 }
@@ -222,7 +214,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
                             ty: ll::Type::I16,
-                            ptr: ll::Value::Stack(func.address, imm as usize, 16),
+                            ptr: ll::Value::Stack(imm as usize, 16),
                         },
                         ll::Inst::Sext {
                             rslt: ll::Value::Temp(address, 1),
@@ -248,7 +240,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
                             ty: ll::Type::I16,
-                            ptr: ll::Value::Stack(func.address, imm as usize, 16),
+                            ptr: ll::Value::Stack(imm as usize, 16),
                         },
                         ll::Inst::Zext {
                             rslt: ll::Value::Temp(address, 1),
@@ -285,7 +277,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Store {
                             ty: ll::Type::I16,
                             val: ll::Value::Temp(address, 1),
-                            ptr: ll::Value::Stack(func.address, imm as usize, 16),
+                            ptr: ll::Value::Stack(imm as usize, 16),
                         },
                     ]
                 }
@@ -300,7 +292,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
                             ty: ll::Type::I32,
-                            ptr: ll::Value::Stack(func.address, imm as usize, 32),
+                            ptr: ll::Value::Stack(imm as usize, 32),
                         },
                         ll::Inst::Sext {
                             rslt: ll::Value::Temp(address, 1),
@@ -326,7 +318,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
                             ty: ll::Type::I32,
-                            ptr: ll::Value::Stack(func.address, imm as usize, 32),
+                            ptr: ll::Value::Stack(imm as usize, 32),
                         },
                         ll::Inst::Zext {
                             rslt: ll::Value::Temp(address, 1),
@@ -363,7 +355,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Store {
                             ty: ll::Type::I32,
                             val: ll::Value::Temp(address, 1),
-                            ptr: ll::Value::Stack(func.address, imm as usize, 32),
+                            ptr: ll::Value::Stack(imm as usize, 32),
                         },
                     ]
                 }
@@ -378,7 +370,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
                             ty: ll::Type::I32,
-                            ptr: ll::Value::Stack(func.address, imm as usize, 32),
+                            ptr: ll::Value::Stack(imm as usize, 32),
                         },
                         ll::Inst::Bitcast {
                             rslt: ll::Value::Temp(address, 1),
@@ -427,7 +419,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Store {
                             ty: ll::Type::I32,
                             val: ll::Value::Temp(address, 2),
-                            ptr: ll::Value::Stack(func.address, imm as usize, 32),
+                            ptr: ll::Value::Stack(imm as usize, 32),
                         },
                     ]
                 }
@@ -437,12 +429,12 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rd,
                     ..
-                } if imm < max_offset && rd != rv::Reg::Ra => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
                             ty: ll::Type::I64,
-                            ptr: ll::Value::Stack(func.address, imm as usize, 64),
+                            ptr: ll::Value::Stack(imm as usize, 64),
                         },
                         ll::Inst::Store {
                             ty: ll::Type::I64,
@@ -457,7 +449,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rs2,
                     ..
-                }  if imm < max_offset && rs2 != rv::Reg::Ra  => {
+                }  if imm < max_offset  => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -467,7 +459,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Store {
                             ty: ll::Type::I64,
                             val: ll::Value::Temp(address, 0),
-                            ptr: ll::Value::Stack(func.address, imm as usize, 64),
+                            ptr: ll::Value::Stack(imm as usize, 64),
                         },
                     ]
                 }
@@ -482,7 +474,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
                             ty: ll::Type::I64,
-                            ptr: ll::Value::Stack(func.address, imm as usize, 64),
+                            ptr: ll::Value::Stack(imm as usize, 64),
                         },
                         ll::Inst::Bitcast {
                             rslt: ll::Value::Temp(address, 1),
@@ -519,7 +511,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Store {
                             ty: ll::Type::I64,
                             val: ll::Value::Temp(address, 1),
-                            ptr: ll::Value::Stack(func.address, imm as usize, 64),
+                            ptr: ll::Value::Stack(imm as usize, 64),
                         },
                     ]
                 }
