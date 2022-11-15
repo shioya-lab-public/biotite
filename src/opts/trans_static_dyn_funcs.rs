@@ -57,6 +57,10 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                         rslt: ll::Value::Temp(address, 0),
                         func: ll::Value::Addr(addr),
                     },
+                    ll::Inst::CheckRet {
+                        addr: ll::Value::Addr(address),
+                        next_pc: get_next_pc(block.rv_inst),
+                    },
                 ],
                 rv::Inst::PseudoJal { address, addr, .. }=> block.insts = vec![
                     ll::Inst::Store {
@@ -67,6 +71,10 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                     ll::Inst::Call {
                         rslt: ll::Value::Temp(address, 0),
                         func: ll::Value::Addr(addr),
+                    },
+                    ll::Inst::CheckRet {
+                        addr: ll::Value::Addr(address),
+                        next_pc: get_next_pc(block.rv_inst),
                     },
                 ],
                 _ => ()

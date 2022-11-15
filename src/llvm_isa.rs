@@ -632,11 +632,7 @@ impl Display for InstBlock {
             let br = Inst::Br { addr: next_pc };
             format!("\n  {br}")
         };
-        write!(f, "; {:?}\n{addr}:
-;call i32 (i8*, ...) @printf(i8* getelementptr ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 {addr})
-;%{addr}_a = load %struct._IO_FILE*, %struct._IO_FILE** @stdout, align 8
-;call i32 @fflush(%struct._IO_FILE* %{addr}_a)
-{insts_str}{br}", self.rv_inst)
+        write!(f, "; {:?}\n{addr}:\n{insts_str}{br}", self.rv_inst)
     }
 }
 
@@ -942,6 +938,7 @@ pub enum Inst {
         arg6: Value,
     },
     Unreachable,
+    CheckRet { addr: Value, next_pc: Value },
 }
 
 impl Display for Inst {
@@ -1029,6 +1026,12 @@ impl Display for Inst {
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, i64, i64, i64, i64, i64, i64) @.system_call(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
             Unreachable => write!(f, "unreachable"),
+            CheckRet { addr, next_pc } => write!(f, "%{addr}_ra = load i64, i64* @.ra
+  %{addr}_fg = icmp eq i64 %{addr}_ra, {next_pc}
+  br i1 %{addr}_fg, label %{addr}_t, label %{addr}_f
+{addr}_f:
+  ret i64 0
+{addr}_t:"),
         }
     }
 }

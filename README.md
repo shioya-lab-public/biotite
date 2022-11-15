@@ -25,6 +25,8 @@ llvm-objdump -fhtDz --mattr=a,c,d,f,m test
 llvm-objdump -sj.tdata test
 llc -filetype=obj test.ll
 clang -static test.o -lm
+
+ulimit -s 819200
 ```
 
 We need to use RISC-V GCC objdump to dump the `.tdata` section, so we can properly initialize the `PT_TLS` segment of the `AT_PHDR` entry in `auxv`. Also, we need static linking in the host to make `PT_TLS` available in `AT_PHDR`.
