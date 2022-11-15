@@ -573,12 +573,8 @@ impl Display for Func {
             last_rv_inst.address(),
             last_rv_inst.is_compressed()
         );
-        write!(
-            f,
-            "; {} {} <{}>
-{allocas}
-define i64 @.{}(i64 %entry) {{
-  %entry_ptr= alloca i64
+        let prologue = if self.dynamic {
+            format!("  %entry_ptr= alloca i64
   store i64 %entry, i64* %entry_ptr
   br label %u0x0
 u0x0:
@@ -593,7 +589,16 @@ native_ret:
   ret i64 0
 cont:
   store i64 %ra, i64* %entry_ptr
-  br label %u0x0
+  br label %u0x0")
+        } else {
+            format!("  br label %u{}", self.inst_blocks[0].rv_inst.address())
+        };
+        write!(
+            f,
+            "; {} {} <{}>
+{allocas}
+define i64 @.{}(i64 %entry) {{
+{prologue}
 
 {inst_blocks}
 {next_pc}:

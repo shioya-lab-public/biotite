@@ -118,12 +118,12 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
             continue;
         }
 
-        if t == 1 {
-            println!("{}", func.symbol);
-        } else if t == 0 {
-            continue;
-        }
-        t -= 1;
+        // if t == 1 {
+        //     println!("{}", func.symbol);
+        // } else if t == 0 {
+        //     continue;
+        // }
+        // t -= 1;
 
         let max_offset = frees[0];
         func.stack_vars = vars

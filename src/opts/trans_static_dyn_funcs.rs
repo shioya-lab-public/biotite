@@ -10,14 +10,7 @@ fn get_next_pc(inst: rv::Inst) -> ll::Value {
 }
 
 pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
-    let mut t = 9999;
     for func in &mut prog.funcs {
-        if t == 1 {
-            println!("{}", func.symbol);
-        } else if t == 0 {
-            continue;
-        }
-        t -= 1;
         let is_dyn = func.inst_blocks.iter().any(|block| {
             matches!(
                 block.rv_inst,
