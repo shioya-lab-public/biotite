@@ -54,6 +54,8 @@ fn translate_rv_code_block(rv_code_block: RV::CodeBlock) -> Func {
             .collect(),
         stack_vars: Vec::new(),
         dynamic: true,
+        used_regs: Vec::new(),
+        used_fregs: Vec::new(),
     }
 }
 

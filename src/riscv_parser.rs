@@ -23,9 +23,10 @@ pub fn run(src: &str, tdata: &Option<String>) -> Program {
     let mut src = src.lines();
     let entry = parse_entry(&mut src);
     let sections = parse_sections(&mut src);
-    let symbols = parse_symbols(&mut src);
-    let (mut data_blocks, code_blocks) = parse_assembly(&mut src);
+    let mut symbols = parse_symbols(&mut src);
+    let (mut data_blocks, mut code_blocks) = parse_assembly(&mut src);
     expand_data_blocks(&mut data_blocks, &sections, &symbols);
+    split_load_gp(&mut code_blocks, &mut symbols);
     let tdata_addr = match tdata {
         Some(tdata) => {
             let (tdata_addr, tdata_block) = parse_tdata(tdata);
@@ -40,7 +41,10 @@ pub fn run(src: &str, tdata: &Option<String>) -> Program {
         tdata: tdata_addr,
         data_blocks,
         code_blocks,
-        func_syms: symbols.into_iter().map(|((name, addr), (_, is_func))| ((name, addr), is_func)).collect(),
+        func_syms: symbols
+            .into_iter()
+            .map(|((name, addr), (_, is_func))| ((name, addr), is_func))
+            .collect(),
     }
 }
 
@@ -65,7 +69,9 @@ fn parse_sections<'a>(src: &mut impl Iterator<Item = &'a str>) -> HashMap<(Strin
     sections
 }
 
-fn parse_symbols<'a>(src: &mut impl Iterator<Item = &'a str>) -> HashMap<(String, Addr), (usize, bool)> {
+fn parse_symbols<'a>(
+    src: &mut impl Iterator<Item = &'a str>,
+) -> HashMap<(String, Addr), (usize, bool)> {
     let mut src = src.skip(1);
     let mut symbols = HashMap::new();
     while let Some(caps) = SYMBOL_SIZE.captures(src.next().expect("Missing symbol table")) {
@@ -219,6 +225,39 @@ fn parse_tdata(tdata: &str) -> (Addr, DataBlock) {
         )
     } else {
         panic!("Empty `.tdata`");
+    }
+}
+
+fn split_load_gp(
+    code_blocks: &mut Vec<CodeBlock>,
+    symbols: &mut HashMap<(String, Addr), (usize, bool)>,
+) {
+    let start_pos = code_blocks
+        .iter_mut()
+        .position(|b| b.symbol == "_start")
+        .unwrap();
+    let start = &mut code_blocks[start_pos];
+    if let Inst::Jal { addr, .. } | Inst::PseudoJal { addr, .. } = start.insts[0] {
+        if let Some(pos) = start.insts.iter().position(|i| i.address() == addr) {
+            if let Some(Inst::Auipc { rd: Reg::Gp, .. }) = start.insts.get(pos) {
+                if let Some(Inst::Addi {
+                    rd: Reg::Gp,
+                    rs1: Reg::Gp,
+                    ..
+                }) = start.insts.get(pos + 1)
+                {
+                    let addr = start.insts[pos].address();
+                    let load_gp = CodeBlock {
+                        section: String::from(".text"),
+                        symbol: String::from("load_gp"),
+                        address: addr,
+                        insts: start.insts.split_off(pos),
+                    };
+                    code_blocks.insert(start_pos + 1, load_gp);
+                    symbols.insert((String::from("load_gp"), addr), (12, true));
+                }
+            }
+        }
     }
 }
 

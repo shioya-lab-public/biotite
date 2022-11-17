@@ -40,37 +40,41 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                 }
                 rv::Inst::Jal {
                     address, rd, addr, ..
-                } => block.insts = vec![
-                    ll::Inst::Store {
-                        ty: ll::Type::I64,
-                        val: get_next_pc(block.rv_inst),
-                        ptr: ll::Value::Reg(rd),
-                    },
-                    ll::Inst::Call {
-                        rslt: ll::Value::Temp(address, 0),
-                        func: ll::Value::Addr(addr),
-                    },
-                    ll::Inst::CheckRet {
-                        addr: ll::Value::Addr(address),
-                        next_pc: get_next_pc(block.rv_inst),
-                    },
-                ],
-                rv::Inst::PseudoJal { address, addr, .. }=> block.insts = vec![
-                    ll::Inst::Store {
-                        ty: ll::Type::I64,
-                        val: get_next_pc(block.rv_inst),
-                        ptr: ll::Value::Reg(rv::Reg::Ra),
-                    },
-                    ll::Inst::Call {
-                        rslt: ll::Value::Temp(address, 0),
-                        func: ll::Value::Addr(addr),
-                    },
-                    ll::Inst::CheckRet {
-                        addr: ll::Value::Addr(address),
-                        next_pc: get_next_pc(block.rv_inst),
-                    },
-                ],
-                _ => ()
+                } => {
+                    block.insts = vec![
+                        ll::Inst::Store {
+                            ty: ll::Type::I64,
+                            val: get_next_pc(block.rv_inst),
+                            ptr: ll::Value::Reg(rd),
+                        },
+                        ll::Inst::Call {
+                            rslt: ll::Value::Temp(address, 0),
+                            func: ll::Value::Addr(addr),
+                        },
+                        ll::Inst::ContRet {
+                            addr: ll::Value::Addr(address),
+                            next_pc: get_next_pc(block.rv_inst),
+                        },
+                    ]
+                }
+                rv::Inst::PseudoJal { address, addr, .. } => {
+                    block.insts = vec![
+                        ll::Inst::Store {
+                            ty: ll::Type::I64,
+                            val: get_next_pc(block.rv_inst),
+                            ptr: ll::Value::Reg(rv::Reg::Ra),
+                        },
+                        ll::Inst::Call {
+                            rslt: ll::Value::Temp(address, 0),
+                            func: ll::Value::Addr(addr),
+                        },
+                        ll::Inst::ContRet {
+                            addr: ll::Value::Addr(address),
+                            next_pc: get_next_pc(block.rv_inst),
+                        },
+                    ]
+                }
+                _ => (),
             }
         }
 
@@ -143,13 +147,8 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                                 val: get_next_pc(block.rv_inst),
                                 ptr: ll::Value::Reg(rd),
                             },
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: ll::Value::Temp(address, 1),
-                                ptr: ll::Value::EntryPtr,
-                            },
-                            ll::Inst::Br {
-                                addr: ll::Value::Addr(rv::Addr(0)),
+                            ll::Inst::DispFunc {
+                                func: ll::Value::Temp(address, 1),
                             },
                         ]
                     }
@@ -165,13 +164,8 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                                 val: get_next_pc(block.rv_inst),
                                 ptr: ll::Value::Reg(rv::Reg::Ra),
                             },
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: ll::Value::Temp(address, 0),
-                                ptr: ll::Value::EntryPtr,
-                            },
-                            ll::Inst::Br {
-                                addr: ll::Value::Addr(rv::Addr(0)),
+                            ll::Inst::DispFunc {
+                                func: ll::Value::Temp(address, 0),
                             },
                         ]
                     }
@@ -195,32 +189,15 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                                 val: get_next_pc(block.rv_inst),
                                 ptr: ll::Value::Reg(rv::Reg::Ra),
                             },
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: ll::Value::Temp(address, 1),
-                                ptr: ll::Value::EntryPtr,
-                            },
-                            ll::Inst::Br {
-                                addr: ll::Value::Addr(rv::Addr(0)),
+                            ll::Inst::DispFunc {
+                                func: ll::Value::Temp(address, 1),
                             },
                         ]
                     }
                     rv::Inst::Ret { address, .. } => {
-                        block.insts = vec![
-                            ll::Inst::Load {
-                                rslt: ll::Value::Temp(address, 0),
-                                ty: ll::Type::I64,
-                                ptr: ll::Value::Reg(rv::Reg::Ra),
-                            },
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: ll::Value::Temp(address, 0),
-                                ptr: ll::Value::EntryPtr,
-                            },
-                            ll::Inst::Br {
-                                addr: ll::Value::Addr(rv::Addr(0)),
-                            },
-                        ]
+                        block.insts = vec![ll::Inst::CheckRet {
+                            addr: ll::Value::Addr(address),
+                        }]
                     }
                     _ => (),
                 }

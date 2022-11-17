@@ -95,7 +95,11 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     imm: rv::Imm(imm),
                     ..
                 } => vars.push((imm, 64)),
-                inst => if contains_sp(inst) {continue 'outer},
+                inst => {
+                    if contains_sp(inst) {
+                        continue 'outer;
+                    }
+                }
             }
         }
 
@@ -109,9 +113,9 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
         }
         if let (_, true) = vars.iter().fold((0, false), |(sp, overlapped), (i, l)| {
             if overlapped || sp > *i {
-                (i + l, true)
+                (i + l / 8, true)
             } else {
-                (i + l, false)
+                (i + l / 8, false)
             }
         }) {
             continue;
@@ -157,7 +161,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rd,
                     ..
-                } if imm < max_offset  => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -183,7 +187,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rs2,
                     ..
-                } if imm < max_offset  => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -209,7 +213,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rd,
                     ..
-                }  if imm < max_offset => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -235,7 +239,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rd,
                     ..
-                } if imm < max_offset  => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -261,7 +265,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rs2,
                     ..
-                } if imm < max_offset  => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -287,7 +291,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rd,
                     ..
-                }  if imm < max_offset => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -313,7 +317,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rd,
                     ..
-                } if imm < max_offset  => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -339,7 +343,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rs2,
                     ..
-                }  if imm < max_offset => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -365,7 +369,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     frd,
                     ..
-                }  if imm < max_offset => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -397,7 +401,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     frs2,
                     ..
-                } if imm < max_offset  => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -429,7 +433,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rd,
                     ..
-                } if imm < max_offset => {
+                } if imm < max_offset && rd != rv::Reg::Ra => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -449,7 +453,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rs2,
                     ..
-                }  if imm < max_offset  => {
+                } if imm < max_offset && rs2 != rv::Reg::Ra => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -469,7 +473,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     frd,
                     ..
-                }  if imm < max_offset => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -495,7 +499,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     frs2,
                     ..
-                } if imm < max_offset  => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),

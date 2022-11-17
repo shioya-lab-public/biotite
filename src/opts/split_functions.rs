@@ -12,7 +12,15 @@ pub fn split_functions(mut prog: ll::Program) -> ll::Program {
         }
     }
     for (i, appended) in appended.into_iter().enumerate() {
-        let appended: Vec<_> = appended.into_iter().map(|i| (prog.funcs[i].inst_blocks.clone(), prog.funcs[i].stack_vars.clone())).collect();
+        let appended: Vec<_> = appended
+            .into_iter()
+            .map(|i| {
+                (
+                    prog.funcs[i].inst_blocks.clone(),
+                    prog.funcs[i].stack_vars.clone(),
+                )
+            })
+            .collect();
         for (inst_blocks, stack_vars) in appended {
             prog.funcs[i].inst_blocks.extend(inst_blocks);
             prog.funcs[i].stack_vars.extend(stack_vars);

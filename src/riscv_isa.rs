@@ -1,6 +1,6 @@
 use crate::riscv_macro::*;
-use std::fmt::{Display, Formatter, Result};
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Program {

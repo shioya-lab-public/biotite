@@ -21,7 +21,8 @@ impl Program {
     pub fn in_parts(&self, parts: usize) -> Vec<String> {
         // Format the memory array
         let memory_len = self.memory.len();
-        let memory_str = self.memory
+        let memory_str = self
+            .memory
             .iter()
             .map(|b| format!("i8 {b}"))
             .collect::<Vec<_>>()
@@ -66,7 +67,7 @@ dynamic:
             func_dispatcher.resize(end as usize, String::from("i64 0"));
             let RV::Addr(addr) = func.inst_blocks[0].rv_inst.address();
             func_dispatcher[addr as usize] =
-                        format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
+                format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
         }
         let dispatcher_len = dispatcher.len();
         let dispatcher_str = dispatcher.join(", ");
@@ -74,8 +75,9 @@ dynamic:
             format!("@.dispatcher = global [{dispatcher_len} x i64] [{dispatcher_str}]");
         let func_dispatcher_len = func_dispatcher.len();
         let func_dispatcher_str = func_dispatcher.join(", ");
-        let func_dispatcher =
-            format!("@.func_dispatcher = global [{func_dispatcher_len} x i64] [{func_dispatcher_str}]");
+        let func_dispatcher = format!(
+            "@.func_dispatcher = global [{func_dispatcher_len} x i64] [{func_dispatcher_str}]"
+        );
 
         // Format rounding functions
         let round_ws = Self::format_round("i32", "float", "fptosi");
@@ -396,7 +398,8 @@ define void @.memcpy(i8* %0, i8* %1, i64 %2) {{
 ")];
 
         // Format other functions in parts
-        let decls = format!("declare i8* @.get_memory_ptr(i64)
+        let decls = format!(
+            "declare i8* @.get_memory_ptr(i64)
 @.memory = external global [{memory_len} x i8]
 declare i64 @.system_call(i64, i64, i64, i64, i64, i64, i64)
 declare i64 @.dispatch_func(i64)
@@ -485,7 +488,8 @@ declare i64 @.round_i64_double_fptoui(double, i1)
 @.ft10 = external global double
 @.ft11 = external global double
 
-@.rs = external global i64");
+@.rs = external global i64"
+        );
         let part_len = (self.funcs.len() as f64 / parts as f64).ceil() as usize;
         let funcs = self
             .funcs
@@ -541,17 +545,31 @@ pub struct Func {
     pub address: RV::Addr,
     pub inst_blocks: Vec<InstBlock>,
     pub stack_vars: Vec<Value>,
-    pub dynamic: bool
+    pub dynamic: bool,
+    pub used_regs: Vec<Value>,
+    pub used_fregs: Vec<Value>,
 }
 
 impl Display for Func {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        let allocas = self
+        let stack_regs = self
+            .used_regs
+            .iter()
+            .map(|reg| format!("  {reg} = alloca i64"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let stack_fregs = self
+            .used_fregs
+            .iter()
+            .map(|freg| format!("  {freg} = alloca double"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let stack_vars = self
             .stack_vars
             .iter()
             .map(|var| {
                 if let Value::Stack(_, width) = var {
-                    format!("{var} = alloca i{width}")
+                    format!("  {var} = alloca i{width}")
                 } else {
                     unreachable!()
                 }
@@ -574,22 +592,25 @@ impl Display for Func {
             last_rv_inst.is_compressed()
         );
         let prologue = if self.dynamic {
-            format!("  %entry_ptr= alloca i64
+            format!(
+                "  %entry_ptr = alloca i64
   store i64 %entry, i64* %entry_ptr
+  %local_jalr_ptr = alloca i1, i1 0
   br label %u0x0
 u0x0:
   %addr = load i64, i64* %entry_ptr
   {dispatcher}
 func_dispatcher:
   %func = load i64, i64* %entry_ptr
-  %ra = call i64 @.dispatch_func(i64 %func)
-  %fail = icmp eq i64 %ra, 0
+  %ra_val = call i64 @.dispatch_func(i64 %func)
+  %fail = icmp eq i64 %ra_val, 0
   br i1 %fail, label %native_ret, label %cont
 native_ret:
   ret i64 0
 cont:
-  store i64 %ra, i64* %entry_ptr
-  br label %u0x0")
+  store i64 %ra_val, i64* %entry_ptr
+  br label %u0x0"
+            )
         } else {
             format!("  br label %u{}", self.inst_blocks[0].rv_inst.address())
         };
@@ -598,7 +619,10 @@ cont:
             "; {} {} <{}>
 
 define i64 @.{}(i64 %entry) {{
-{allocas}
+{stack_regs}
+{stack_fregs}
+{stack_vars}
+
 {prologue}
 
 {inst_blocks}
@@ -944,7 +968,16 @@ pub enum Inst {
         arg6: Value,
     },
     Unreachable,
-    CheckRet { addr: Value, next_pc: Value },
+    ContRet {
+        addr: Value,
+        next_pc: Value,
+    },
+    DispFunc {
+        func: Value,
+    },
+    CheckRet {
+        addr: Value,
+    },
 }
 
 impl Display for Inst {
@@ -1032,12 +1065,32 @@ impl Display for Inst {
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, i64, i64, i64, i64, i64, i64) @.system_call(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
             Unreachable => write!(f, "unreachable"),
-            CheckRet { addr, next_pc } => write!(f, "%{addr}_ra = load i64, i64* @.ra
+            ContRet { addr, next_pc } => write!(f, "%{addr}_ra = load i64, i64* @.ra
   %{addr}_fg = icmp eq i64 %{addr}_ra, {next_pc}
   br i1 %{addr}_fg, label %{addr}_t, label %{addr}_f
 {addr}_f:
   ret i64 0
 {addr}_t:"),
+            DispFunc { func } => write!(f, "{func}_ra = call i64 @.dispatch_func(i64 {func})
+  {func}_fail = icmp eq i64 {func}_ra, 0
+  br i1 {func}_fail, label {func}_disp, label {func}_cont
+{func_lbl}_disp:
+  store i64 {func}, i64* %entry_ptr
+  store i1 1, i1* %local_jalr_ptr
+  br label %u0x0
+{func_lbl}_cont:
+  store i64 {func}_ra, i64* %entry_ptr
+  br label %u0x0", func_lbl=&func.to_string()[1..]),
+            CheckRet { addr } => write!(f, "%{addr}_0 = load i1, i1* %local_jalr_ptr
+  %{addr}_1 = icmp eq i1 %{addr}_0, 1
+  br i1 %{addr}_1, label %{addr}_local, label %{addr}_ret
+{addr}_local:
+  %{addr}_2 = load i64, i64* @.ra
+  store i64 %{addr}_2, i64* %entry_ptr
+  store i1 0, i1* %local_jalr_ptr
+  br label %u0x0
+{addr}_ret:
+  ret i64 0"),
         }
     }
 }
@@ -1081,6 +1134,8 @@ pub enum Value {
     RS,
     Stack(usize, usize),
     EntryPtr,
+    StkReg(RV::Reg),
+    StkFReg(RV::FReg),
 }
 
 impl Display for Value {
@@ -1096,6 +1151,8 @@ impl Display for Value {
             RS => write!(f, "@.rs"),
             Stack(offset, width) => write!(f, "%stack.{offset}.i{width}"),
             EntryPtr => write!(f, "%entry_ptr"),
+            StkReg(reg) => write!(f, "%{reg}"),
+            StkFReg(freg) => write!(f, "%{freg}"),
         }
     }
 }
