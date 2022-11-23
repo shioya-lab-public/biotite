@@ -1,7 +1,7 @@
 mod direct_branches;
 mod direct_jumps;
 mod global2stack;
-mod longjmp;
+mod longjmp_except;
 mod native_stack;
 mod split_functions;
 mod static_data;
@@ -19,7 +19,7 @@ pub fn optimize(prog: Program, opts: &Vec<String>) -> Program {
         "static_data",
         "trans_static_dyn_funcs",
         "global2stack",
-        "longjmp",
+        "longjmp_except",
     ];
     match opts[..] {
         [] | ["all"] => available_opts
@@ -39,7 +39,7 @@ fn call_opt(prog: Program, opt: &str) -> Program {
         "split_functions" => split_functions::split_functions(prog),
         "trans_static_dyn_funcs" => trans_static_dyn_funcs::trans_static_dyn_funcs(prog),
         "global2stack" => global2stack::global2stack(prog),
-        "longjmp" => longjmp::longjmp(prog),
+        "longjmp_except" => longjmp_except::longjmp_except(prog),
         _ => panic!("Unknown optimization `{opt}`"),
     }
 }

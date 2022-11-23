@@ -8,9 +8,9 @@ fn get_next_pc(inst: &rv::Inst) -> ll::Value {
     next_pc!(next_pc, inst.address(), inst.is_compressed())
 }
 
-pub fn longjmp(mut prog: ll::Program) -> ll::Program {
+pub fn longjmp_except(mut prog: ll::Program) -> ll::Program {
     for func in &mut prog.funcs {
-        if is_longjmp_func(func) {
+        if is_longjmp_except_func(func) {
             func.dynamic = true;
             for block in &mut func.inst_blocks {
                 match block.rv_inst {
@@ -58,7 +58,7 @@ pub fn longjmp(mut prog: ll::Program) -> ll::Program {
     prog
 }
 
-fn is_longjmp_func(func: &ll::Func) -> bool {
+fn is_longjmp_except_func(func: &ll::Func) -> bool {
     let mut i = 0;
     while i < func.inst_blocks.len() - 1 {
         if let (
@@ -76,8 +76,16 @@ fn is_longjmp_func(func: &ll::Func) -> bool {
         }
         i += 1;
     }
-    func.inst_blocks
+    if func
+        .inst_blocks
         .iter()
         .position(|block| matches!(block.rv_inst.symbol(), Some(sym) if sym == "<_setjmp>"))
+        .is_some()
+    {
+        return true;
+    }
+    func.inst_blocks
+        .iter()
+        .position(|block| matches!(block.rv_inst.symbol(), Some(sym) if sym == "<_Unwind_Resume>" || sym == "<__cxa_begin_catch>" || sym == "<__cxa_end_catch>"))
         .is_some()
 }

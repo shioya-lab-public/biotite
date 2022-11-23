@@ -593,7 +593,7 @@ impl Display for Func {
         );
         let prologue = if self.dynamic {
             format!(
-                "  %entry_ptr = alloca i64
+                "%entry_ptr = alloca i64
   store i64 %entry, i64* %entry_ptr
   %local_jalr_ptr = alloca i1, i1 0
   br label %u0x0
