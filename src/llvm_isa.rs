@@ -50,7 +50,7 @@ dynamic:
         let mut func_dispatcher = Vec::new();
         let mut func_decls = String::new();
         for func in &self.funcs {
-            let last_rv_inst = func.inst_blocks.last().unwrap().rv_inst;
+            let last_rv_inst = &func.inst_blocks.last().unwrap().rv_inst;
             let RV::Addr(mut end) = last_rv_inst.address();
             end += if last_rv_inst.is_compressed() { 2 } else { 4 };
             dispatcher.resize(end as usize, String::from("i64 0"));
@@ -585,7 +585,7 @@ impl Display for Func {
         }
         dispatcher.pop();
         dispatcher += "]";
-        let last_rv_inst = self.inst_blocks.last().unwrap().rv_inst;
+        let last_rv_inst = &self.inst_blocks.last().unwrap().rv_inst;
         let next_pc = next_pc!(
             next_pc,
             last_rv_inst.address(),
@@ -972,6 +972,10 @@ pub enum Inst {
         addr: Value,
         next_pc: Value,
     },
+    DispRet {
+        addr: Value,
+        next_pc: Value,
+    },
     DispFunc {
         func: Value,
     },
@@ -1070,6 +1074,13 @@ impl Display for Inst {
   br i1 %{addr}_fg, label %{addr}_t, label %{addr}_f
 {addr}_f:
   ret i64 0
+{addr}_t:"),
+            DispRet { addr, next_pc } => write!(f, "%{addr}_ra = load i64, i64* @.ra
+  %{addr}_fg = icmp eq i64 %{addr}_ra, {next_pc}
+  br i1 %{addr}_fg, label %{addr}_t, label %{addr}_f
+{addr}_f:
+  store i64 %{addr}_ra, i64* %entry_ptr
+  br label %u0x0
 {addr}_t:"),
             DispFunc { func } => write!(f, "{func}_ra = call i64 @.dispatch_func(i64 {func})
   {func}_fail = icmp eq i64 {func}_ra, 0

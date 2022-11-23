@@ -569,9 +569,11 @@ fn find_gp(prog: &ll::Program) -> Option<i64> {
                     imm: rv::Imm(lower),
                     ..
                 },
-            ) = (func.inst_blocks[i].rv_inst, func.inst_blocks[i + 1].rv_inst)
-            {
-                return Some((upper << 12) + addr as i64 + lower);
+            ) = (
+                &func.inst_blocks[i].rv_inst,
+                &func.inst_blocks[i + 1].rv_inst,
+            ) {
+                return Some((upper << 12) + *addr as i64 + lower);
             }
             i += 1;
         }

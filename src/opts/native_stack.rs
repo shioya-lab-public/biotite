@@ -7,17 +7,17 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
         let mut frees = Vec::new();
         let mut vars = Vec::new();
         for block in &func.inst_blocks {
-            match block.rv_inst {
+            match &block.rv_inst {
                 rv::Inst::Addi {
                     rd: rv::Reg::Sp,
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
                     ..
                 } => {
-                    if imm < 0 {
-                        allocs.push(imm);
+                    if *imm < 0 {
+                        allocs.push(*imm);
                     } else {
-                        frees.push(imm);
+                        frees.push(*imm);
                     }
                 }
                 rv::Inst::Lb {
@@ -34,7 +34,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
                     ..
-                } => vars.push((imm, 8)),
+                } => vars.push((*imm, 8)),
                 rv::Inst::Lh {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
@@ -49,7 +49,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
                     ..
-                } => vars.push((imm, 16)),
+                } => vars.push((*imm, 16)),
                 rv::Inst::Lw {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
@@ -74,7 +74,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
                     ..
-                } => vars.push((imm, 32)),
+                } => vars.push((*imm, 32)),
                 rv::Inst::Ld {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
@@ -94,9 +94,9 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
                     ..
-                } => vars.push((imm, 64)),
+                } => vars.push((*imm, 64)),
                 inst => {
-                    if contains_sp(inst) {
+                    if contains_sp(&inst) {
                         continue 'outer;
                     }
                 }
@@ -527,6 +527,6 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
     prog
 }
 
-fn contains_sp(inst: rv::Inst) -> bool {
+fn contains_sp(inst: &rv::Inst) -> bool {
     format!("{inst:?}").contains("Sp")
 }

@@ -7,7 +7,7 @@ pub fn global2stack(mut prog: ll::Program) -> ll::Program {
         let mut regs = HashSet::new();
         let mut fregs = HashSet::new();
         for block in &func.inst_blocks {
-            let (rs, frs) = get_regs(block.rv_inst);
+            let (rs, frs) = get_regs(block.rv_inst.clone());
             regs.extend(rs);
             fregs.extend(frs);
         }

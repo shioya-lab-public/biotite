@@ -3,7 +3,7 @@ use crate::llvm_macro::next_pc;
 use crate::riscv_isa as rv;
 use std::collections::HashSet;
 
-fn get_next_pc(inst: rv::Inst) -> ll::Value {
+fn get_next_pc(inst: &rv::Inst) -> ll::Value {
     use crate::llvm_isa::*;
     use crate::riscv_isa as RV;
     next_pc!(next_pc, inst.address(), inst.is_compressed())
@@ -44,7 +44,7 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Store {
                             ty: ll::Type::I64,
-                            val: get_next_pc(block.rv_inst),
+                            val: get_next_pc(&block.rv_inst),
                             ptr: ll::Value::Reg(rd),
                         },
                         ll::Inst::Call {
@@ -53,7 +53,7 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                         },
                         ll::Inst::ContRet {
                             addr: ll::Value::Addr(address),
-                            next_pc: get_next_pc(block.rv_inst),
+                            next_pc: get_next_pc(&block.rv_inst),
                         },
                     ]
                 }
@@ -61,7 +61,7 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Store {
                             ty: ll::Type::I64,
-                            val: get_next_pc(block.rv_inst),
+                            val: get_next_pc(&block.rv_inst),
                             ptr: ll::Value::Reg(rv::Reg::Ra),
                         },
                         ll::Inst::Call {
@@ -70,7 +70,7 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                         },
                         ll::Inst::ContRet {
                             addr: ll::Value::Addr(address),
-                            next_pc: get_next_pc(block.rv_inst),
+                            next_pc: get_next_pc(&block.rv_inst),
                         },
                     ]
                 }
@@ -144,7 +144,7 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                             },
                             ll::Inst::Store {
                                 ty: ll::Type::I64,
-                                val: get_next_pc(block.rv_inst),
+                                val: get_next_pc(&block.rv_inst),
                                 ptr: ll::Value::Reg(rd),
                             },
                             ll::Inst::DispFunc {
@@ -161,7 +161,7 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                             },
                             ll::Inst::Store {
                                 ty: ll::Type::I64,
-                                val: get_next_pc(block.rv_inst),
+                                val: get_next_pc(&block.rv_inst),
                                 ptr: ll::Value::Reg(rv::Reg::Ra),
                             },
                             ll::Inst::DispFunc {
@@ -186,7 +186,7 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                             },
                             ll::Inst::Store {
                                 ty: ll::Type::I64,
-                                val: get_next_pc(block.rv_inst),
+                                val: get_next_pc(&block.rv_inst),
                                 ptr: ll::Value::Reg(rv::Reg::Ra),
                             },
                             ll::Inst::DispFunc {

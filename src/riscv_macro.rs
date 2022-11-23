@@ -125,6 +125,7 @@ macro_rules! define_insts {
         const RM: &str = r"(,\s+(?P<rm>[[:alpha:]]+))?";
         const INST_ADDR: &str = r"(?P<inst_addr>[[:xdigit:]]+)";
         const INST_BYTE: &str = r"(?P<inst_byte>([[:xdigit:]][[:xdigit:]] )+)";
+        const SYM: &str = r"(?P<sym>.*)";
 
         lazy_static! {
             static ref REGEXES: Vec<(&'static str, Regex)> = vec![
@@ -132,8 +133,8 @@ macro_rules! define_insts {
                     (
                         stringify!($inst),
                         Regex::new(&format!(
-                            concat!(r"\s+{}:\s+{}\s+", $regex),
-                            INST_ADDR, INST_BYTE, $( $field!("regex") ),*
+                            concat!(r"\s+{}:\s+{}\s+", $regex, r"\s*{}"),
+                            INST_ADDR, INST_BYTE, $( $field!("regex"), )* SYM
                         )).unwrap()
                     ),
                 )*
@@ -146,13 +147,14 @@ macro_rules! define_insts {
             ).unwrap();
         }
 
-        #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+        #[derive(Debug, PartialEq, Eq, Hash, Clone)]
         pub enum Inst {
             $(
                 $inst {
                     address: Addr,
                     is_compressed: bool,
                     $( $field: $field!("type"), )*
+                    symbol: Option<String>,
                 },
             )*
         }
@@ -179,6 +181,7 @@ macro_rules! define_insts {
                                         .unwrap_or_default()
                                 ),
                             )*
+                            symbol: caps.name("sym").map(|m| m.as_str().to_string()),
                         },
                     )*
                     _ => unreachable!(),
@@ -198,6 +201,14 @@ macro_rules! define_insts {
 
                 match self {
                     $( $inst { is_compressed, .. } => *is_compressed, )*
+                }
+            }
+
+            pub fn symbol(&self) -> &Option<String> {
+                use Inst::*;
+
+                match self {
+                    $( $inst { symbol, .. } => symbol, )*
                 }
             }
         }
