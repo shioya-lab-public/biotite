@@ -6,6 +6,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
         let mut allocs = Vec::new();
         let mut frees = Vec::new();
         let mut vars = Vec::new();
+        let mut ra_locs = Vec::new();
         for block in &func.inst_blocks {
             match &block.rv_inst {
                 rv::Inst::Addi {
@@ -76,6 +77,15 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     ..
                 } => vars.push((*imm, 32)),
                 rv::Inst::Ld {
+                    rd: rv::Reg::Ra,
+                    rs1: rv::Reg::Sp,
+                    imm: rv::Imm(imm),
+                    ..
+                } => {
+                    ra_locs.push(*imm);
+                    vars.push((*imm, 64));
+                }
+                rv::Inst::Ld {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
                     ..
@@ -103,6 +113,10 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
             }
         }
 
+        if ra_locs.len() != 1 {
+            continue;
+        }
+        let ra_loc = ra_locs[0];
         if allocs.len() != 1 || frees.len() != 1 || allocs[0] + frees[0] != 0 {
             continue;
         }
@@ -433,7 +447,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rd,
                     ..
-                } if imm < max_offset && rd != rv::Reg::Ra => {
+                } if imm < max_offset && imm != ra_loc => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),
@@ -453,7 +467,7 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
                     address,
                     rs2,
                     ..
-                } if imm < max_offset && rs2 != rv::Reg::Ra => {
+                } if imm < max_offset && imm != ra_loc => {
                     block.insts = vec![
                         ll::Inst::Load {
                             rslt: ll::Value::Temp(address, 0),

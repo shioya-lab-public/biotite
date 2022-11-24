@@ -491,18 +491,19 @@ declare i64 @.round_i64_double_fptoui(double, i1)
 @.rs = external global i64"
         );
         let part_len = (self.funcs.len() as f64 / parts as f64).ceil() as usize;
-        let funcs = self
-            .funcs
-            .chunks(part_len)
-            .map(|fs| {
-                fs.iter()
-                    .map(|f| f.to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n\n")
-            })
-            .map(|part| format!("{decls}\n\n{part}"));
-
-        prog.extend(funcs);
+        let func_decls: Vec<_> = func_decls.lines().collect();
+        let mut i = 0;
+        while i < self.funcs.len() {
+            let end = std::cmp::min(i + part_len, self.funcs.len());
+            let funcs = self.funcs[i..end].iter().map(|f| f.to_string())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+            let before_decls = func_decls[0..i].join("\n");
+            let after_decls = func_decls[end..].join("\n");
+            let part = format!("{decls}\n\n{funcs}\n\n{before_decls}\n{after_decls}");
+            prog.push(part);
+            i += part_len;
+        }
         prog
     }
 
