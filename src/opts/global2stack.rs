@@ -4,18 +4,59 @@ use std::collections::HashSet;
 
 pub fn global2stack(mut prog: ll::Program) -> ll::Program {
     for func in &mut prog.funcs {
+        if func.dynamic {
+            continue;
+        }
         let mut regs = HashSet::new();
         let mut fregs = HashSet::new();
+        let mut ecall = false;
         for block in &func.inst_blocks {
             let (rs, frs) = get_regs(block.rv_inst.clone());
             regs.extend(rs);
             fregs.extend(frs);
+            if let rv::Inst::Ecall {..} = block.rv_inst {
+                ecall = true;
+            }
         }
-        func.used_regs = regs.into_iter().map(|reg| ll::Value::StkReg(reg)).collect();
+        if ecall {
+            regs.extend(vec![rv::Reg::A7,rv::Reg::A0,rv::Reg::A1,rv::Reg::A2,rv::Reg::A3,rv::Reg::A4,rv::Reg::A5]);
+        }
+        func.used_regs = regs.into_iter().collect();
         func.used_fregs = fregs
             .into_iter()
-            .map(|freg| ll::Value::StkFReg(freg))
             .collect();
+        for block in &mut func.inst_blocks {
+            for inst in &mut block.insts {
+                if let ll::Inst::Call{regs, fregs, ..} = inst {
+                    *regs = func.used_regs.clone();
+                    *fregs = func.used_fregs.clone();
+                }
+                match inst {
+                    ll::Inst::Load {ptr,..} => {
+                        if let ll::Value::Reg(reg) = ptr {
+                            *ptr = ll::Value::StkReg(*reg);
+                        } else if let ll::Value::FReg(freg) = ptr {
+                            *ptr = ll::Value::StkFReg(*freg);
+                        }
+                    }
+                    ll::Inst::Store {ptr,..} => {
+                        if let ll::Value::Reg(reg) = ptr {
+                            *ptr = ll::Value::StkReg(*reg);
+                        } else if let ll::Value::FReg(freg) = ptr {
+                            *ptr = ll::Value::StkFReg(*freg);
+                        }
+                    }
+                    ll::Inst::ContRet {stk, ..} => *stk = true,
+                    ll::Inst::DispRet {stk, ..} => *stk = true,
+                    ll::Inst::DispFunc {regs, fregs, ..} => {
+                        *regs = func.used_regs.clone();
+                        *fregs = func.used_fregs.clone();
+                    }
+                    ll::Inst::CheckRet {stk, ..} => *stk = true,
+                    _ => (),
+                }
+            }
+        }
     }
     prog
 }

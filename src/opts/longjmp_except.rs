@@ -26,10 +26,12 @@ pub fn longjmp_except(mut prog: ll::Program) -> ll::Program {
                             ll::Inst::Call {
                                 rslt: ll::Value::Temp(address, 0),
                                 func: ll::Value::Addr(addr),
+                                regs: Vec::new(),
+                                fregs: Vec::new(),
                             },
                             ll::Inst::DispRet {
                                 addr: ll::Value::Addr(address),
-                                next_pc: get_next_pc(&block.rv_inst),
+                                next_pc: get_next_pc(&block.rv_inst),stk: false,
                             },
                         ]
                     }
@@ -43,10 +45,13 @@ pub fn longjmp_except(mut prog: ll::Program) -> ll::Program {
                             ll::Inst::Call {
                                 rslt: ll::Value::Temp(address, 0),
                                 func: ll::Value::Addr(addr),
+                                regs: Vec::new(),
+                                fregs: Vec::new(),
                             },
                             ll::Inst::DispRet {
                                 addr: ll::Value::Addr(address),
                                 next_pc: get_next_pc(&block.rv_inst),
+                                stk: false,
                             },
                         ]
                     }

@@ -35,7 +35,9 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                         let rslt = ll::Value::Temp(address, 0);
                         let func = ll::Value::Addr(addr);
                         let val = ll::Value::Addr(rv::Addr(0));
-                        block.insts = vec![ll::Inst::Call { rslt, func }, ll::Inst::Ret { val }];
+                        block.insts = vec![ll::Inst::Call { rslt, func,
+                            regs: Vec::new(),
+                            fregs: Vec::new(), }, ll::Inst::Ret { val }];
                     }
                 }
                 rv::Inst::Jal {
@@ -50,10 +52,13 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Call {
                             rslt: ll::Value::Temp(address, 0),
                             func: ll::Value::Addr(addr),
+                            regs: Vec::new(),
+                            fregs: Vec::new(),
                         },
                         ll::Inst::ContRet {
                             addr: ll::Value::Addr(address),
                             next_pc: get_next_pc(&block.rv_inst),
+                            stk: false,
                         },
                     ]
                 }
@@ -67,10 +72,13 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                         ll::Inst::Call {
                             rslt: ll::Value::Temp(address, 0),
                             func: ll::Value::Addr(addr),
+                            regs: Vec::new(),
+                            fregs: Vec::new(),
                         },
                         ll::Inst::ContRet {
                             addr: ll::Value::Addr(address),
                             next_pc: get_next_pc(&block.rv_inst),
+                            stk: false,
                         },
                     ]
                 }
@@ -149,6 +157,9 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                             },
                             ll::Inst::DispFunc {
                                 func: ll::Value::Temp(address, 1),
+                                regs: Vec::new(),
+                                fregs: Vec::new(),
+                                addr: address,
                             },
                         ]
                     }
@@ -166,6 +177,9 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                             },
                             ll::Inst::DispFunc {
                                 func: ll::Value::Temp(address, 0),
+                                regs: Vec::new(),
+                                fregs: Vec::new(),
+                                addr: address,
                             },
                         ]
                     }
@@ -191,12 +205,16 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                             },
                             ll::Inst::DispFunc {
                                 func: ll::Value::Temp(address, 1),
+                                regs: Vec::new(),
+                                fregs: Vec::new(),
+                                addr: address,
                             },
                         ]
                     }
                     rv::Inst::Ret { address, .. } => {
                         block.insts = vec![ll::Inst::CheckRet {
                             addr: ll::Value::Addr(address),
+                            stk: false,
                         }]
                     }
                     _ => (),

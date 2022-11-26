@@ -18,8 +18,8 @@ pub fn optimize(prog: Program, opts: &Vec<String>) -> Program {
         "native_stack",
         "static_data",
         "trans_static_dyn_funcs",
-        "global2stack",
         "longjmp_except",
+        "global2stack",
     ];
     match opts[..] {
         [] | ["all"] => available_opts
@@ -38,8 +38,8 @@ fn call_opt(prog: Program, opt: &str) -> Program {
         "static_data" => static_data::static_data(prog),
         "split_functions" => split_functions::split_functions(prog),
         "trans_static_dyn_funcs" => trans_static_dyn_funcs::trans_static_dyn_funcs(prog),
-        "global2stack" => global2stack::global2stack(prog),
         "longjmp_except" => longjmp_except::longjmp_except(prog),
+        "global2stack" => global2stack::global2stack(prog),
         _ => panic!("Unknown optimization `{opt}`"),
     }
 }

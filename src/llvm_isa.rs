@@ -547,8 +547,8 @@ pub struct Func {
     pub inst_blocks: Vec<InstBlock>,
     pub stack_vars: Vec<Value>,
     pub dynamic: bool,
-    pub used_regs: Vec<Value>,
-    pub used_fregs: Vec<Value>,
+    pub used_regs: Vec<RV::Reg>,
+    pub used_fregs: Vec<RV::FReg>,
 }
 
 impl Display for Func {
@@ -556,13 +556,13 @@ impl Display for Func {
         let stack_regs = self
             .used_regs
             .iter()
-            .map(|reg| format!("  {reg} = alloca i64"))
+            .map(|reg| format!("  {reg} = alloca i64", reg = Value::StkReg(*reg)))
             .collect::<Vec<_>>()
             .join("\n");
         let stack_fregs = self
             .used_fregs
             .iter()
-            .map(|freg| format!("  {freg} = alloca double"))
+            .map(|freg| format!("  {freg} = alloca double", freg = Value::StkFReg(*freg)))
             .collect::<Vec<_>>()
             .join("\n");
         let stack_vars = self
@@ -577,6 +577,10 @@ impl Display for Func {
             })
             .collect::<Vec<_>>()
             .join("\n");
+
+        let load_stack = build_load_stack(&self.used_regs, &self.used_fregs, "entry");
+        let store_stack = build_store_stack(&self.used_regs, &self.used_fregs, "ret");
+
         let mut dispatcher = String::from("switch i64 %addr, label %func_dispatcher [");
         let mut inst_blocks = String::new();
         for inst_block in &self.inst_blocks {
@@ -603,14 +607,17 @@ u0x0:
   {dispatcher}
 func_dispatcher:
   %func = load i64, i64* %entry_ptr
+  {store_stack}
   %ra_val = call i64 @.dispatch_func(i64 %func)
+  {load_stack}
   %fail = icmp eq i64 %ra_val, 0
   br i1 %fail, label %native_ret, label %cont
 native_ret:
-  ret i64 0
+  store i64 0, i64* %ret_ptr
+  br label %ret
 cont:
   store i64 %ra_val, i64* %entry_ptr
-  br label %u0x0"
+  br label %u0x0", store_stack = build_store_stack(&self.used_regs, &self.used_fregs, "disps"), load_stack = build_load_stack(&self.used_regs, &self.used_fregs, "displ")
             )
         } else {
             format!("  br label %u{}", self.inst_blocks[0].rv_inst.address())
@@ -620,19 +627,61 @@ cont:
             "; {} {} <{}>
 
 define i64 @.{}(i64 %entry) {{
+  %ret_ptr = alloca i64
+
 {stack_regs}
 {stack_fregs}
 {stack_vars}
+
+{load_stack}
 
 {prologue}
 
 {inst_blocks}
 {next_pc}:
-  ret i64 {next_pc}
+  store i64 {next_pc}, i64* %ret_ptr
+  br label %ret
+ret:
+{store_stack}
+
+  %ret_val = load i64, i64* %ret_ptr
+  ret i64 %ret_val
 }}",
             self.address, self.section, self.symbol, self.address
         )
     }
+}
+
+fn build_load_stack(regs: &Vec<RV::Reg>, fregs: &Vec<RV::FReg>, id: &str) -> String {
+    let load_stack_regs = regs
+        .iter()
+        .map(|reg| format!("  %{reg}_{id}_val = load i64, i64* {global}
+  store i64 %{reg}_{id}_val, i64* {stack}", global = Value::Reg(*reg), stack = Value::StkReg(*reg)))
+        .collect::<Vec<_>>()
+        .join("\n");
+        let load_stack_fregs = fregs
+        .iter()
+        .map(|freg| format!("  %{freg}_{id}_val = load double, double* {global}
+  store double %{freg}_{id}_val, double* {stack}", global = Value::FReg(*freg), stack = Value::StkFReg(*freg)))
+        .collect::<Vec<_>>()
+        .join("\n");
+        format!("{load_stack_regs}\n{load_stack_fregs}")
+}
+
+fn build_store_stack(regs: &Vec<RV::Reg>, fregs: &Vec<RV::FReg>, id: &str) -> String {
+    let store_stack_regs = regs
+        .iter()
+        .map(|reg| format!("  %{reg}_{id}_val = load i64, i64* {stack}
+  store i64 %{reg}_{id}_val, i64* {global}", global = Value::Reg(*reg), stack = Value::StkReg(*reg)))
+        .collect::<Vec<_>>()
+        .join("\n");
+        let store_stack_fregs = fregs
+        .iter()
+        .map(|freg| format!("  %{freg}_{id}_val = load double, double* {stack}
+  store double %{freg}_{id}_val, double* {global}", global = Value::FReg(*freg), stack = Value::StkFReg(*freg)))
+        .collect::<Vec<_>>()
+        .join("\n");
+        format!("{store_stack_regs}\n{store_stack_fregs}")
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -921,6 +970,8 @@ pub enum Inst {
     Call {
         rslt: Value,
         func: Value,
+        regs: Vec<RV::Reg>,
+        fregs: Vec<RV::FReg>,
     },
 
     // Standard C/C++ Library Intrinsics
@@ -966,22 +1017,26 @@ pub enum Inst {
         arg3: Value,
         arg4: Value,
         arg5: Value,
-        arg6: Value,
+        arg6: Value
     },
     Unreachable,
     ContRet {
         addr: Value,
         next_pc: Value,
+        stk: bool,
     },
     DispRet {
         addr: Value,
-        next_pc: Value,
+        next_pc: Value,stk: bool,
     },
     DispFunc {
         func: Value,
+        regs: Vec<RV::Reg>,
+        fregs: Vec<RV::FReg>,
+        addr: RV::Addr,
     },
     CheckRet {
-        addr: Value,
+        addr: Value,stk: bool,
     },
 }
 
@@ -991,7 +1046,7 @@ impl Display for Inst {
 
         match self {
             // Terminator Instructions
-            Ret { val } => write!(f, "ret i64 {val}"),
+            Ret { val } => write!(f, "store i64 {val}, i64* %ret_ptr\n  br label %ret"),
             ConBr { cond, iftrue, iffalse } => write!(f, "br i1 {cond}, label %{iftrue}, label %{iffalse}"),
             Br { addr } => write!(f, "br label %{addr}"),
 
@@ -1056,7 +1111,7 @@ impl Display for Inst {
             Icmp { rslt, cond, op1, op2 } => write!(f, "{rslt} = icmp {cond} i64 {op1}, {op2}"),
             Fcmp {rslt,fcond,op1,op2} => write!(f, "{rslt} = fcmp {fcond} double {op1}, {op2}"),
             Select {rslt,cond, ty, op1,op2} => write!(f, "{rslt} = select i1 {cond}, {ty} {op1}, {ty} {op2}"),
-            Call { rslt, func } => write!(f, "{rslt} = call i64 @.{}(i64 {func})", &format!("{func}")[1..]),
+            Call { rslt, func, regs, fregs } => write!(f, "{store_stack}  {rslt} = call i64 @.{}(i64 {func})\n{load_stack}", &format!("{func}")[1..],store_stack= build_store_stack(regs, fregs, &format!("s{}", &rslt.to_string()[1..])),load_stack= build_load_stack(regs, fregs, &format!("l{}", &rslt.to_string()[1..]))),
 
             // Standard C/C++ Library Intrinsics
             Sqrt { rslt, ty, arg } => write!(f,"{rslt} = call {ty} @llvm.sqrt.{ty}({ty} {arg})"),
@@ -1070,20 +1125,23 @@ impl Display for Inst {
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, i64, i64, i64, i64, i64, i64) @.system_call(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
             Unreachable => write!(f, "unreachable"),
-            ContRet { addr, next_pc } => write!(f, "%{addr}_ra = load i64, i64* @.ra
+            ContRet { addr, next_pc , stk} => write!(f, "%{addr}_ra = load i64, i64* {ra}
   %{addr}_fg = icmp eq i64 %{addr}_ra, {next_pc}
   br i1 %{addr}_fg, label %{addr}_t, label %{addr}_f
 {addr}_f:
-  ret i64 0
-{addr}_t:"),
-            DispRet { addr, next_pc } => write!(f, "%{addr}_ra = load i64, i64* @.ra
+  store i64 0, i64* %ret_ptr
+  br label %ret
+{addr}_t:", ra = if *stk {Value::StkReg(RV::Reg::Ra)} else {Value::Reg(RV::Reg::Ra)}),
+            DispRet { addr, next_pc, stk } => write!(f, "%{addr}_ra = load i64, i64* {ra}
   %{addr}_fg = icmp eq i64 %{addr}_ra, {next_pc}
   br i1 %{addr}_fg, label %{addr}_t, label %{addr}_f
 {addr}_f:
   store i64 %{addr}_ra, i64* %entry_ptr
   br label %u0x0
-{addr}_t:"),
-            DispFunc { func } => write!(f, "{func}_ra = call i64 @.dispatch_func(i64 {func})
+{addr}_t:", ra = if *stk {Value::StkReg(RV::Reg::Ra)} else {Value::Reg(RV::Reg::Ra)}),
+            DispFunc { func ,regs, fregs, addr} => write!(f, "{store_stack}
+  {func}_ra = call i64 @.dispatch_func(i64 {func})
+  {load_stack}
   {func}_fail = icmp eq i64 {func}_ra, 0
   br i1 {func}_fail, label {func}_disp, label {func}_cont
 {func_lbl}_disp:
@@ -1092,17 +1150,18 @@ impl Display for Inst {
   br label %u0x0
 {func_lbl}_cont:
   store i64 {func}_ra, i64* %entry_ptr
-  br label %u0x0", func_lbl=&func.to_string()[1..]),
-            CheckRet { addr } => write!(f, "%{addr}_0 = load i1, i1* %local_jalr_ptr
+  br label %u0x0", func_lbl=&func.to_string()[1..], store_stack = build_store_stack(regs, fregs, &format!("{addr}s")), load_stack = build_load_stack(regs, fregs, &format!("{addr}l"))),
+            CheckRet { addr , stk} => write!(f, "%{addr}_0 = load i1, i1* %local_jalr_ptr
   %{addr}_1 = icmp eq i1 %{addr}_0, 1
   br i1 %{addr}_1, label %{addr}_local, label %{addr}_ret
 {addr}_local:
-  %{addr}_2 = load i64, i64* @.ra
+  %{addr}_2 = load i64, i64* {ra}
   store i64 %{addr}_2, i64* %entry_ptr
   store i1 0, i1* %local_jalr_ptr
   br label %u0x0
 {addr}_ret:
-  ret i64 0"),
+  store i64 0, i64* %ret_ptr
+  br label %ret", ra = if *stk {Value::StkReg(RV::Reg::Ra)} else {Value::Reg(RV::Reg::Ra)}),
         }
     }
 }
