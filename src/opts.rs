@@ -6,6 +6,7 @@ mod native_stack;
 mod split_functions;
 mod static_data;
 mod trans_static_dyn_funcs;
+mod direct_jalr;
 
 use crate::llvm_isa::Program;
 
@@ -15,6 +16,7 @@ pub fn optimize(prog: Program, opts: &Vec<String>) -> Program {
         "split_functions",
         "direct_jumps",
         "direct_branches",
+        "direct_jalr",
         "native_stack",
         "static_data",
         "trans_static_dyn_funcs",
@@ -40,6 +42,7 @@ fn call_opt(prog: Program, opt: &str) -> Program {
         "trans_static_dyn_funcs" => trans_static_dyn_funcs::trans_static_dyn_funcs(prog),
         "longjmp_except" => longjmp_except::longjmp_except(prog),
         "global2stack" => global2stack::global2stack(prog),
+        "direct_jalr" => direct_jalr::direct_jalr(prog),
         _ => panic!("Unknown optimization `{opt}`"),
     }
 }
