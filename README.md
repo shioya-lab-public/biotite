@@ -27,6 +27,9 @@ llc -filetype=obj test.ll
 clang -static test.o -lm
 
 ulimit -s 819200
+
+sudo perf record -e cpu-clock test
+sudo perf report -i test.data
 ```
 
 We need to use RISC-V GCC objdump to dump the `.tdata` section, so we can properly initialize the `PT_TLS` segment of the `AT_PHDR` entry in `auxv`. Also, we need static linking in the host to make `PT_TLS` available in `AT_PHDR`.
