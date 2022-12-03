@@ -35,9 +35,15 @@ pub fn trans_static_dyn_funcs(mut prog: ll::Program) -> ll::Program {
                         let rslt = ll::Value::Temp(address, 0);
                         let func = ll::Value::Addr(addr);
                         let val = ll::Value::Addr(rv::Addr(0));
-                        block.insts = vec![ll::Inst::Call { rslt, func,
-                            regs: Vec::new(),
-                            fregs: Vec::new(), }, ll::Inst::Ret { val }];
+                        block.insts = vec![
+                            ll::Inst::Call {
+                                rslt,
+                                func,
+                                regs: Vec::new(),
+                                fregs: Vec::new(),
+                            },
+                            ll::Inst::Ret { val },
+                        ];
                     }
                 }
                 rv::Inst::Jal {

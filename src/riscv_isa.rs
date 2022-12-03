@@ -286,7 +286,7 @@ define_insts! {
     OffsetJr(r"jr\s+{}\({}\)", imm, rs1),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 pub enum Reg {
     Zero,
     Ra,

@@ -15,6 +15,7 @@ pub struct Program {
     pub sp: Value,
     pub phdr: Value,
     pub func_syms: HashMap<(String, RV::Addr), bool>,
+    pub native_mem_func: bool,
 }
 
 impl Program {
@@ -422,6 +423,10 @@ declare i32 @.round_i32_double_fptoui(double, i1)
 declare i64 @.round_i64_double_fptosi(double, i1)
 declare i64 @.round_i64_double_fptoui(double, i1)
 
+declare void @llvm.memcpy.p8.p8.i64(i8*, i8*, i64, i1)
+declare void @llvm.memmove.p8.p8.i64(i8*, i8*, i64, i1)
+declare void @llvm.memset.p8.i64(i8*, i8, i64, i1)
+
 @.zero = external global i64
 @.ra = external global i64
 @.sp = external global i64
@@ -495,9 +500,11 @@ declare i64 @.round_i64_double_fptoui(double, i1)
         let mut i = 0;
         while i < self.funcs.len() {
             let end = std::cmp::min(i + part_len, self.funcs.len());
-            let funcs = self.funcs[i..end].iter().map(|f| f.to_string())
-            .collect::<Vec<_>>()
-            .join("\n\n");
+            let funcs = self.funcs[i..end]
+                .iter()
+                .map(|f| f.to_string())
+                .collect::<Vec<_>>()
+                .join("\n\n");
             let before_decls = func_decls[0..i].join("\n");
             let after_decls = func_decls[end..].join("\n");
             let part = format!("{decls}\n\n{funcs}\n\n{before_decls}\n{after_decls}");
@@ -617,7 +624,9 @@ native_ret:
   br label %ret
 cont:
   store i64 %ra_val, i64* %entry_ptr
-  br label %u0x0", store_stack = build_store_stack(&self.used_regs, &self.used_fregs, "disps"), load_stack = build_load_stack(&self.used_regs, &self.used_fregs, "displ")
+  br label %u0x0",
+                store_stack = build_store_stack(&self.used_regs, &self.used_fregs, "disps"),
+                load_stack = build_load_stack(&self.used_regs, &self.used_fregs, "displ")
             )
         } else {
             format!("  br label %u{}", self.inst_blocks[0].rv_inst.address())
@@ -655,33 +664,57 @@ ret:
 fn build_load_stack(regs: &Vec<RV::Reg>, fregs: &Vec<RV::FReg>, id: &str) -> String {
     let load_stack_regs = regs
         .iter()
-        .map(|reg| format!("  %{reg}_{id}_val = load i64, i64* {global}
-  store i64 %{reg}_{id}_val, i64* {stack}", global = Value::Reg(*reg), stack = Value::StkReg(*reg)))
+        .map(|reg| {
+            format!(
+                "  %{reg}_{id}_val = load i64, i64* {global}
+  store i64 %{reg}_{id}_val, i64* {stack}",
+                global = Value::Reg(*reg),
+                stack = Value::StkReg(*reg)
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
-        let load_stack_fregs = fregs
+    let load_stack_fregs = fregs
         .iter()
-        .map(|freg| format!("  %{freg}_{id}_val = load double, double* {global}
-  store double %{freg}_{id}_val, double* {stack}", global = Value::FReg(*freg), stack = Value::StkFReg(*freg)))
+        .map(|freg| {
+            format!(
+                "  %{freg}_{id}_val = load double, double* {global}
+  store double %{freg}_{id}_val, double* {stack}",
+                global = Value::FReg(*freg),
+                stack = Value::StkFReg(*freg)
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
-        format!("{load_stack_regs}\n{load_stack_fregs}")
+    format!("{load_stack_regs}\n{load_stack_fregs}")
 }
 
 fn build_store_stack(regs: &Vec<RV::Reg>, fregs: &Vec<RV::FReg>, id: &str) -> String {
     let store_stack_regs = regs
         .iter()
-        .map(|reg| format!("  %{reg}_{id}_val = load i64, i64* {stack}
-  store i64 %{reg}_{id}_val, i64* {global}", global = Value::Reg(*reg), stack = Value::StkReg(*reg)))
+        .map(|reg| {
+            format!(
+                "  %{reg}_{id}_val = load i64, i64* {stack}
+  store i64 %{reg}_{id}_val, i64* {global}",
+                global = Value::Reg(*reg),
+                stack = Value::StkReg(*reg)
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
-        let store_stack_fregs = fregs
+    let store_stack_fregs = fregs
         .iter()
-        .map(|freg| format!("  %{freg}_{id}_val = load double, double* {stack}
-  store double %{freg}_{id}_val, double* {global}", global = Value::FReg(*freg), stack = Value::StkFReg(*freg)))
+        .map(|freg| {
+            format!(
+                "  %{freg}_{id}_val = load double, double* {stack}
+  store double %{freg}_{id}_val, double* {global}",
+                global = Value::FReg(*freg),
+                stack = Value::StkFReg(*freg)
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
-        format!("{store_stack_regs}\n{store_stack_fregs}")
+    format!("{store_stack_regs}\n{store_stack_fregs}")
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -1017,7 +1050,7 @@ pub enum Inst {
         arg3: Value,
         arg4: Value,
         arg5: Value,
-        arg6: Value
+        arg6: Value,
     },
     Unreachable,
     ContRet {
@@ -1027,7 +1060,8 @@ pub enum Inst {
     },
     DispRet {
         addr: Value,
-        next_pc: Value,stk: bool,
+        next_pc: Value,
+        stk: bool,
     },
     DispFunc {
         func: Value,
@@ -1036,7 +1070,21 @@ pub enum Inst {
         addr: RV::Addr,
     },
     CheckRet {
-        addr: Value,stk: bool,
+        addr: Value,
+        stk: bool,
+    },
+
+    Memcpy {
+        addr: Value,
+        stk: bool,
+    },
+    Memmove {
+        addr: Value,
+        stk: bool,
+    },
+    Memset {
+        addr: Value,
+        stk: bool,
     },
 }
 
@@ -1162,6 +1210,34 @@ impl Display for Inst {
 {addr}_ret:
   store i64 0, i64* %ret_ptr
   br label %ret", ra = if *stk {Value::StkReg(RV::Reg::Ra)} else {Value::Reg(RV::Reg::Ra)}),
+
+            Memcpy { addr ,stk} => write!(f, "%{addr}_0 = load i64, i64* {a0}
+  %{addr}_1 = call i8* @.get_memory_ptr(i64 %{addr}_0)
+  %{addr}_2 = load i64, i64* {a1}
+  %{addr}_3 = call i8* @.get_memory_ptr(i64 %{addr}_2)
+  %{addr}_4 = load i64, i64* {a2}
+  call void @llvm.memcpy.p8.p8.i64(i8* %{addr}_1, i8* %{addr}_3, i64 %{addr}_4, i1 false)"
+  , a0 = if *stk {Value::StkReg(RV::Reg::A0)} else {Value::Reg(RV::Reg::A0)}
+  , a1 = if *stk {Value::StkReg(RV::Reg::A1)} else {Value::Reg(RV::Reg::A1)}
+  , a2 = if *stk {Value::StkReg(RV::Reg::A2)} else {Value::Reg(RV::Reg::A2)}),
+            Memmove { addr ,stk} => write!(f, "%{addr}_0 = load i64, i64* {a0}
+  %{addr}_1 = call i8* @.get_memory_ptr(i64 %{addr}_0)
+  %{addr}_2 = load i64, i64* {a1}
+  %{addr}_3 = call i8* @.get_memory_ptr(i64 %{addr}_2)
+  %{addr}_4 = load i64, i64* {a2}
+  call void @llvm.memmove.p8.p8.i64(i8* %{addr}_1, i8* %{addr}_3, i64 %{addr}_4, i1 false)"
+  , a0 = if *stk {Value::StkReg(RV::Reg::A0)} else {Value::Reg(RV::Reg::A0)}
+  , a1 = if *stk {Value::StkReg(RV::Reg::A1)} else {Value::Reg(RV::Reg::A1)}
+  , a2 = if *stk {Value::StkReg(RV::Reg::A2)} else {Value::Reg(RV::Reg::A2)}),
+            Memset { addr ,stk} => write!(f, "%{addr}_0 = load i64, i64* {a0}
+  %{addr}_1 = call i8* @.get_memory_ptr(i64 %{addr}_0)
+  %{addr}_2 = load i64, i64* {a1}
+  %{addr}_3 = trunc i64 %{addr}_2 to i8
+  %{addr}_4 = load i64, i64* {a2}
+  call void @llvm.memset.p8.i64(i8* %{addr}_1, i8 %{addr}_3, i64 %{addr}_4, i1 false)"
+  , a0 = if *stk {Value::StkReg(RV::Reg::A0)} else {Value::Reg(RV::Reg::A0)}
+  , a1 = if *stk {Value::StkReg(RV::Reg::A1)} else {Value::Reg(RV::Reg::A1)}
+  , a2 = if *stk {Value::StkReg(RV::Reg::A2)} else {Value::Reg(RV::Reg::A2)}),
         }
     }
 }

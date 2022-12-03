@@ -21,6 +21,7 @@ pub fn run(rv_prog: RV::Program, src_funcs: HashMap<RV::Addr, String>, syscall: 
         sp,
         phdr,
         func_syms: rv_prog.func_syms,
+        native_mem_func: false,
     }
 }
 

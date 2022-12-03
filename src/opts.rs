@@ -1,12 +1,13 @@
 mod direct_branches;
+mod direct_jalr;
 mod direct_jumps;
 mod global2stack;
 mod longjmp_except;
+mod native_mem_func;
 mod native_stack;
 mod split_functions;
 mod static_data;
 mod trans_static_dyn_funcs;
-mod direct_jalr;
 
 use crate::llvm_isa::Program;
 
@@ -22,6 +23,7 @@ pub fn optimize(prog: Program, opts: &Vec<String>) -> Program {
         "trans_static_dyn_funcs",
         "longjmp_except",
         "global2stack",
+        "native_mem_func",
     ];
     match opts[..] {
         [] | ["all"] => available_opts
@@ -43,6 +45,7 @@ fn call_opt(prog: Program, opt: &str) -> Program {
         "longjmp_except" => longjmp_except::longjmp_except(prog),
         "global2stack" => global2stack::global2stack(prog),
         "direct_jalr" => direct_jalr::direct_jalr(prog),
+        "native_mem_func" => native_mem_func::native_mem_func(prog),
         _ => panic!("Unknown optimization `{opt}`"),
     }
 }

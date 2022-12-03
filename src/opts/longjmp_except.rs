@@ -31,7 +31,8 @@ pub fn longjmp_except(mut prog: ll::Program) -> ll::Program {
                             },
                             ll::Inst::DispRet {
                                 addr: ll::Value::Addr(address),
-                                next_pc: get_next_pc(&block.rv_inst),stk: false,
+                                next_pc: get_next_pc(&block.rv_inst),
+                                stk: false,
                             },
                         ]
                     }

@@ -1,7 +1,7 @@
 use crate::llvm_isa as ll;
+use crate::llvm_macro::next_pc;
 use crate::riscv_isa as rv;
 use std::collections::HashSet;
-use crate::llvm_macro::next_pc;
 
 fn get_next_pc(inst: &rv::Inst) -> ll::Value {
     use crate::llvm_isa::*;
@@ -63,8 +63,14 @@ pub fn direct_jalr(mut prog: ll::Program) -> ll::Program {
                             symbol: None,
                         };
                         let ll_insts = vec![
-                            ll::Inst::Store { ty: ll::Type::I64, val: get_next_pc(&rv_inst), ptr: ll::Value::Reg(rv::Reg::Ra) } ,
-                            ll::Inst::Ret { val: ll::Value::Addr(target) },
+                            ll::Inst::Store {
+                                ty: ll::Type::I64,
+                                val: get_next_pc(&rv_inst),
+                                ptr: ll::Value::Reg(rv::Reg::Ra),
+                            },
+                            ll::Inst::Ret {
+                                val: ll::Value::Addr(target),
+                            },
                         ];
                         jals.push((i, rv_inst, ll_insts));
                     }
