@@ -915,6 +915,11 @@ pub enum Inst {
         val: Value,
         mo: MO,
     },
+    Getelementptr {
+        rslt: Value,
+        ptr: Value,
+        offset: Value,
+    },
 
     // Conversion Operations
     Trunc {
@@ -1131,6 +1136,7 @@ impl Display for Inst {
             Fence { mo } => write!(f, "fence {mo}"),
             Cmpxchg { rslt, ty, ptr, cmp, new, mo } => write!(f, "{rslt} = cmpxchg {ty}* {ptr}, {ty} {cmp}, {ty} {new} {mo} monotonic"),
             Atomicrmw { rslt, op, ty, ptr, val, mo } => write!(f, "{rslt} = atomicrmw {op} {ty}* {ptr}, {ty} {val} {mo}"),
+            Getelementptr { rslt, ptr, offset } => write!(f, "{rslt} = getelementptr i8, i8* {ptr}, i64 {offset}"),
 
             // Conversion Operations
             Trunc { rslt, ty1, val, ty2 } => write!(f, "{rslt} = trunc {ty1} {val} to {ty2}"),
