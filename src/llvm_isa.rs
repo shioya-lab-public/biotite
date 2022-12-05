@@ -426,6 +426,7 @@ declare i64 @.round_i64_double_fptoui(double, i1)
 declare void @llvm.memcpy.p8.p8.i64(i8*, i8*, i64, i1)
 declare void @llvm.memmove.p8.p8.i64(i8*, i8*, i64, i1)
 declare void @llvm.memset.p8.i64(i8*, i8, i64, i1)
+declare i32 @memcmp(i8*, i8*, i64) 
 
 @.zero = external global i64
 @.ra = external global i64
@@ -1091,6 +1092,10 @@ pub enum Inst {
         addr: Value,
         stk: bool,
     },
+    Memcmp {
+        addr: Value,
+        stk: bool,
+    },
 }
 
 impl Display for Inst {
@@ -1241,6 +1246,17 @@ impl Display for Inst {
   %{addr}_3 = trunc i64 %{addr}_2 to i8
   %{addr}_4 = load i64, i64* {a2}
   call void @llvm.memset.p8.i64(i8* %{addr}_1, i8 %{addr}_3, i64 %{addr}_4, i1 false)"
+  , a0 = if *stk {Value::StkReg(RV::Reg::A0)} else {Value::Reg(RV::Reg::A0)}
+  , a1 = if *stk {Value::StkReg(RV::Reg::A1)} else {Value::Reg(RV::Reg::A1)}
+  , a2 = if *stk {Value::StkReg(RV::Reg::A2)} else {Value::Reg(RV::Reg::A2)}),
+            Memcmp { addr ,stk} => write!(f, "%{addr}_0 = load i64, i64* {a0}
+  %{addr}_1 = call i8* @.get_memory_ptr(i64 %{addr}_0)
+  %{addr}_2 = load i64, i64* {a1}
+  %{addr}_3 = call i8* @.get_memory_ptr(i64 %{addr}_2)
+  %{addr}_4 = load i64, i64* {a2}
+  %{addr}_5 = call i32 @memcmp(i8* %{addr}_1, i8* %{addr}_3, i64 %{addr}_4)
+  %{addr}_6 = sext i32 %{addr}_5 to i64
+  store i64 %{addr}_6, i64* {a0}"
   , a0 = if *stk {Value::StkReg(RV::Reg::A0)} else {Value::Reg(RV::Reg::A0)}
   , a1 = if *stk {Value::StkReg(RV::Reg::A1)} else {Value::Reg(RV::Reg::A1)}
   , a2 = if *stk {Value::StkReg(RV::Reg::A2)} else {Value::Reg(RV::Reg::A2)}),

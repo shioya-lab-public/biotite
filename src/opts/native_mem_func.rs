@@ -31,6 +31,12 @@ pub fn native_mem_func(mut prog: ll::Program) -> ll::Program {
                             stk: !func.dynamic,
                         }]
                     }
+                    Some("<memcmp>") => {
+                        block.insts = vec![ll::Inst::Memcmp {
+                            addr: ll::Value::Addr(*address),
+                            stk: !func.dynamic,
+                        }]
+                    }
                     _ => continue,
                 }
                 if !func.dynamic {
