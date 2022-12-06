@@ -120,7 +120,10 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
             continue;
         }
         let ra_loc = *ra_locs.get(0).unwrap_or(&0);
-        if allocs.iter().min() != allocs.iter().max() || frees.iter().min() != frees.iter().max() || allocs.get(0).unwrap_or(&0) + frees.get(0).unwrap_or(&0) != 0 {
+        if allocs.iter().min() != allocs.iter().max()
+            || frees.iter().min() != frees.iter().max()
+            || allocs.get(0).unwrap_or(&0) + frees.get(0).unwrap_or(&0) != 0
+        {
             continue;
         }
         vars.sort_unstable();

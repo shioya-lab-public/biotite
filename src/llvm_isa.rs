@@ -878,6 +878,21 @@ pub enum Inst {
         op2: Value,
     },
 
+    // Vector Operations
+    Extractelement {
+        rslt: Value,
+        ty: Type,
+        val: Value,
+        idx: usize,
+    },
+    Insertelement {
+        rslt: Value,
+        ty: Type,
+        val: Value,
+        elt: Value,
+        idx: usize,
+    },
+
     // Aggregate Operations
     Extractvalue {
         rslt: Value,
@@ -1132,6 +1147,11 @@ impl Display for Inst {
             Or { rslt, ty, op1, op2 } => write!(f, "{rslt} = or {ty} {op1}, {op2}"),
             Xor { rslt, ty, op1, op2 } => write!(f, "{rslt} = xor {ty} {op1}, {op2}"),
 
+            // Vector Operations
+            Extractelement { rslt, ty, val, idx } => write!(f, "{rslt} = extractelement {ty} {val}, i32 {idx}"),
+            Insertelement { rslt, ty: ty @ Type::Vector(_, _ty), val, elt, idx } => write!(f, "{rslt} = insertelement {ty} {val}, {_ty} {elt}, i32 {idx}"),
+            Insertelement { .. } => unreachable!(),
+
             // Aggregate Operations
             Extractvalue { rslt, ty, val, idx } => write!(f, "{rslt} = extractvalue {{ {ty}, i1 }} {val}, {idx}"),
 
@@ -1264,7 +1284,7 @@ impl Display for Inst {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Type {
     I1,
     I8,
@@ -1274,6 +1294,7 @@ pub enum Type {
     I128,
     Float,
     Double,
+    Vector(usize, Box<Type>),
 }
 
 impl Display for Type {
@@ -1289,6 +1310,7 @@ impl Display for Type {
             I128 => write!(f, "i128"),
             Float => write!(f, "float"),
             Double => write!(f, "double"),
+            Vector(len, ty) => write!(f, "<{len} x {ty}>"),
         }
     }
 }
@@ -1305,6 +1327,7 @@ pub enum Value {
     EntryPtr,
     StkReg(RV::Reg),
     StkFReg(RV::FReg),
+    Undef,
 }
 
 impl Display for Value {
@@ -1322,6 +1345,7 @@ impl Display for Value {
             EntryPtr => write!(f, "%entry_ptr"),
             StkReg(reg) => write!(f, "%{reg}"),
             StkFReg(freg) => write!(f, "%{freg}"),
+            Undef => write!(f, "undef"),
         }
     }
 }
