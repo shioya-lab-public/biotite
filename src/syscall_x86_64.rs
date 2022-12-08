@@ -59,19 +59,19 @@ lazy_static! {
         (
             "read",
             63,
-            "  %buf = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %buf = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 0, i64 %arg1, i8* %buf, i64 %arg3)"
         ),
         (
             "write",
             64,
-            "  %buf = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %buf = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 1, i64 %arg1, i8* %buf, i64 %arg3)"
         ),
         (
             "openat",
             56,
-            "  %filename = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %filename = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 257, i64 %arg1, i8* %filename, i64 %arg3, i64 %arg4)"
         ),
         (
@@ -92,49 +92,49 @@ lazy_static! {
         (
             "linkat",
             37,
-            "  %oldname = call i8* @.get_memory_ptr(i64 %arg2)
-  %newname = call i8* @.get_memory_ptr(i64 %arg4)
+            "  %oldname = call i8* @.SYS_get_memory_ptr(i64 %arg2)
+  %newname = call i8* @.SYS_get_memory_ptr(i64 %arg4)
   %rslt = call i64 (i64, ...) @syscall(i64 265, i64 %arg1, i8* %oldname, i64 %arg3, i8* %newname, i64 %arg5)"
         ),
         (
             "unlinkat",
             35,
-            "  %pathname = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %pathname = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 263, i64 %arg1, i8* %pathname, i64 %arg3)"
         ),
         (
             "mkdirat",
             34,
-            "  %pathname = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %pathname = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 258, i64 %arg1, i8* %pathname, i64 %arg3)"
         ),
         (
             "renameat",
             38,
-            "  %oldname = call i8* @.get_memory_ptr(i64 %arg2)
-  %newname = call i8* @.get_memory_ptr(i64 %arg4)
+            "  %oldname = call i8* @.SYS_get_memory_ptr(i64 %arg2)
+  %newname = call i8* @.SYS_get_memory_ptr(i64 %arg4)
   %rslt = call i64 (i64, ...) @syscall(i64 264, i64 %arg1, i8* %oldname, i64 %arg3, i8* %newname)"
                   ),
         (
             "chdir",
             49,
-            "  %filename = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %filename = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 80, i8* %filename)"
         ),
         (
             "getcwd",
             17,
-            "  %buf = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %buf = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 79, i8* %buf, i64 %arg2)"
         ),
         (
             "fstat",
             80,
             "  %pad_addr = add i64 %arg2, 120
-  %pad_b = call i8* @.get_memory_ptr(i64 %pad_addr)
+  %pad_b = call i8* @.SYS_get_memory_ptr(i64 %pad_addr)
   %pad = bitcast i8* %pad_b to i192*
   %pad_val = load i192, i192* %pad
-  %statbuf = call i8* @.get_memory_ptr(i64 %arg2)
+  %statbuf = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 5, i64 %arg1, i8* %statbuf)
   call void @.conv_stat(i8* %statbuf)
   store i192 %pad_val, i192* %pad"
@@ -143,11 +143,11 @@ lazy_static! {
             "fstatat",
             79,
             "  %pad_addr = add i64 %arg3, 120
-  %pad_b = call i8* @.get_memory_ptr(i64 %pad_addr)
+  %pad_b = call i8* @.SYS_get_memory_ptr(i64 %pad_addr)
   %pad = bitcast i8* %pad_b to i192*
   %pad_val = load i192, i192* %pad
-  %filename = call i8* @.get_memory_ptr(i64 %arg2)
-  %statbuf = call i8* @.get_memory_ptr(i64 %arg3)
+  %filename = call i8* @.SYS_get_memory_ptr(i64 %arg2)
+  %statbuf = call i8* @.SYS_get_memory_ptr(i64 %arg3)
   %rslt = call i64 (i64, ...) @syscall(i64 262, i64 %arg1, i8* %filename, i8* %statbuf, i64 %arg4)
   call void @.conv_stat(i8* %statbuf)
   store i192 %pad_val, i192* %pad"
@@ -155,25 +155,25 @@ lazy_static! {
         (
             "faccessat",
             48,
-            "  %filename = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %filename = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 269, i64 %arg1, i8* %filename, i64 %arg3)"
         ),
         (
             "pread",
             67,
-            "  %buf = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %buf = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 17, i64 %arg1, i8* %buf, i64 %arg3, i64 %arg4)"
         ),
         (
             "pwrite",
             68,
-            "  %buf = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %buf = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 18, i64 %arg1, i8* %buf, i64 %arg3, i64 %arg4)"
         ),
         (
             "uname",
             160,
-            "  %utsname = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %utsname = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 63, i8* %utsname)"
         ),
         (
@@ -204,7 +204,7 @@ lazy_static! {
         (
             "sysinfo",
             179,
-            "  %sysinfo = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %sysinfo = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 99, i8* %sysinfo)"
         ),
         (
@@ -216,14 +216,14 @@ lazy_static! {
         (
             "munmap",
             215,
-            "  %addr = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %addr = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 11, i8* %addr, i64 %arg2)"
         ),
         (
             "mremap",
             216,
-            "  %addr = call i8* @.get_memory_ptr(i64 %arg1)
-  %new_addr = call i8* @.get_memory_ptr(i64 %arg5)
+            "  %addr = call i8* @.SYS_get_memory_ptr(i64 %arg1)
+  %new_addr = call i8* @.SYS_get_memory_ptr(i64 %arg5)
   %rslt = call i64 (i64, ...) @syscall(i64 25, i8* %addr, i64 %arg2, i64 %arg3, i64 %arg4, i8* %new_addr)"
         ),
         (
@@ -234,8 +234,8 @@ lazy_static! {
         (
             "prlimit64",
             261,
-            "  %new_rlim = call i8* @.get_memory_ptr(i64 %arg3)
-  %old_rlim = call i8* @.get_memory_ptr(i64 %arg4)
+            "  %new_rlim = call i8* @.SYS_get_memory_ptr(i64 %arg3)
+  %old_rlim = call i8* @.SYS_get_memory_ptr(i64 %arg4)
   %rslt = call i64 (i64, ...) @syscall(i64 302, i64 %arg1, i64 %arg2, i8* %new_rlim, i8* %old_rlim)"
         ),
         (
@@ -247,29 +247,29 @@ lazy_static! {
         (
             "rt_sigaction",
             134,
-            "  %act_ptr_b = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %act_ptr_b = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %act_ptr = bitcast i8* %act_ptr_b to %.SYS.sigaction*
   %act = load %.SYS.sigaction, %.SYS.sigaction* %act_ptr
   %field_0 = extractvalue %.SYS.sigaction %act, 0
   %field_0_val = ptrtoint i8* %field_0 to i64
-  %host_field_0 = call i8* @.get_memory_ptr(i64 %field_0_val)
+  %host_field_0 = call i8* @.SYS_get_memory_ptr(i64 %field_0_val)
   %act_0 = insertvalue %.SYS.sigaction %act, i8* %host_field_0, 0
   %field_1 = extractvalue %.SYS.sigaction %act, 1
   %field_1_val = ptrtoint i8* %field_1 to i64
-  %host_field_1 = call i8* @.get_memory_ptr(i64 %field_1_val)
+  %host_field_1 = call i8* @.SYS_get_memory_ptr(i64 %field_1_val)
   %act_1 = insertvalue %.SYS.sigaction %act_0, i8* %host_field_1, 1
   %field_3 = extractvalue %.SYS.sigaction %act, 3
   %field_3_val = ptrtoint i8* %field_3 to i64
-  %host_field_3 = call i8* @.get_memory_ptr(i64 %field_3_val)
+  %host_field_3 = call i8* @.SYS_get_memory_ptr(i64 %field_3_val)
   %act_3 = insertvalue %.SYS.sigaction %act_1, i8* %host_field_3, 3
   store %.SYS.sigaction %act_3, %.SYS.sigaction* %act_ptr
-  %oldact = call i8* @.get_memory_ptr(i64 %arg3)
+  %oldact = call i8* @.SYS_get_memory_ptr(i64 %arg3)
   %rslt = call i64 (i64, ...) @syscall(i64 13, i64 %arg1, i8* %act_ptr_b, i8* %oldact, i64 %arg4)"
         ),
         (
             "writev",
             66,
-            "  %vecs_b = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %vecs_b = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %vecs = bitcast i8* %vecs_b to %.SYS.iovec*
   %i_ptr = alloca i64
   store i64 0, i64* %i_ptr
@@ -283,7 +283,7 @@ trans:
   %vec = load %.SYS.iovec, %.SYS.iovec* %vec_ptr
   %field_0 = extractvalue %.SYS.iovec %vec, 0
   %field_0_val = ptrtoint i8* %field_0 to i64
-  %host_field_0 = call i8* @.get_memory_ptr(i64 %field_0_val)
+  %host_field_0 = call i8* @.SYS_get_memory_ptr(i64 %field_0_val)
   %vec_0 = insertvalue %.SYS.iovec %vec, i8* %host_field_0, 0
   store %.SYS.iovec %vec_0, %.SYS.iovec* %vec_ptr
   br label %add
@@ -297,14 +297,14 @@ call:
         (
             "gettimeofday",
             169,
-            "  %tv = call i8* @.get_memory_ptr(i64 %arg1)
-  %tz = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %tv = call i8* @.SYS_get_memory_ptr(i64 %arg1)
+  %tz = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 96, i8* %tv, i8* %tz)"
         ),
         (
             "times",
             153,
-            "  %tbuf = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %tbuf = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 100, i8* %tbuf)"
         ),
         (
@@ -320,12 +320,12 @@ call:
         (
             "getdents",
             61,
-            "  %dirent_ptr_b = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %dirent_ptr_b = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %dirent_ptr = bitcast i8* %dirent_ptr_b to %.SYS.dirent*
   %dirent = load %.SYS.dirent, %.SYS.dirent* %dirent_ptr
   %field_4 = extractvalue %.SYS.dirent %dirent, 4
   %field_4_val = ptrtoint i8* %field_4 to i64
-  %host_field_4 = call i8* @.get_memory_ptr(i64 %field_4_val)
+  %host_field_4 = call i8* @.SYS_get_memory_ptr(i64 %field_4_val)
   %dirent_4 = insertvalue %.SYS.dirent %dirent, i8* %host_field_4, 4
   store %.SYS.dirent %dirent_4, %.SYS.dirent* %dirent_ptr
   %rslt = call i64 (i64, ...) @syscall(i64 217, i64 %arg1, i8* %dirent_ptr_b, i64 %arg3)"
@@ -343,8 +343,8 @@ call:
         (
             "readlinkat",
             78,
-            "  %path = call i8* @.get_memory_ptr(i64 %arg2)
-  %buf = call i8* @.get_memory_ptr(i64 %arg3)
+            "  %path = call i8* @.SYS_get_memory_ptr(i64 %arg2)
+  %buf = call i8* @.SYS_get_memory_ptr(i64 %arg3)
   %_rslt = call i64 (i64, ...) @syscall(i64 267, i64 %arg1, i8* %path, i8* %buf, i64 %arg4)
   %is_err = icmp eq i64 %_rslt, -1
   %rslt = select i1 %is_err, i64 -22, i64 %_rslt"
@@ -352,8 +352,8 @@ call:
         (
             "rt_sigprocmask",
             135,
-            "  %set = call i8* @.get_memory_ptr(i64 %arg2)
-  %oset = call i8* @.get_memory_ptr(i64 %arg3)
+            "  %set = call i8* @.SYS_get_memory_ptr(i64 %arg2)
+  %oset = call i8* @.SYS_get_memory_ptr(i64 %arg3)
   %rslt = call i64 (i64, ...) @syscall(i64 14, i64 %arg1, i8* %set, i8* %oset, i64 %arg4)"
         ),
         (
@@ -364,46 +364,46 @@ call:
         (
             "getrlimit",
             163,
-            "  %rlim = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %rlim = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 97, i64 %arg1, i8* %rlim)"
         ),
         (
             "setrlimit",
             164,
-            "  %rlim = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %rlim = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 160, i64 %arg1, i8* %rlim)"
         ),
         (
             "getrusage",
             165,
-            "  %ru = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %ru = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 98, i64 %arg1, i8* %ru)"
         ),
         (
             "clock_gettime",
             113,
-            "  %tp = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %tp = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 228, i64 %arg1, i8* %tp)"
         ),
         (
             "set_tid_address",
             96,
-            "  %tidptr = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %tidptr = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 218, i8* %tidptr)"
         ),
         (
             "set_robust_list",
             99,
-            "  %head_ptr_b = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %head_ptr_b = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %head_ptr = bitcast i8* %head_ptr_b to %.SYS.robust_list_head*
   %head = load %.SYS.robust_list_head, %.SYS.robust_list_head* %head_ptr
   %field_0 = extractvalue %.SYS.robust_list_head %head, 0
   %field_0_val = ptrtoint i8* %field_0 to i64
-  %host_field_0 = call i8* @.get_memory_ptr(i64 %field_0_val)
+  %host_field_0 = call i8* @.SYS_get_memory_ptr(i64 %field_0_val)
   %head_0 = insertvalue %.SYS.robust_list_head %head, i8* %host_field_0, 0
   %field_2 = extractvalue %.SYS.robust_list_head %head, 2
   %field_2_val = ptrtoint i8* %field_2 to i64
-  %host_field_2 = call i8* @.get_memory_ptr(i64 %field_2_val)
+  %host_field_2 = call i8* @.SYS_get_memory_ptr(i64 %field_2_val)
   %head_2 = insertvalue %.SYS.robust_list_head %head_0, i8* %host_field_2, 2
   store %.SYS.robust_list_head %head_2, %.SYS.robust_list_head* %head_ptr
   %rslt = call i64 (i64, ...) @syscall(i64 273, i8* %head_ptr_b, i64 %arg2)"
@@ -416,50 +416,50 @@ call:
         (
             "statx",
             291,
-            "  %path = call i8* @.get_memory_ptr(i64 %arg2)
-  %buffer = call i8* @.get_memory_ptr(i64 %arg5)
+            "  %path = call i8* @.SYS_get_memory_ptr(i64 %arg2)
+  %buffer = call i8* @.SYS_get_memory_ptr(i64 %arg5)
   %rslt = call i64 (i64, ...) @syscall(i64 332, i64 %arg1, i8* %path, i64 %arg3, i64 %arg4, i8* %buffer)"
         ),
         (
             "open",
             1024,
-            "  %filename = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %filename = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 2, i8* %filename, i64 %arg2, i64 %arg3)"
         ),
         (
             "link",
             1025,
-            "  %oldname = call i8* @.get_memory_ptr(i64 %arg1)
-  %newname = call i8* @.get_memory_ptr(i64 %arg2)
+            "  %oldname = call i8* @.SYS_get_memory_ptr(i64 %arg1)
+  %newname = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 86, i8* %oldname, i8* %newname)"
         ),
         (
             "unlink",
             1026,
-            "  %pathname = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %pathname = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 87, i8* %pathname)"
         ),
         (
             "mkdir",
             1030,
-            "  %pathname = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %pathname = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 83, i8* %pathname, i64 %arg2)"
         ),
         (
             "access",
             1033,
-            "  %filename = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %filename = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 21, i8* %filename, i64 %arg2)"
         ),
         (
             "stat",
             1038,
             "  %pad_addr = add i64 %arg2, 120
-  %pad_b = call i8* @.get_memory_ptr(i64 %pad_addr)
+  %pad_b = call i8* @.SYS_get_memory_ptr(i64 %pad_addr)
   %pad = bitcast i8* %pad_b to i192*
   %pad_val = load i192, i192* %pad
-  %filename = call i8* @.get_memory_ptr(i64 %arg1)
-  %statbuf = call i8* @.get_memory_ptr(i64 %arg2)
+  %filename = call i8* @.SYS_get_memory_ptr(i64 %arg1)
+  %statbuf = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 4, i8* %filename, i8* %statbuf)
   call void @.conv_stat(i8* %statbuf)
   store i192 %pad_val, i192* %pad"
@@ -468,11 +468,11 @@ call:
             "lstat",
             1039,
             "  %pad_addr = add i64 %arg2, 120
-  %pad_b = call i8* @.get_memory_ptr(i64 %pad_addr)
+  %pad_b = call i8* @.SYS_get_memory_ptr(i64 %pad_addr)
   %pad = bitcast i8* %pad_b to i192*
   %pad_val = load i192, i192* %pad
-  %filename = call i8* @.get_memory_ptr(i64 %arg1)
-  %statbuf = call i8* @.get_memory_ptr(i64 %arg2)
+  %filename = call i8* @.SYS_get_memory_ptr(i64 %arg1)
+  %statbuf = call i8* @.SYS_get_memory_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 6, i8* %filename, i8* %statbuf)
   call void @.conv_stat(i8* %statbuf)
   store i192 %pad_val, i192* %pad"
@@ -480,7 +480,7 @@ call:
         (
             "time",
             1062,
-            "  %tloc = call i8* @.get_memory_ptr(i64 %arg1)
+            "  %tloc = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 201, i8* %tloc)"
         ),
     ];

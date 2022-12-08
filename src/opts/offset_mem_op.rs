@@ -1,5 +1,6 @@
 use crate::llvm_isa as ll;
 use crate::riscv_isa as rv;
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 pub fn offset_mem_op(mut prog: ll::Program) -> ll::Program {
@@ -7,11 +8,12 @@ pub fn offset_mem_op(mut prog: ll::Program) -> ll::Program {
         if func.dynamic {
             continue;
         }
+
         let targets = find_jump_targets(func);
-        let mut stat = None;
+        let mut stat = HashMap::new();
         for block in &mut func.inst_blocks {
             if targets.contains(&block.rv_inst.address()) {
-                stat = None;
+                stat.clear();
             }
             match &block.rv_inst {
                 rv::Inst::Lb {
@@ -51,26 +53,21 @@ pub fn offset_mem_op(mut prog: ll::Program) -> ll::Program {
                     ..
                 } => {
                     if rs1 == &rv::Reg::Gp {
-                        stat = None;
+                        stat.remove(rd);
                     } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                        stat = None;
+                        stat.remove(rd);
                     } else {
                         let ll::Inst::Getmemptr { rslt, .. } = block.insts[2] else { unreachable!()};
-                        if let Some((reg, offset, ptr)) = stat {
-                            if reg == rs1 {
-                                let inst = ll::Inst::Getelementptr {
-                                    rslt,
-                                    ptr,
-                                    offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                                };
-                                block.insts.splice(0..3, vec![inst]);
-                            }
+                        if let Some((offset, ptr)) = stat.get(rs1) {
+                            let inst = ll::Inst::Getelementptr {
+                                rslt,
+                                ptr: *ptr,
+                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
+                            };
+                            block.insts.splice(0..3, vec![inst]);
                         }
-                        if rd == rs1 {
-                            stat = None;
-                        } else {
-                            stat = Some((rs1, imm, rslt));
-                        }
+                        stat.insert(rs1, (*imm, rslt));
+                        stat.remove(rd);
                     }
                 }
                 rv::Inst::Sb {
@@ -89,22 +86,18 @@ pub fn offset_mem_op(mut prog: ll::Program) -> ll::Program {
                     ..
                 } => {
                     if rs1 == &rv::Reg::Gp {
-                        stat = None;
                     } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                        stat = None;
                     } else {
                         let ll::Inst::Getmemptr { rslt, .. } = block.insts[4] else {unreachable!()};
-                        if let Some((reg, offset, ptr)) = stat {
-                            if reg == rs1 {
-                                let inst = ll::Inst::Getelementptr {
-                                    rslt,
-                                    ptr,
-                                    offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                                };
-                                block.insts.splice(2..5, vec![inst]);
-                            }
+                        if let Some((offset, ptr)) = stat.get(rs1) {
+                            let inst = ll::Inst::Getelementptr {
+                                rslt,
+                                ptr: *ptr,
+                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
+                            };
+                            block.insts.splice(2..5, vec![inst]);
                         }
-                        stat = Some((rs1, imm, rslt));
+                        stat.insert(rs1, (*imm, rslt));
                     }
                 }
                 rv::Inst::Sd {
@@ -113,22 +106,18 @@ pub fn offset_mem_op(mut prog: ll::Program) -> ll::Program {
                     ..
                 } => {
                     if rs1 == &rv::Reg::Gp {
-                        stat = None;
                     } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                        stat = None;
                     } else {
                         let ll::Inst::Getmemptr { rslt, .. } = block.insts[3] else {unreachable!()};
-                        if let Some((reg, offset, ptr)) = stat {
-                            if reg == rs1 {
-                                let inst = ll::Inst::Getelementptr {
-                                    rslt,
-                                    ptr,
-                                    offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                                };
-                                block.insts.splice(1..4, vec![inst]);
-                            }
+                        if let Some((offset, ptr)) = stat.get(rs1) {
+                            let inst = ll::Inst::Getelementptr {
+                                rslt,
+                                ptr: *ptr,
+                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
+                            };
+                            block.insts.splice(1..4, vec![inst]);
                         }
-                        stat = Some((rs1, imm, rslt));
+                        stat.insert(rs1, (*imm, rslt));
                     }
                 }
                 rv::Inst::Flw {
@@ -142,22 +131,18 @@ pub fn offset_mem_op(mut prog: ll::Program) -> ll::Program {
                     ..
                 } => {
                     if rs1 == &rv::Reg::Gp {
-                        stat = None;
                     } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                        stat = None;
                     } else {
                         let ll::Inst::Getmemptr { rslt, .. } = block.insts[2] else { unreachable!()};
-                        if let Some((reg, offset, ptr)) = stat {
-                            if reg == rs1 {
-                                let inst = ll::Inst::Getelementptr {
-                                    rslt,
-                                    ptr,
-                                    offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                                };
-                                block.insts.splice(0..3, vec![inst]);
-                            }
+                        if let Some((offset, ptr)) = stat.get(rs1) {
+                            let inst = ll::Inst::Getelementptr {
+                                rslt,
+                                ptr: *ptr,
+                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
+                            };
+                            block.insts.splice(0..3, vec![inst]);
                         }
-                        stat = Some((rs1, imm, rslt));
+                        stat.insert(rs1, (*imm, rslt));
                     }
                 }
                 rv::Inst::Fsw {
@@ -166,22 +151,18 @@ pub fn offset_mem_op(mut prog: ll::Program) -> ll::Program {
                     ..
                 } => {
                     if rs1 == &rv::Reg::Gp {
-                        stat = None;
                     } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                        stat = None;
                     } else {
                         let ll::Inst::Getmemptr { rslt, .. } = block.insts[5] else {unreachable!()};
-                        if let Some((reg, offset, ptr)) = stat {
-                            if reg == rs1 {
-                                let inst = ll::Inst::Getelementptr {
-                                    rslt,
-                                    ptr,
-                                    offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                                };
-                                block.insts.splice(3..6, vec![inst]);
-                            }
+                        if let Some((offset, ptr)) = stat.get(rs1) {
+                            let inst = ll::Inst::Getelementptr {
+                                rslt,
+                                ptr: *ptr,
+                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
+                            };
+                            block.insts.splice(3..6, vec![inst]);
                         }
-                        stat = Some((rs1, imm, rslt));
+                        stat.insert(rs1, (*imm, rslt));
                     }
                 }
                 rv::Inst::Fsd {
@@ -190,25 +171,184 @@ pub fn offset_mem_op(mut prog: ll::Program) -> ll::Program {
                     ..
                 } => {
                     if rs1 == &rv::Reg::Gp {
-                        stat = None;
                     } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                        stat = None;
                     } else {
                         let ll::Inst::Getmemptr { rslt, .. } = block.insts[4] else {unreachable!()};
-                        if let Some((reg, offset, ptr)) = stat {
-                            if reg == rs1 {
-                                let inst = ll::Inst::Getelementptr {
-                                    rslt,
-                                    ptr,
-                                    offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                                };
-                                block.insts.splice(2..5, vec![inst]);
-                            }
+                        if let Some((offset, ptr)) = stat.get(rs1) {
+                            let inst = ll::Inst::Getelementptr {
+                                rslt,
+                                ptr: *ptr,
+                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
+                            };
+                            block.insts.splice(2..5, vec![inst]);
                         }
-                        stat = Some((rs1, imm, rslt));
+                        stat.insert(rs1, (*imm, rslt));
                     }
                 }
-                _ => stat = None,
+
+                rv::Inst::Lui {rd,..}
+                | rv::Inst::Auipc {rd,..}
+                | rv::Inst::Addi {rd,..}
+                | rv::Inst::Slti {rd,..}
+                | rv::Inst::Sltiu {rd,..}
+                | rv::Inst::Xori {rd,..}
+                | rv::Inst::Ori {rd,..}
+                | rv::Inst::Andi {rd,..}
+                | rv::Inst::Slli {rd,..}
+                | rv::Inst::Srli {rd,..}
+                | rv::Inst::Srai {rd,..}
+                | rv::Inst::Add {rd,..}
+                | rv::Inst::Sub {rd,..}
+                | rv::Inst::Sll {rd,..}
+                | rv::Inst::Slt {rd,..}
+                | rv::Inst::Sltu {rd,..}
+                | rv::Inst::Xor {rd,..}
+                | rv::Inst::Srl {rd,..}
+                | rv::Inst::Sra {rd,..}
+                | rv::Inst::Or {rd,..}
+                | rv::Inst::And {rd,..}
+                | rv::Inst::Addiw {rd,..}
+                | rv::Inst::Slliw {rd,..}
+                | rv::Inst::Srliw {rd,..}
+                | rv::Inst::Sraiw {rd,..}
+                | rv::Inst::Addw {rd,..}
+                | rv::Inst::Subw {rd,..}
+                | rv::Inst::Sllw {rd,..}
+                | rv::Inst::Srlw {rd,..}
+                | rv::Inst::Sraw {rd,..}
+
+                // RV32/RV64 Zicsr
+                | rv::Inst::Csrrw {rd,..}
+                | rv::Inst::Csrrs {rd,..}
+                | rv::Inst::Csrrc {rd,..}
+                | rv::Inst::Csrrwi {rd,..}
+                | rv::Inst::Csrrsi {rd,..}
+                | rv::Inst::Csrrci {rd,..}
+
+                // RV32M
+                | rv::Inst::Mul {rd,..}
+                | rv::Inst::Mulh {rd,..}
+                | rv::Inst::Mulhsu {rd,..}
+                | rv::Inst::Mulhu {rd,..}
+                | rv::Inst::Div {rd,..}
+                | rv::Inst::Divu {rd,..}
+                | rv::Inst::Rem {rd,..}
+                | rv::Inst::Remu {rd,..}
+
+                // RV64M (in addition to RV32M)
+                | rv::Inst::Mulw {rd,..}
+                | rv::Inst::Divw {rd,..}
+                | rv::Inst::Divuw {rd,..}
+                | rv::Inst::Remw {rd,..}
+                | rv::Inst::Remuw {rd,..}
+
+                // RV32A
+                | rv::Inst::LrW {rd,..}
+                | rv::Inst::ScW {rd,..}
+                | rv::Inst::AmoswapW {rd,..}
+                | rv::Inst::AmoaddW {rd,..}
+                | rv::Inst::AmoxorW {rd,..}
+                | rv::Inst::AmoandW {rd,..}
+                | rv::Inst::AmoorW {rd,..}
+                | rv::Inst::AmominW {rd,..}
+                | rv::Inst::AmomaxW {rd,..}
+                | rv::Inst::AmominuW {rd,..}
+                | rv::Inst::AmomaxuW {rd,..}
+
+                // RV64A (in addition to RV32A)
+                | rv::Inst::LrD {rd,..}
+                | rv::Inst::ScD {rd,..}
+                | rv::Inst::AmoswapD {rd,..}
+                | rv::Inst::AmoaddD {rd,..}
+                | rv::Inst::AmoxorD {rd,..}
+                | rv::Inst::AmoandD {rd,..}
+                | rv::Inst::AmoorD {rd,..}
+                | rv::Inst::AmominD {rd,..}
+                | rv::Inst::AmomaxD {rd,..}
+                | rv::Inst::AmominuD {rd,..}
+                | rv::Inst::AmomaxuD {rd,..}
+
+                | rv::Inst::FcvtWS {rd,..}
+                | rv::Inst::FcvtWuS {rd,..}
+                | rv::Inst::FmvXW {rd,..}
+                | rv::Inst::FeqS {rd,..}
+                | rv::Inst::FltS {rd,..}
+                | rv::Inst::FleS {rd,..}
+                | rv::Inst::FclassS {rd,..}
+                | rv::Inst::FcvtLS {rd,..}
+                | rv::Inst::FcvtLuS {rd,..}
+                | rv::Inst::FeqD {rd,..}
+                | rv::Inst::FltD {rd,..}
+                | rv::Inst::FleD {rd,..}
+                | rv::Inst::FclassD {rd,..}
+                | rv::Inst::FcvtWD {rd,..}
+                | rv::Inst::FcvtWuD {rd,..}
+                | rv::Inst::FcvtLD {rd,..}
+                | rv::Inst::FcvtLuD {rd,..}
+                | rv::Inst::FmvXD {rd,..}
+
+                | rv::Inst::Li {rd,..}
+                | rv::Inst::Mv {rd,..}
+                | rv::Inst::Not {rd,..}
+                | rv::Inst::Neg {rd,..}
+                | rv::Inst::Negw {rd,..}
+                | rv::Inst::SextW {rd,..}
+                | rv::Inst::Seqz {rd,..}
+                | rv::Inst::Snez {rd,..}
+                | rv::Inst::Sltz {rd,..}
+                | rv::Inst::Sgtz {rd,..}
+                | rv::Inst::Rdinstret {rd,..}
+                | rv::Inst::Rdcycle {rd,..}
+                | rv::Inst::Rdtime {rd,..}
+                | rv::Inst::Csrr {rd,..}
+                | rv::Inst::Frcsr {rd,..}
+                | rv::Inst::Fscsr {rd,..}
+                | rv::Inst::Frrm {rd,..}
+                | rv::Inst::Fsrm {rd,..}
+                | rv::Inst::Frflags {rd,..}
+                | rv::Inst::Fsflags {rd,..} => {stat.remove(rd);}
+                rv::Inst::Ecall {..} => {stat.remove(&rv::Reg::A0);}
+                rv::Inst::Jal {rd,..}
+                | rv::Inst::Jalr {rd,..} => {
+                    stat.remove(rd);
+                    stat.remove(&rv::Reg::Ra);
+                    stat.remove(&rv::Reg::T0);
+                    stat.remove(&rv::Reg::T1);
+                    stat.remove(&rv::Reg::T2);
+                    stat.remove(&rv::Reg::T3);
+                    stat.remove(&rv::Reg::T4);
+                    stat.remove(&rv::Reg::T5);
+                    stat.remove(&rv::Reg::T6);
+                    stat.remove(&rv::Reg::A0);
+                    stat.remove(&rv::Reg::A1);
+                    stat.remove(&rv::Reg::A2);
+                    stat.remove(&rv::Reg::A3);
+                    stat.remove(&rv::Reg::A4);
+                    stat.remove(&rv::Reg::A5);
+                    stat.remove(&rv::Reg::A6);
+                    stat.remove(&rv::Reg::A7);
+                }
+                rv::Inst::PseudoJal{..}
+                | rv::Inst::PseudoJalr{..}
+                | rv::Inst::OffsetJalr{..} => {
+                    stat.remove(&rv::Reg::Ra);
+                    stat.remove(&rv::Reg::T0);
+                    stat.remove(&rv::Reg::T1);
+                    stat.remove(&rv::Reg::T2);
+                    stat.remove(&rv::Reg::T3);
+                    stat.remove(&rv::Reg::T4);
+                    stat.remove(&rv::Reg::T5);
+                    stat.remove(&rv::Reg::T6);
+                    stat.remove(&rv::Reg::A0);
+                    stat.remove(&rv::Reg::A1);
+                    stat.remove(&rv::Reg::A2);
+                    stat.remove(&rv::Reg::A3);
+                    stat.remove(&rv::Reg::A4);
+                    stat.remove(&rv::Reg::A5);
+                    stat.remove(&rv::Reg::A6);
+                    stat.remove(&rv::Reg::A7);
+                }
+                _ => ()
             }
         }
     }

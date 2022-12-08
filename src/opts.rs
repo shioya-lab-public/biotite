@@ -6,7 +6,6 @@ mod longjmp_except;
 mod native_mem_func;
 mod native_stack;
 mod offset_mem_op;
-mod simple_vectors;
 mod split_functions;
 mod static_data;
 mod trans_static_dyn_funcs;
@@ -27,7 +26,6 @@ pub fn optimize(prog: Program, opts: &Vec<String>) -> Program {
         "global2stack",
         "native_mem_func",
         "offset_mem_op",
-        // "simple_vectors"
     ];
     match opts[..] {
         [] | ["all"] => available_opts
@@ -51,7 +49,6 @@ fn call_opt(prog: Program, opt: &str) -> Program {
         "direct_jalr" => direct_jalr::direct_jalr(prog),
         "native_mem_func" => native_mem_func::native_mem_func(prog),
         "offset_mem_op" => offset_mem_op::offset_mem_op(prog),
-        "simple_vectors" => simple_vectors::simple_vectors(prog),
         _ => panic!("Unknown optimization `{opt}`"),
     }
 }

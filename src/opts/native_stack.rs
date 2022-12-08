@@ -120,15 +120,21 @@ pub fn native_stack(mut prog: ll::Program) -> ll::Program {
             continue;
         }
         let ra_loc = *ra_locs.get(0).unwrap_or(&0);
-        if allocs.iter().min() != allocs.iter().max()
-            || frees.iter().min() != frees.iter().max()
-            || allocs.get(0).unwrap_or(&0) + frees.get(0).unwrap_or(&0) != 0
-        {
+        if allocs.len() != 1 || frees.len() != 1 || allocs[0] + frees[0] != 0 {
             continue;
         }
         vars.sort_unstable();
         vars.dedup();
         if let Some((0, _)) = vars.first() {
+            continue;
+        }
+        if let (_, true) = vars.iter().fold((0, false), |(sp, overlapped), (i, l)| {
+            if overlapped || sp > *i {
+                (i + l / 8, true)
+            } else {
+                (i + l / 8, false)
+            }
+        }) {
             continue;
         }
 

@@ -30,6 +30,17 @@ pub fn run(arch: &str) -> String {
     format!("declare i64 @syscall(i64, ...)
 declare i32* @__errno_location()
 
+define i8* @.SYS_get_memory_ptr(i64 %addr) {{
+  %is_zero = icmp eq i64 0, %addr
+  br i1 %is_zero, label %dynamic, label %test_static
+test_static:
+  %ptr = call i8* @.get_memory_ptr(i64 %addr)  
+  ret i8* %ptr
+dynamic:
+  %dynamic_ptr = inttoptr i64 %addr to i8*
+  ret i8* %dynamic_ptr
+}}
+
 {structs}
 
 define i64 @.system_call(i64 %nr, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6) {{
