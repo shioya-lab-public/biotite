@@ -2,9 +2,8 @@ use crate::llvm_isa::*;
 use crate::llvm_macro::*;
 use crate::riscv_isa as RV;
 use rayon::prelude::*;
-use std::collections::HashMap;
 
-pub fn run(rv_prog: RV::Program, src_funcs: HashMap<RV::Addr, String>, syscall: String) -> Program {
+pub fn run(rv_prog: RV::Program, src_funcs: Vec<String>, syscall: String) -> Program {
     let (memory, sp, phdr) = build_memory(&rv_prog.data_blocks);
     Program {
         entry: rv_prog.entry,

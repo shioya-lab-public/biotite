@@ -13,8 +13,8 @@ struct Args {
     #[clap(long)]
     arch: String,
 
-    #[clap(long)]
-    irs: Vec<PathBuf>,
+    #[clap(long, multiple_values = true)]
+    src_funcs: Vec<String>,
 
     #[clap(long, default_value_t = 1)]
     parts: usize,
@@ -32,13 +32,13 @@ fn main() {
     let tdata_src = args
         .tdata
         .map(|path| fs::read_to_string(&path).expect("Unable to read the input `.tdata` file"));
-    let irs = args
-        .irs
-        .iter()
-        .map(|path| fs::read(path).expect("Unable to read LLVM IR"))
-        .collect();
     let ll_srcs = riscv2llvm::run(
-        &args.arch, &rv_src, &tdata_src, &irs, &args.opts, args.parts,
+        &args.arch,
+        &rv_src,
+        &tdata_src,
+        args.src_funcs,
+        &args.opts,
+        args.parts,
     );
     for (part, ll_src) in ll_srcs.into_iter().enumerate() {
         let ext = format!("{part}.ll");

@@ -9,7 +9,7 @@ pub struct Program {
     pub tdata: RV::Addr,
     pub data_blocks: Vec<RV::DataBlock>,
     pub funcs: Vec<Func>,
-    pub src_funcs: HashMap<RV::Addr, String>,
+    pub src_funcs: Vec<String>,
     pub syscall: String,
     pub memory: Vec<u8>,
     pub sp: Value,
@@ -54,12 +54,8 @@ dynamic:
             dispatcher.resize(end as usize, String::from("i64 0"));
             for inst_block in &func.inst_blocks {
                 let RV::Addr(addr) = inst_block.rv_inst.address();
-                if let Some(name) = self.src_funcs.get(&RV::Addr(addr)) {
-                    dispatcher[addr as usize] = format!("i64 ptrtoint (i64 (i64)* @{name} to i64)");
-                } else {
-                    dispatcher[addr as usize] =
-                        format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
-                }
+                dispatcher[addr as usize] =
+                    format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
             }
             func_decls.push_str(&format!("declare i64 @.{}(i64)\n", func.address));
             func_dispatcher.resize(end as usize, String::from("i64 0"));
@@ -91,12 +87,6 @@ dynamic:
         // Format other supporting components
         let entry = self.entry;
         let tdata = self.tdata;
-        let src_funcs = self
-            .src_funcs
-            .values()
-            .map(|f| f.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n");
         let syscall = &self.syscall;
         let sp = self.sp;
         let phdr = self.phdr;
@@ -145,8 +135,6 @@ loop:
 }}
 
 {func_decls}
-
-{src_funcs}
 
 {memory}
 
@@ -500,7 +488,13 @@ declare i32 @memcmp(i8*, i8*, i64)
             let end = std::cmp::min(i + part_len, self.funcs.len());
             let funcs = self.funcs[i..end]
                 .iter()
-                .map(|f| f.to_string())
+                .map(|f| {
+                    if self.src_funcs.iter().find(|s| *s == &f.symbol).is_some() {
+                        format!("declare i64 @.{}(i64)", f.address)
+                    } else {
+                        f.to_string()
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join("\n\n");
             let before_decls = func_decls[0..i].join("\n");
