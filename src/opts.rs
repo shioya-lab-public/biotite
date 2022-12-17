@@ -12,8 +12,15 @@ mod trans_static_dyn_funcs;
 
 use crate::llvm_isa::Program;
 
-pub fn optimize(prog: Program, opts: &Vec<String>) -> Program {
-    let opts: Vec<_> = opts.iter().map(|opt| opt.as_str()).collect();
+pub fn optimize(
+    prog: Program,
+    enable_all_opts: bool,
+    enable_opts: &Vec<String>,
+    disable_opts: &Vec<String>,
+    disable_all_opts: bool,
+    verbose: bool,
+) -> Program {
+    let opts = vec!["all"];
     let available_opts = vec![
         "split_functions",
         "direct_jumps",

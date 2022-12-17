@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 pub const STRUCTS: &str = "%.SYS.sigaction = type { i8*, i8*, i32, i8* }
 %.SYS.iovec = type { i8*, i64 }
@@ -29,8 +29,8 @@ define void @.conv_stat(i8* %x86_64_statbuf_b) {
     ret void
 }";
 
-lazy_static! {
-    pub static ref SYSCALLS: Vec<(&'static str, i32, &'static str)> = vec![
+pub static SYSCALLS: Lazy<Vec<(&'static str, i32, &'static str)>> = Lazy::new(|| {
+    vec![
         (
             "exit",
             93,
@@ -483,5 +483,5 @@ call:
             "  %tloc = call i8* @.SYS_get_memory_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 201, i8* %tloc)"
         ),
-    ];
-}
+    ]
+});

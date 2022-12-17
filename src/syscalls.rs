@@ -1,9 +1,8 @@
-pub fn run(arch: &str) -> String {
+mod x86_64;
+
+pub fn build(arch: &str) -> String {
     let (structs, syscalls) = match arch {
-        "x86_64" => (
-            crate::syscall_x86_64::STRUCTS,
-            &crate::syscall_x86_64::SYSCALLS,
-        ),
+        "x86_64" => (x86_64::STRUCTS, &x86_64::SYSCALLS),
         _ => panic!("Unknown arch `{arch}`"),
     };
     let dispatcher = syscalls

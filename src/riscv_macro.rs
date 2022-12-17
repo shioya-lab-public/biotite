@@ -108,7 +108,7 @@ macro_rules! rm {
 
 macro_rules! define_insts {
     ( $( $inst:ident ( $regex:literal $(, $field:ident )* ), )* ) => {
-        use lazy_static::lazy_static;
+        use once_cell::sync::Lazy;
         use regex::{Regex, RegexSet};
 
         const RD: &str = r"(?P<rd>[[:alpha:]][[:alnum:]]+)";
@@ -127,8 +127,8 @@ macro_rules! define_insts {
         const INST_BYTE: &str = r"(?P<inst_byte>([[:xdigit:]][[:xdigit:]] )+)";
         const SYM: &str = r"(?P<sym>.*)";
 
-        lazy_static! {
-            static ref REGEXES: Vec<(&'static str, Regex)> = vec![
+        static REGEXES: Lazy<Vec<(&'static str, Regex)>> = Lazy::new(|| {
+            vec![
                 $(
                     (
                         stringify!($inst),
@@ -138,14 +138,14 @@ macro_rules! define_insts {
                         )).unwrap()
                     ),
                 )*
-            ];
-        }
+            ]
+        });
 
-        lazy_static! {
-            static ref REGEX_SET: RegexSet = RegexSet::new(
+        static REGEX_SET: Lazy<RegexSet> = Lazy::new(|| {
+            RegexSet::new(
                 REGEXES.iter().map(|(_, r)| r.as_str())
-            ).unwrap();
-        }
+            ).unwrap()
+        });
 
         #[derive(Debug, PartialEq, Eq, Hash, Clone)]
         pub enum Inst {
