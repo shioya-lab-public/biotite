@@ -3,16 +3,10 @@ use crate::llvm_macro::*;
 use crate::riscv_isa as RV;
 use rayon::prelude::*;
 
-pub fn run(
-    rv_prog: RV::Program,
-    syscall: String,
-    src_funcs: &Vec<String>,
-    verbose: bool,
-) -> Program {
+pub fn run(rv_prog: RV::Program, syscall: String, src_funcs: Vec<String>) -> Program {
     let (memory, sp, phdr) = build_memory(&rv_prog.data_blocks);
     Program {
         entry: rv_prog.entry,
-        tdata: rv_prog.tdata,
         data_blocks: rv_prog.data_blocks,
         funcs: rv_prog
             .code_blocks
@@ -24,7 +18,7 @@ pub fn run(
         memory,
         sp,
         phdr,
-        func_syms: rv_prog.func_syms,
+        func_syms: rv_prog.symbols,
         native_mem_func: false,
     }
 }

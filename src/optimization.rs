@@ -1,5 +1,4 @@
 mod direct_branches;
-mod direct_jalr;
 mod direct_jumps;
 mod global2stack;
 mod longjmp_except;
@@ -15,17 +14,15 @@ use crate::llvm_isa::Program;
 pub fn optimize(
     prog: Program,
     enable_all_opts: bool,
-    enable_opts: &Vec<String>,
-    disable_opts: &Vec<String>,
+    enable_opts: Vec<String>,
+    disable_opts: Vec<String>,
     disable_all_opts: bool,
-    verbose: bool,
 ) -> Program {
     let opts = vec!["all"];
     let available_opts = vec![
         "split_functions",
         "direct_jumps",
         "direct_branches",
-        "direct_jalr",
         "native_stack",
         "static_data",
         "trans_static_dyn_funcs",
@@ -53,7 +50,6 @@ fn call_opt(prog: Program, opt: &str) -> Program {
         "trans_static_dyn_funcs" => trans_static_dyn_funcs::trans_static_dyn_funcs(prog),
         "longjmp_except" => longjmp_except::longjmp_except(prog),
         "global2stack" => global2stack::global2stack(prog),
-        "direct_jalr" => direct_jalr::direct_jalr(prog),
         "native_mem_func" => native_mem_func::native_mem_func(prog),
         "offset_mem_op" => offset_mem_op::offset_mem_op(prog),
         _ => panic!("Unknown optimization `{opt}`"),

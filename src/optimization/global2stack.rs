@@ -30,9 +30,7 @@ pub fn global2stack(mut prog: ll::Program) -> ll::Program {
             ]);
         }
         func.used_regs = regs.into_iter().collect();
-        func.used_regs.sort();
         func.used_fregs = fregs.into_iter().collect();
-        func.used_regs.sort();
         for block in &mut func.inst_blocks {
             for inst in &mut block.insts {
                 if let ll::Inst::Call { regs, fregs, .. } = inst {

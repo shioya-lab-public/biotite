@@ -1,5 +1,6 @@
 use crate::llvm_isa as ll;
 use crate::riscv_isa as rv;
+use std::collections::HashSet;
 
 pub fn native_mem_func(mut prog: ll::Program) -> ll::Program {
     prog.native_mem_func = true;
@@ -42,8 +43,8 @@ pub fn native_mem_func(mut prog: ll::Program) -> ll::Program {
                 if !func.dynamic {
                     func.used_regs
                         .extend(vec![rv::Reg::A0, rv::Reg::A1, rv::Reg::A2]);
-                    func.used_regs.sort_unstable();
-                    func.used_regs.dedup();
+                    let set: HashSet<_> = func.used_regs.drain(..).collect();
+                    func.used_regs.extend(set.into_iter());
                 }
             }
         }

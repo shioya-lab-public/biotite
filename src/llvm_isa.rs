@@ -6,7 +6,6 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Debug, PartialEq, Eq)]
 pub struct Program {
     pub entry: RV::Addr,
-    pub tdata: RV::Addr,
     pub data_blocks: Vec<RV::DataBlock>,
     pub funcs: Vec<Func>,
     pub src_funcs: Vec<String>,
@@ -18,8 +17,8 @@ pub struct Program {
     pub native_mem_func: bool,
 }
 
-impl Program {
-    pub fn in_parts(&self, parts: usize) -> Vec<String> {
+impl Display for Program {
+    fn fmt(&self, f: &mut Formatter) -> Result {
         // Format the memory array
         let memory_len = self.memory.len();
         let memory_str = self
@@ -46,7 +45,6 @@ dynamic:
         // Build the main dispatcher and function declarations
         let mut dispatcher = Vec::new();
         let mut func_dispatcher = Vec::new();
-        let mut func_decls = String::new();
         for func in &self.funcs {
             let last_rv_inst = &func.inst_blocks.last().unwrap().rv_inst;
             let RV::Addr(mut end) = last_rv_inst.address();
@@ -57,7 +55,6 @@ dynamic:
                 dispatcher[addr as usize] =
                     format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
             }
-            func_decls.push_str(&format!("declare i64 @.{}(i64)\n", func.address));
             func_dispatcher.resize(end as usize, String::from("i64 0"));
             let RV::Addr(addr) = func.inst_blocks[0].rv_inst.address();
             func_dispatcher[addr as usize] =
@@ -86,13 +83,25 @@ dynamic:
 
         // Format other supporting components
         let entry = self.entry;
-        let tdata = self.tdata;
         let syscall = &self.syscall;
         let sp = self.sp;
         let phdr = self.phdr;
 
+        let funcs = self
+            .funcs
+            .iter()
+            .map(|f| {
+                if self.src_funcs.iter().find(|s| *s == &f.symbol).is_some() {
+                    format!("declare i64 @.{}(i64)", f.address)
+                } else {
+                    f.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
         // Merge all supporting components
-        let mut prog = vec![format!("define i64 @main(i32 %argc, i8** %argv) {{
+        write!(f, "define i64 @main(i32 %argc, i8** %argv) {{
   ; Initialize the stack pointer
   store i64 {sp}, i64* @.sp
 
@@ -117,7 +126,7 @@ dynamic:
   %auxv_val = add i64 %envp_val, 8
   %auxv = inttoptr i64 %auxv_val to i64*
   %host_phdr = call i8* @.get_memory_ptr(i64 {phdr})
-  call void @.init_auxv(i64* %auxv, i64 {phdr}, i8* %host_phdr, i64 u{tdata})
+  call void @.init_auxv(i64* %auxv, i64 {phdr}, i8* %host_phdr, i64 0)
 
   ; Load the entry address
   %entry_p= alloca i64
@@ -134,7 +143,6 @@ loop:
   br label %loop
 }}
 
-{func_decls}
 
 {memory}
 
@@ -223,6 +231,20 @@ call_func:
 @.ft11 = global double zeroinitializer
 
 @.rs = global i64 zeroinitializer
+
+declare float @llvm.sqrt.float(float %arg)
+declare double @llvm.sqrt.double(double %arg)
+declare float @llvm.fma.float(float %arg1, float %arg2, float %arg3)
+declare double @llvm.fma.double(double %arg1, double %arg2, double %arg3)
+declare float @llvm.fabs.float(float %arg)
+declare double @llvm.fabs.double(double %arg)
+declare float @llvm.copysign.float(float %mag, float %sgn)
+declare double @llvm.copysign.double(double %mag, double %sgn)
+
+declare void @llvm.memcpy.p8.p8.i64(i8*, i8*, i64, i1)
+declare void @llvm.memmove.p8.p8.i64(i8*, i8*, i64, i1)
+declare void @llvm.memset.p8.i64(i8*, i8, i64, i1)
+declare i32 @memcmp(i8*, i8*, i64) 
 
 {get_memory_ptr}
 
@@ -381,131 +403,13 @@ define void @.memcpy(i8* %0, i8* %1, i64 %2) {{
 {round}
 
 {syscall}
-")];
 
-        // Format other functions in parts
-        let decls = format!(
-            "declare i8* @.get_memory_ptr(i64)
-@.memory = external global [{memory_len} x i8]
-declare i64 @.system_call(i64, i64, i64, i64, i64, i64, i64)
-declare i64 @.dispatch_func(i64)
-
-declare float @llvm.sqrt.float(float %arg)
-declare double @llvm.sqrt.double(double %arg)
-declare float @llvm.fma.float(float %arg1, float %arg2, float %arg3)
-declare double @llvm.fma.double(double %arg1, double %arg2, double %arg3)
-declare float @llvm.fabs.float(float %arg)
-declare double @llvm.fabs.double(double %arg)
-declare float @llvm.copysign.float(float %mag, float %sgn)
-declare double @llvm.copysign.double(double %mag, double %sgn)
-
-declare i32 @.round_i32_float_fptosi(float, i1)
-declare i32 @.round_i32_float_fptoui(float, i1)
-declare i64 @.round_i64_float_fptosi(float, i1)
-declare i64 @.round_i64_float_fptoui(float, i1)
-declare i32 @.round_i32_double_fptosi(double, i1)
-declare i32 @.round_i32_double_fptoui(double, i1)
-declare i64 @.round_i64_double_fptosi(double, i1)
-declare i64 @.round_i64_double_fptoui(double, i1)
-
-declare void @llvm.memcpy.p8.p8.i64(i8*, i8*, i64, i1)
-declare void @llvm.memmove.p8.p8.i64(i8*, i8*, i64, i1)
-declare void @llvm.memset.p8.i64(i8*, i8, i64, i1)
-declare i32 @memcmp(i8*, i8*, i64) 
-
-@.zero = external global i64
-@.ra = external global i64
-@.sp = external global i64
-@.gp = external global i64
-@.tp = external global i64
-@.t0 = external global i64
-@.t1 = external global i64
-@.t2 = external global i64
-@.s0 = external global i64
-@.s1 = external global i64
-@.a0 = external global i64
-@.a1 = external global i64
-@.a2 = external global i64
-@.a3 = external global i64
-@.a4 = external global i64
-@.a5 = external global i64
-@.a6 = external global i64
-@.a7 = external global i64
-@.s2 = external global i64
-@.s3 = external global i64
-@.s4 = external global i64
-@.s5 = external global i64
-@.s6 = external global i64
-@.s7 = external global i64
-@.s8 = external global i64
-@.s9 = external global i64
-@.s10 = external global i64
-@.s11 = external global i64
-@.t3 = external global i64
-@.t4 = external global i64
-@.t5 = external global i64
-@.t6 = external global i64
-
-@.ft0 = external global double
-@.ft1 = external global double
-@.ft2 = external global double
-@.ft3 = external global double
-@.ft4 = external global double
-@.ft5 = external global double
-@.ft6 = external global double
-@.ft7 = external global double
-@.fs0 = external global double
-@.fs1 = external global double
-@.fa0 = external global double
-@.fa1 = external global double
-@.fa2 = external global double
-@.fa3 = external global double
-@.fa4 = external global double
-@.fa5 = external global double
-@.fa6 = external global double
-@.fa7 = external global double
-@.fs2 = external global double
-@.fs3 = external global double
-@.fs4 = external global double
-@.fs5 = external global double
-@.fs6 = external global double
-@.fs7 = external global double
-@.fs8 = external global double
-@.fs9 = external global double
-@.fs10 = external global double
-@.fs11 = external global double
-@.ft8 = external global double
-@.ft9 = external global double
-@.ft10 = external global double
-@.ft11 = external global double
-
-@.rs = external global i64"
-        );
-        let part_len = (self.funcs.len() as f64 / parts as f64).ceil() as usize;
-        let func_decls: Vec<_> = func_decls.lines().collect();
-        let mut i = 0;
-        while i < self.funcs.len() {
-            let end = std::cmp::min(i + part_len, self.funcs.len());
-            let funcs = self.funcs[i..end]
-                .iter()
-                .map(|f| {
-                    if self.src_funcs.iter().find(|s| *s == &f.symbol).is_some() {
-                        format!("declare i64 @.{}(i64)", f.address)
-                    } else {
-                        f.to_string()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n\n");
-            let before_decls = func_decls[0..i].join("\n");
-            let after_decls = func_decls[end..].join("\n");
-            let part = format!("{decls}\n\n{funcs}\n\n{before_decls}\n{after_decls}");
-            prog.push(part);
-            i += part_len;
-        }
-        prog
+{funcs}
+")
     }
+}
 
+impl Program {
     fn format_round(int: &str, fp: &str, func: &str) -> String {
         format!(
             "define {int} @.round_{int}_{fp}_{func}({fp} %0, i1 %1) {{

@@ -5,10 +5,9 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Debug, PartialEq, Eq)]
 pub struct Program {
     pub entry: Addr,
-    pub tdata: Addr,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
-    pub func_syms: HashMap<(String, Addr), bool>,
+    pub symbols: HashMap<(String, Addr), bool>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -286,7 +285,7 @@ define_insts! {
     OffsetJr(r"jr\s+{}\({}\)", imm, rs1),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Reg {
     Zero,
     Ra,

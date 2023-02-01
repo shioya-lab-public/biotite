@@ -9,8 +9,11 @@ struct Args {
 
     tdata: Option<PathBuf>,
 
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+
     #[arg(long)]
-    arch: String,
+    arch: Option<String>,
 
     #[arg(long)]
     enable_all_opts: bool,
@@ -26,15 +29,6 @@ struct Args {
 
     #[arg(long, num_args = 1..)]
     src_funcs: Vec<String>,
-
-    #[arg(long, default_value_t = 1)]
-    parts: usize,
-
-    #[arg(short, long)]
-    output: Option<PathBuf>,
-
-    #[arg(short, long)]
-    verbose: bool,
 }
 
 fn main() {
@@ -44,25 +38,16 @@ fn main() {
     let tdata_src = args
         .tdata
         .map(|path| fs::read_to_string(&path).expect("Unable to read the tdata file"));
-    let ll_srcs = riscv2llvm::run(
-        &rv_src,
-        tdata_src.as_deref(),
-        &args.arch,
+    let ll_src = riscv2llvm::run(
+        rv_src,
+        tdata_src,
+        args.arch,
         args.enable_all_opts,
-        &args.enable_opts,
-        &args.disable_opts,
+        args.enable_opts,
+        args.disable_opts,
         args.disable_all_opts,
-        &args.src_funcs,
-        args.parts,
-        args.verbose,
+        args.src_funcs,
     );
-    for (i, ll_src) in ll_srcs.into_iter().enumerate() {
-        let ext = format!("{i}.ll");
-        let output = args
-            .output
-            .clone()
-            .unwrap_or(args.input.clone())
-            .with_extension(ext);
-        fs::write(&output, &ll_src).expect("Unable to write the output file");
-    }
+    let output = args.output.unwrap_or(args.input).with_extension("ll");
+    fs::write(&output, &ll_src).expect("Unable to write the output file");
 }

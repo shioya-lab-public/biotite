@@ -1,9 +1,9 @@
 mod x86_64;
 
-pub fn build(arch: &str) -> String {
-    let (structs, syscalls) = match arch {
-        "x86_64" => (x86_64::STRUCTS, &x86_64::SYSCALLS),
-        _ => panic!("Unknown arch `{arch}`"),
+pub fn build(arch: Option<String>) -> String {
+    let (structs, syscalls) = match arch.as_deref() {
+        Some("x86_64") => (x86_64::STRUCTS, &x86_64::SYSCALLS),
+        _ => panic!("Unknown arch `{arch:?}`"),
     };
     let dispatcher = syscalls
         .iter()

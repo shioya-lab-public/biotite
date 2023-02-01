@@ -17,6 +17,8 @@ readlinkat will change the return value to -22 if its -1, as RISC-V seems to req
 Adjust the layout of `struct stat`
     https://codebrowser.dev/linux/linux/arch/x86/include/uapi/asm/stat.h.html
     https://github.com/riscv-collab/riscv-gnu-toolchain/blob/master/linux-headers/include/asm-generic/stat.h
+log
+balanced parts
 
 ## Testing Commands
 
