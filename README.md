@@ -18,7 +18,6 @@ Adjust the layout of `struct stat`
     https://codebrowser.dev/linux/linux/arch/x86/include/uapi/asm/stat.h.html
     https://github.com/riscv-collab/riscv-gnu-toolchain/blob/master/linux-headers/include/asm-generic/stat.h
 log
-balanced parts
 
 ## Testing Commands
 
@@ -110,13 +109,18 @@ void init_auxv(unsigned long* sp, unsigned long guest_phdr, unsigned char* host_
     if (phdr && phnum) {
         for (int i = 0; i < phnum; ++i) {
             if (phdr->p_type == PT_TLS) {
-                *host_phdr = *ph
-    Fptosi {
-        rslt: Value,
-        ty1: Type,
-        val: Value,
-        ty2: Type,
-    },
+                *host_phdr = *phdr++;
+                host_phdr->p_vaddr = tdata;
+                ++host_phdr;
+            } else if (phdr->p_type == PT_GNU_RELRO) {
+                *host_phdr = *phdr++;
+                host_phdr->p_vaddr = tdata;
+                host_phdr->p_memsz = 0xac8;
+                ++host_phdr;
+            } else {
+                *host_phdr++ = *phdr++;
+            }
+        }
         *sp++ = AT_PHDR;
         *sp++ = guest_phdr;
     }
@@ -149,6 +153,24 @@ long round(double f, bool is_rdn) {
         return i - 1;
     } else {
         return i;
+    }
+}
+```
+
+``` C
+long copy_str_arr(char** dest, char** src) {
+    long i = 1;
+    while ((*dest++ = *src++)) {
+        ++i;
+    }
+    return i;
+}
+```
+
+``` C
+void memcpy(unsigned char* dest, unsigned char* src, unsigned long count) {
+    for (unsigned long i = 0; i < count; ++i) {
+        *dest++ = *src++;
     }
 }
 ```

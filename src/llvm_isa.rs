@@ -6,13 +6,15 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Debug, PartialEq, Eq)]
 pub struct Program {
     pub entry: RV::Addr,
-    pub data_blocks: Vec<RV::DataBlock>,
+    pub tdata: RV::Addr,
     pub funcs: Vec<Func>,
     pub src_funcs: Vec<String>,
-    pub syscall: String,
+    pub sys_call: String,
+
     pub memory: Vec<u8>,
     pub sp: Value,
     pub phdr: Value,
+
     pub func_syms: HashMap<(String, RV::Addr), bool>,
     pub native_mem_func: bool,
 }
@@ -83,7 +85,8 @@ dynamic:
 
         // Format other supporting components
         let entry = self.entry;
-        let syscall = &self.syscall;
+        let tdata = self.tdata;
+        let sys_call = &self.sys_call;
         let sp = self.sp;
         let phdr = self.phdr;
 
@@ -115,7 +118,7 @@ dynamic:
   %argv_addr = add i64 {sp}, 8
   %argv_dest_b = call i8* @.get_memory_ptr(i64 %argv_addr)
   %argv_dest = bitcast i8* %argv_dest_b to i8**
-  %argv_cnt = call i64 @.copy(i8** %argv_dest, i8** %argv)
+  %argv_cnt = call i64 @.copy_str_arr(i8** %argv_dest, i8** %argv)
 
   ; Create empty `envp`
   %argv_val = ptrtoint i8** %argv_dest to i64
@@ -126,7 +129,7 @@ dynamic:
   %auxv_val = add i64 %envp_val, 8
   %auxv = inttoptr i64 %auxv_val to i64*
   %host_phdr = call i8* @.get_memory_ptr(i64 {phdr})
-  call void @.init_auxv(i64* %auxv, i64 {phdr}, i8* %host_phdr, i64 0)
+  call void @.init_auxv(i64* %auxv, i64 {phdr}, i8* %host_phdr, i64 u{tdata})
 
   ; Load the entry address
   %entry_p= alloca i64
@@ -248,14 +251,7 @@ declare i32 @memcmp(i8*, i8*, i64)
 
 {get_memory_ptr}
 
-; long copy(char** dest, char** src) {{
-;     long i = 1;
-;     while ((*dest++ = *src++)) {{
-;         ++i;
-;     }}
-;     return i;
-; }}
-define i64 @.copy(i8** %0, i8** %1) {{
+define i64 @.copy_str_arr(i8** %0, i8** %1) {{
   %3 = load i8*, i8** %1
   store i8* %3, i8** %0
   %4 = icmp eq i8* %3, null
@@ -320,7 +316,7 @@ define void @.init_auxv(i64* %0, i64 %1, i8* %2, i64 %3) {{
 24:                                               ; preds = %18
   %25 = bitcast %.struct.Elf64_Phdr* %20 to i8*
   %26 = bitcast %.struct.Elf64_Phdr* %21 to i8*
-  call void @.memcpy(i8* %25, i8* %26, i64 56)
+  call void @.memory_copy(i8* %25, i8* %26, i64 56)
   %27 = getelementptr %.struct.Elf64_Phdr, %.struct.Elf64_Phdr* %20, i64 0, i32 3
   store i64 %3, i64* %27
   br label %36
@@ -328,7 +324,7 @@ define void @.init_auxv(i64* %0, i64 %1, i8* %2, i64 %3) {{
 28:                                               ; preds = %18
   %29 = bitcast %.struct.Elf64_Phdr* %20 to i8*
   %30 = bitcast %.struct.Elf64_Phdr* %21 to i8*
-  call void @.memcpy(i8* %29, i8* %30, i64 56)
+  call void @.memory_copy(i8* %29, i8* %30, i64 56)
   %31 = getelementptr %.struct.Elf64_Phdr, %.struct.Elf64_Phdr* %20, i64 0, i32 3
   store i64 %3, i64* %31
   %32 = getelementptr %.struct.Elf64_Phdr, %.struct.Elf64_Phdr* %20, i64 0, i32 6
@@ -338,7 +334,7 @@ define void @.init_auxv(i64* %0, i64 %1, i8* %2, i64 %3) {{
 33:                                               ; preds = %18
   %34 = bitcast %.struct.Elf64_Phdr* %20 to i8*
   %35 = bitcast %.struct.Elf64_Phdr* %21 to i8*
-  call void @.memcpy(i8* %34, i8* %35, i64 56)
+  call void @.memory_copy(i8* %34, i8* %35, i64 56)
   br label %36
 
 36:                                               ; preds = %24, %33, %28
@@ -374,13 +370,7 @@ define void @.init_auxv(i64* %0, i64 %1, i8* %2, i64 %3) {{
   br i1 %55, label %41, label %42
 }}
 
-; void memcpy(unsigned char* dest, unsigned char* src, unsigned long count) {{
-;     for (unsigned long i = 0; i < count; ++i) {{
-;         *dest++ = *src++;
-;     }}
-; }}
-
-define void @.memcpy(i8* %0, i8* %1, i64 %2) {{
+define void @.memory_copy(i8* %0, i8* %1, i64 %2) {{
   %4 = icmp eq i64 %2, 0
   br i1 %4, label %5, label %6
 
@@ -402,7 +392,7 @@ define void @.memcpy(i8* %0, i8* %1, i64 %2) {{
 
 {round}
 
-{syscall}
+{sys_call}
 
 {funcs}
 ")
@@ -773,21 +763,6 @@ pub enum Inst {
         op2: Value,
     },
 
-    // Vector Operations
-    Extractelement {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        idx: usize,
-    },
-    Insertelement {
-        rslt: Value,
-        ty: Type,
-        val: Value,
-        elt: Value,
-        idx: usize,
-    },
-
     // Aggregate Operations
     Extractvalue {
         rslt: Value,
@@ -953,11 +928,6 @@ pub enum Inst {
         rslt: Value,
         addr: Value,
     },
-    Getdataptr {
-        rslt: Value,
-        len: usize,
-        addr: Value,
-    },
     Syscall {
         rslt: Value,
         nr: Value,
@@ -1042,11 +1012,6 @@ impl Display for Inst {
             Or { rslt, ty, op1, op2 } => write!(f, "{rslt} = or {ty} {op1}, {op2}"),
             Xor { rslt, ty, op1, op2 } => write!(f, "{rslt} = xor {ty} {op1}, {op2}"),
 
-            // Vector Operations
-            Extractelement { rslt, ty, val, idx } => write!(f, "{rslt} = extractelement {ty} {val}, i32 {idx}"),
-            Insertelement { rslt, ty: ty @ Type::Vector(_, _ty), val, elt, idx } => write!(f, "{rslt} = insertelement {ty} {val}, {_ty} {elt}, i32 {idx}"),
-            Insertelement { .. } => unreachable!(),
-
             // Aggregate Operations
             Extractvalue { rslt, ty, val, idx } => write!(f, "{rslt} = extractvalue {{ {ty}, i1 }} {val}, {idx}"),
 
@@ -1095,7 +1060,6 @@ impl Display for Inst {
 
             // Misc
             Getmemptr { rslt, addr } => write!(f, "{rslt} = call i8* @.get_memory_ptr(i64 {addr})"),
-            Getdataptr { rslt, len, addr } => write!(f, "{rslt} = getelementptr [u0x{len:x} x i8], [u0x{len:x} x i8]* @.memory, i64 0, i64 {addr}"),
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, i64, i64, i64, i64, i64, i64) @.system_call(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
             Unreachable => write!(f, "unreachable"),
@@ -1189,7 +1153,6 @@ pub enum Type {
     I128,
     Float,
     Double,
-    Vector(usize, Box<Type>),
 }
 
 impl Display for Type {
@@ -1205,7 +1168,6 @@ impl Display for Type {
             I128 => write!(f, "i128"),
             Float => write!(f, "float"),
             Double => write!(f, "double"),
-            Vector(len, ty) => write!(f, "<{len} x {ty}>"),
         }
     }
 }
@@ -1222,7 +1184,6 @@ pub enum Value {
     EntryPtr,
     StkReg(RV::Reg),
     StkFReg(RV::FReg),
-    Undef,
 }
 
 impl Display for Value {
@@ -1240,7 +1201,6 @@ impl Display for Value {
             EntryPtr => write!(f, "%entry_ptr"),
             StkReg(reg) => write!(f, "%{reg}"),
             StkFReg(freg) => write!(f, "%{freg}"),
-            Undef => write!(f, "undef"),
         }
     }
 }

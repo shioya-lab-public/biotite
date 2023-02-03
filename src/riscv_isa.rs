@@ -5,6 +5,7 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Debug, PartialEq, Eq)]
 pub struct Program {
     pub entry: Addr,
+    pub tdata: Addr,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
     pub symbols: HashMap<(String, Addr), bool>,

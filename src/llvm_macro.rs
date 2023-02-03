@@ -14,7 +14,6 @@ macro_rules! translate_rv_inst {
                     ]
                 }
             )*
-            inst => unimplemented!("{inst:?}"),
         }
     };
 }

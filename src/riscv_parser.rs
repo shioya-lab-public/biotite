@@ -24,13 +24,18 @@ pub fn run(src: String, tdata: Option<String>) -> Program {
     let symbols = parse_symbols(&mut src);
     let (mut data_blocks, code_blocks) = parse_assembly(&mut src);
     expand_data_blocks(&mut data_blocks, &sections, &symbols);
-    if let Some(tdata) = tdata {
-        let tdata_block = parse_tdata(&tdata);
-        data_blocks.push(tdata_block);
-        data_blocks.sort_unstable_by_key(|b| b.address);
+    let tdata_addr = match tdata {
+        Some(tdata) => {
+            let (tdata_addr, tdata_block) = parse_tdata(tdata);
+            data_blocks.push(tdata_block);
+            data_blocks.sort_unstable_by_key(|b| b.address);
+            tdata_addr
+        }
+        None => Addr(0),
     };
     Program {
         entry,
+        tdata: tdata_addr,
         data_blocks,
         code_blocks,
         symbols: symbols
@@ -188,7 +193,7 @@ fn expand_data_blocks(
     }
 }
 
-fn parse_tdata(tdata: &str) -> DataBlock {
+fn parse_tdata(tdata: String) -> (Addr, DataBlock) {
     let lines = tdata.lines().skip(3).filter(|l| !l.is_empty());
     let mut addr = None;
     let mut bytes = Vec::new();
@@ -206,12 +211,15 @@ fn parse_tdata(tdata: &str) -> DataBlock {
         }
     }
     if let Some(addr) = addr {
-        DataBlock {
-            section: String::from(".tdata"),
-            symbol: String::from(".tdata"),
-            address: addr,
-            bytes,
-        }
+        (
+            addr,
+            DataBlock {
+                section: String::from(".tdata"),
+                symbol: String::from(".tdata"),
+                address: addr,
+                bytes,
+            },
+        )
     } else {
         panic!("Empty `.tdata`");
     }

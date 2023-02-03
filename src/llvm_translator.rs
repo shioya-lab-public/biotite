@@ -3,18 +3,18 @@ use crate::llvm_macro::*;
 use crate::riscv_isa as RV;
 use rayon::prelude::*;
 
-pub fn run(rv_prog: RV::Program, syscall: String, src_funcs: Vec<String>) -> Program {
+pub fn run(rv_prog: RV::Program, sys_call: String, src_funcs: Vec<String>) -> Program {
     let (memory, sp, phdr) = build_memory(&rv_prog.data_blocks);
     Program {
         entry: rv_prog.entry,
-        data_blocks: rv_prog.data_blocks,
+        tdata: rv_prog.tdata,
         funcs: rv_prog
             .code_blocks
             .into_par_iter()
             .map(translate_rv_code_block)
             .collect(),
         src_funcs: src_funcs.clone(),
-        syscall,
+        sys_call,
         memory,
         sp,
         phdr,
@@ -1456,107 +1456,107 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
     InstBlock { rv_inst, insts }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::llvm_isa::*;
-    use crate::riscv_isa as RV;
+// #[cfg(test)]
+// mod tests {
+//     use crate::llvm_isa::*;
+//     use crate::riscv_isa as RV;
 
-    // macro_rules! build_tests {
-    //     ( $( $func:ident ( $rv_inst:ident { $( $field:ident: $value:expr ),* }, $( $inst:literal, )* ), )* ) => {
-    //         $(
-    //             #[test]
-    //             fn $func() {
-    //                 use RiscvInstruction as RI;
+//     macro_rules! build_tests {
+//         ( $( $func:ident ( $rv_inst:ident { $( $field:ident: $value:expr ),* }, $( $inst:literal, )* ), )* ) => {
+//             $(
+//                 #[test]
+//                 fn $func() {
+//                     use RiscvInstruction as RI;
 
-    //                 let rv_program = RiscvProgram {
-    //                     abi: Abi::Lp64d,
-    //                     data_blocks: Vec::new(),
-    //                     code_blocks: vec![RiscvCodeBlock {
-    //                         section: String::from(".text"),
-    //                         symbol: String::from("_start"),
-    //                         address: Address(0x0),
-    //                         instructions: vec![
-    //                             $rv_inst {
-    //                                 address: Address(0x0),
-    //                                 raw: Raw::new(""),
-    //                                 $(
-    //                                     $field: $value,
-    //                                 )*
-    //                             },
-    //                         ],
-    //                     }],
-    //                 };
-    //                 let program = Translator::new().run(rv_program);
-    //                 let inst_strs: Vec<_> = program.code_blocks[0].instruction_blocks[0]
-    //                     .instructions
-    //                     .iter()
-    //                     .map(|i| i.to_string())
-    //                     .collect();
-    //                 assert_eq!(inst_strs, vec![$($inst, )*]);
-    //             }
-    //         )*
-    //     };
-    // }
+//                     let rv_program = RiscvProgram {
+//                         abi: Abi::Lp64d,
+//                         data_blocks: Vec::new(),
+//                         code_blocks: vec![RiscvCodeBlock {
+//                             section: String::from(".text"),
+//                             symbol: String::from("_start"),
+//                             address: Address(0x0),
+//                             instructions: vec![
+//                                 $rv_inst {
+//                                     address: Address(0x0),
+//                                     raw: Raw::new(""),
+//                                     $(
+//                                         $field: $value,
+//                                     )*
+//                                 },
+//                             ],
+//                         }],
+//                     };
+//                     let program = Translator::new().run(rv_program);
+//                     let inst_strs: Vec<_> = program.code_blocks[0].instruction_blocks[0]
+//                         .instructions
+//                         .iter()
+//                         .map(|i| i.to_string())
+//                         .collect();
+//                     assert_eq!(inst_strs, vec![$($inst, )*]);
+//                 }
+//             )*
+//         };
+//     }
 
-    // #[test]
-    // fn enforce_zero() {
-    //     use Instruction::*;
-    //     use RiscvInstruction as RI;
+//     #[test]
+//     fn enforce_zero() {
+//         use Instruction::*;
+//         use RiscvInstruction as RI;
 
-    //     let rv_program = RiscvProgram {
-    //         abi: Abi::Lp64d,
-    //         data_blocks: Vec::new(),
-    //         code_blocks: vec![RiscvCodeBlock {
-    //             section: String::from(".text"),
-    //             symbol: String::from("_start"),
-    //             address: Address(0x0),
-    //             instructions: vec![Addi {
-    //                 address: Address(0x0),
-    //                 raw: Raw::new(""),
-    //                 rd: Register::Zero,
-    //                 rs1: Register::Zero,
-    //                 imm: Immediate(0),
-    //             }],
-    //         }],
-    //     };
-    //     let program = Translator::new().run(rv_program);
-    //     assert_eq!(
-    //         program.code_blocks,
-    //         vec![CodeBlock {
-    //             section: String::from(".text"),
-    //             symbol: String::from("_start"),
-    //             address: Address(0x0),
-    //             instruction_blocks: vec![InstructionBlock {
-    //                 riscv_instruction: Addi {
-    //                     address: Address(0x0),
-    //                     raw: Raw::new(""),
-    //                     rd: Register::Zero,
-    //                     rs1: Register::Zero,
-    //                     imm: Immediate(0)
-    //                 },
-    //                 instructions: vec![
-    //                     Add {
-    //                         rslt: Value::Temp(Address(0x0), 0),
-    //                         ty: Type::I64,
-    //                         op1: Value::Immediate(Immediate(0)),
-    //                         op2: Value::Immediate(Immediate(0))
-    //                     },
-    //                     Add {
-    //                         rslt: Value::Temp(Address(0x0), 1),
-    //                         ty: Type::I64,
-    //                         op1: Value::Temp(Address(0x0), 0),
-    //                         op2: Value::Immediate(Immediate(0))
-    //                     },
-    //                 ],
-    //             }],
-    //         }]
-    //     );
-    // }
+//         let rv_program = RiscvProgram {
+//             abi: Abi::Lp64d,
+//             data_blocks: Vec::new(),
+//             code_blocks: vec![RiscvCodeBlock {
+//                 section: String::from(".text"),
+//                 symbol: String::from("_start"),
+//                 address: Address(0x0),
+//                 instructions: vec![Addi {
+//                     address: Address(0x0),
+//                     raw: Raw::new(""),
+//                     rd: Register::Zero,
+//                     rs1: Register::Zero,
+//                     imm: Immediate(0),
+//                 }],
+//             }],
+//         };
+//         let program = Translator::new().run(rv_program);
+//         assert_eq!(
+//             program.code_blocks,
+//             vec![CodeBlock {
+//                 section: String::from(".text"),
+//                 symbol: String::from("_start"),
+//                 address: Address(0x0),
+//                 instruction_blocks: vec![InstructionBlock {
+//                     riscv_instruction: Addi {
+//                         address: Address(0x0),
+//                         raw: Raw::new(""),
+//                         rd: Register::Zero,
+//                         rs1: Register::Zero,
+//                         imm: Immediate(0)
+//                     },
+//                     instructions: vec![
+//                         Add {
+//                             rslt: Value::Temp(Address(0x0), 0),
+//                             ty: Type::I64,
+//                             op1: Value::Immediate(Immediate(0)),
+//                             op2: Value::Immediate(Immediate(0))
+//                         },
+//                         Add {
+//                             rslt: Value::Temp(Address(0x0), 1),
+//                             ty: Type::I64,
+//                             op1: Value::Temp(Address(0x0), 0),
+//                             op2: Value::Immediate(Immediate(0))
+//                         },
+//                     ],
+//                 }],
+//             }]
+//         );
+//     }
 
-    // build_tests! {
-    //     lui(Lui { rd: Register::T0, imm: Immediate(4) },
-    //         "%t_0_0 = shl i64 4, 12",
-    //         "store i64 %t_0_0, i64* %t0",
-    //     ),
-    // }
-}
+//     build_tests! {
+//         lui(Lui { rd: Register::T0, imm: Immediate(4) },
+//             "%t_0_0 = shl i64 4, 12",
+//             "store i64 %t_0_0, i64* %t0",
+//         ),
+//     }
+// }
