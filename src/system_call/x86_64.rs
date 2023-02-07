@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 
-pub const STRUCTS: &str = "%.SYS.sigaction = type { i8*, i8*, i32, i8* }
+pub const AUX: &str = "%.SYS.sigaction = type { i8*, i8*, i32, i8* }
 %.SYS.iovec = type { i8*, i64 }
 %.SYS.dirent = type { i64, i64, i16, i8, i8* }
 %.SYS.robust_list_head = type { i8*, i64, i8* }
@@ -29,7 +29,7 @@ define void @.conv_stat(i8* %x86_64_statbuf_b) {
     ret void
 }";
 
-pub static SYSCALLS: Lazy<Vec<(&'static str, i32, &'static str)>> = Lazy::new(|| {
+pub static DEFS: Lazy<Vec<(&str, i32, &str)>> = Lazy::new(|| {
     vec![
         (
             "exit",

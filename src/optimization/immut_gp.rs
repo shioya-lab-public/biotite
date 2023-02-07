@@ -1,7 +1,7 @@
 use crate::llvm_isa as ll;
 use crate::riscv_isa as rv;
 
-pub fn static_data(mut prog: ll::Program) -> ll::Program {
+pub fn run(mut prog: ll::Program) -> ll::Program {
     let Some(gp) = find_gp(&prog) else {return prog;};
     for func in &mut prog.funcs {
         for block in &mut func.inst_blocks {
@@ -16,7 +16,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 0),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Load {
@@ -47,7 +47,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 0),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Load {
@@ -89,7 +89,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                         },
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 2),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Store {
@@ -109,7 +109,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 0),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -146,7 +146,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 0),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -194,7 +194,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                         },
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 2),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -220,7 +220,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 0),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -257,7 +257,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 0),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -305,7 +305,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                         },
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 2),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -331,7 +331,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 0),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -391,7 +391,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                         },
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 3),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -417,7 +417,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 0),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -453,7 +453,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                         },
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 1),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -479,7 +479,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                     block.insts = vec![
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 0),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {
@@ -527,7 +527,7 @@ pub fn static_data(mut prog: ll::Program) -> ll::Program {
                         },
                         ll::Inst::Getmemptr {
                             rslt: ll::Value::Temp(address, 2),
-                            
+
                             addr: ll::Value::Imm(rv::Imm(gp + imm)),
                         },
                         ll::Inst::Bitcast {

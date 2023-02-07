@@ -1,16 +1,17 @@
 mod x86_64;
 
-pub fn build(arch: Option<String>) -> String {
-    let (structs, syscalls) = match arch.as_deref() {
-        Some("x86_64") => (x86_64::STRUCTS, &x86_64::SYSCALLS),
+pub fn build(arch: Option<String>) -> Option<String> {
+    let (aux, defs) = match arch.as_deref() {
+        Some("x86_64") => (x86_64::AUX, &x86_64::DEFS),
+        None => return None,
         _ => panic!("Unknown arch `{arch:?}`"),
     };
-    let dispatcher = syscalls
+    let dispatcher = defs
         .iter()
         .map(|(name, nr, _)| format!("    i64 {nr}, label %SYS_{name}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let callers = syscalls
+    let callers = defs
         .iter()
         .map(|(name, _, _)| format!("SYS_{name}:
   %SYS_{name}_rslt = call i64 (i64, i64, i64, i64, i64, i64) @.SYS_{name}(i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6)
@@ -18,7 +19,7 @@ pub fn build(arch: Option<String>) -> String {
   br label %mod_errno"))
         .collect::<Vec<_>>()
         .join("\n");
-    let funcs = syscalls
+    let funcs = defs
         .iter()
         .map(|(name, _, func)| format!("define i64 @.SYS_{name}(i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6) alwaysinline {{
 {func}
@@ -26,7 +27,7 @@ pub fn build(arch: Option<String>) -> String {
 }}"))
         .collect::<Vec<_>>()
         .join("\n\n");
-    format!("declare i64 @syscall(i64, ...)
+    Some(format!("declare i64 @syscall(i64, ...)
 declare i32* @__errno_location()
 
 define i8* @.SYS_get_memory_ptr(i64 %addr) {{
@@ -40,7 +41,7 @@ dynamic:
   ret i8* %dynamic_ptr
 }}
 
-{structs}
+{aux}
 
 define i64 @.system_call(i64 %nr, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6) {{
   %raw_rslt_p = alloca i64
@@ -67,5 +68,5 @@ fallback:
   ret i64 -1
 }}
 
-{funcs}")
+{funcs}"))
 }

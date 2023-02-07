@@ -1,7 +1,7 @@
 use crate::llvm_isa as ll;
 use crate::riscv_isa as rv;
 
-pub fn native_stack(mut prog: ll::Program) -> ll::Program {
+pub fn run(mut prog: ll::Program) -> ll::Program {
     'outer: for func in &mut prog.funcs {
         let mut allocs = Vec::new();
         let mut frees = Vec::new();

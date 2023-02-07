@@ -9,7 +9,7 @@ pub struct Program {
     pub tdata: RV::Addr,
     pub funcs: Vec<Func>,
     pub src_funcs: Vec<String>,
-    pub sys_call: String,
+    pub sys_call: Option<String>,
 
     pub memory: Vec<u8>,
     pub sp: Value,
@@ -90,6 +90,15 @@ dynamic:
         let sp = self.sp;
         let phdr = self.phdr;
 
+        let native_mem_utils = if self.native_mem_func {
+            "declare void @llvm.memcpy.p8.p8.i64(i8*, i8*, i64, i1)
+            declare void @llvm.memmove.p8.p8.i64(i8*, i8*, i64, i1)
+            declare void @llvm.memset.p8.i64(i8*, i8, i64, i1)
+            declare i32 @memcmp(i8*, i8*, i64)"
+        } else {
+            ""
+        };
+
         let funcs = self
             .funcs
             .iter()
@@ -104,7 +113,7 @@ dynamic:
             .join("\n\n");
 
         // Merge all supporting components
-        write!(f, "define i64 @main(i32 %argc, i8** %argv) {{
+        let mut prog = format!("define i64 @main(i32 %argc, i8** %argv) {{
   ; Initialize the stack pointer
   store i64 {sp}, i64* @.sp
 
@@ -244,10 +253,7 @@ declare double @llvm.fabs.double(double %arg)
 declare float @llvm.copysign.float(float %mag, float %sgn)
 declare double @llvm.copysign.double(double %mag, double %sgn)
 
-declare void @llvm.memcpy.p8.p8.i64(i8*, i8*, i64, i1)
-declare void @llvm.memmove.p8.p8.i64(i8*, i8*, i64, i1)
-declare void @llvm.memset.p8.i64(i8*, i8, i64, i1)
-declare i32 @memcmp(i8*, i8*, i64) 
+{native_mem_utils}
 
 {get_memory_ptr}
 
@@ -392,10 +398,14 @@ define void @.memory_copy(i8* %0, i8* %1, i64 %2) {{
 
 {round}
 
-{sys_call}
-
 {funcs}
-")
+");
+
+        if let Some(sys_call) = sys_call {
+            prog.push_str(sys_call);
+        }
+
+        write!(f, "{prog}")
     }
 }
 

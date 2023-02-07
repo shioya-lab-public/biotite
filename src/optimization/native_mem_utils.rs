@@ -2,7 +2,7 @@ use crate::llvm_isa as ll;
 use crate::riscv_isa as rv;
 use std::collections::HashSet;
 
-pub fn native_mem_func(mut prog: ll::Program) -> ll::Program {
+pub fn run(mut prog: ll::Program) -> ll::Program {
     prog.native_mem_func = true;
     for func in &mut prog.funcs {
         for block in &mut func.inst_blocks {

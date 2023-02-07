@@ -12,9 +12,9 @@ pub fn run(
     tdata_src: Option<String>,
     arch: Option<String>,
     enable_all_opts: bool,
+    disable_all_opts: bool,
     enable_opts: Vec<String>,
     disable_opts: Vec<String>,
-    disable_all_opts: bool,
     src_funcs: Vec<String>,
 ) -> String {
     let rv_prog = riscv_parser::run(rv_src, tdata_src);
@@ -23,9 +23,9 @@ pub fn run(
     let opted_prog = optimization::optimize(
         ll_prog,
         enable_all_opts,
+        disable_all_opts,
         enable_opts,
         disable_opts,
-        disable_all_opts,
     );
     opted_prog.to_string()
 }

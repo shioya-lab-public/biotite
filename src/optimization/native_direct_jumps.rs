@@ -2,7 +2,7 @@ use crate::llvm_isa as ll;
 use crate::riscv_isa as rv;
 use std::collections::HashSet;
 
-pub fn direct_jumps(mut prog: ll::Program) -> ll::Program {
+pub fn run(mut prog: ll::Program) -> ll::Program {
     for func in &mut prog.funcs {
         let addrs: HashSet<_> = func
             .inst_blocks
