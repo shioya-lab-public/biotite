@@ -17,7 +17,8 @@ readlinkat will change the return value to -22 if its -1, as RISC-V seems to req
 Adjust the layout of `struct stat`
     https://codebrowser.dev/linux/linux/arch/x86/include/uapi/asm/stat.h.html
     https://github.com/riscv-collab/riscv-gnu-toolchain/blob/master/linux-headers/include/asm-generic/stat.h
-log
+
+debug, clone, default, partialeq, partialord, hash, eq, ord, copy
 
 ## Testing Commands
 
@@ -67,6 +68,7 @@ declare dso_local i32 @printf(i8*, ...)
 @.str.s = private unnamed_addr constant [14 x i8] c"#value: %s #\0A\00", align 1
 @.str.f = private unnamed_addr constant [14 x i8] c"#value: %f #\0A\00", align 1
 
+    env_logger::init();
 %val = load i64, i64* @.a0
 call i32 (i8*, ...) @printf(i8* getelementptr ([14 x i8], [14 x i8]* @.str.d, i64 0, i64 0), i64 %val)
 %valf0 = load double, double* @.fa0

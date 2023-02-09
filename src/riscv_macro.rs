@@ -124,10 +124,10 @@ macro_rules! define_insts {
         const MO: &str = r"(\.(?P<mo>[[:alpha:]]+))?";
         const RM: &str = r"(,\s+(?P<rm>[[:alpha:]]+))?";
         const INST_ADDR: &str = r"(?P<inst_addr>[[:xdigit:]]+)";
-        const INST_BYTE: &str = r"(?P<inst_byte>([[:xdigit:]][[:xdigit:]] )+)";
+        const INST_BYTE: &str = r"(?P<inst_byte>([[:xdigit:]]{2} )+)";
         const SYM: &str = r"(?P<sym>.*)";
 
-        static REGEXES: Lazy<Vec<(&'static str, Regex)>> = Lazy::new(|| {
+        static REGEXES: Lazy<Vec<(&str, Regex)>> = Lazy::new(|| {
             vec![
                 $(
                     (
@@ -142,12 +142,10 @@ macro_rules! define_insts {
         });
 
         static REGEX_SET: Lazy<RegexSet> = Lazy::new(|| {
-            RegexSet::new(
-                REGEXES.iter().map(|(_, r)| r.as_str())
-            ).unwrap()
+            RegexSet::new(REGEXES.iter().map(|(_, re)| re.as_str())).unwrap()
         });
 
-        #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
         pub enum Inst {
             $(
                 $inst {
@@ -160,15 +158,15 @@ macro_rules! define_insts {
         }
 
         impl Inst {
-            pub fn new(line: &str) -> Inst {
+            pub fn new(line: &str) -> Self {
                 use Inst::*;
 
                 let matches: Vec<_> = REGEX_SET.matches(line).into_iter().collect();
                 if matches.is_empty() {
-                    panic!("Unknown instruction `{line}`");
+                    panic!("Unknown RISC-V instruction `{line}`");
                 }
-                let (name, regex) = &REGEXES[matches[0]];
-                let caps = regex.captures(line).unwrap();
+                let (name, re) = &REGEXES[matches[0]];
+                let caps = re.captures(line).unwrap();
                 match *name {
                     $(
                         stringify!($inst) => $inst {
@@ -204,11 +202,11 @@ macro_rules! define_insts {
                 }
             }
 
-            pub fn symbol(&self) -> &Option<String> {
+            pub fn symbol(&self) -> Option<&str> {
                 use Inst::*;
 
                 match self {
-                    $( $inst { symbol, .. } => symbol, )*
+                    $( $inst { symbol, .. } => symbol.as_deref(), )*
                 }
             }
         }

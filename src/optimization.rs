@@ -1,5 +1,5 @@
 mod block_cloning;
-mod cached_mem_access;
+mod cached_base_ptrs;
 mod immut_gp;
 mod jump_localization;
 mod native_branches;
@@ -53,5 +53,5 @@ opts! {
     jump_localization,
     native_stack_vars,
     stack_regs,
-    cached_mem_access,
+    cached_base_ptrs,
 }

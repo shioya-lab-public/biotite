@@ -32,12 +32,11 @@ struct Args {
 }
 
 fn main() {
-    env_logger::init();
     let args = Args::parse();
-    let rv_src = fs::read_to_string(&args.input).expect("Unable to read the input file");
+    let rv_src = fs::read_to_string(&args.input).expect("Unable to read the dump file");
     let tdata_src = args
         .tdata
-        .map(|path| fs::read_to_string(&path).expect("Unable to read the tdata file"));
+        .map(|path| fs::read_to_string(path).expect("Unable to read the tdata file"));
     let ll_src = riscv2llvm::run(
         rv_src,
         tdata_src,
@@ -49,5 +48,5 @@ fn main() {
         args.src_funcs,
     );
     let output = args.output.unwrap_or(args.input).with_extension("ll");
-    fs::write(&output, &ll_src).expect("Unable to write the output file");
+    fs::write(output, ll_src).expect("Unable to write the translated file");
 }

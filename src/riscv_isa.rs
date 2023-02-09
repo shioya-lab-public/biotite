@@ -2,7 +2,7 @@ use crate::riscv_macro::*;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
     pub entry: Addr,
     pub tdata: Addr,
@@ -11,7 +11,7 @@ pub struct Program {
     pub symbols: HashMap<(String, Addr), bool>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataBlock {
     pub section: String,
     pub symbol: String,
@@ -19,7 +19,7 @@ pub struct DataBlock {
     pub bytes: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodeBlock {
     pub section: String,
     pub symbol: String,
@@ -66,7 +66,7 @@ define_insts! {
     Sra(r"sra\s+{},\s+{},\s+{}", rd, rs1, rs2),
     Or(r"or\s+{},\s+{},\s+{}", rd, rs1, rs2),
     And(r"and\s+{},\s+{},\s+{}", rd, rs1, rs2),
-    Fence(r"(fence\s+\S+)|(fence.tso)"), // All `fence`s are implemented the same.
+    Fence(r"fence\s+\S+|fence\.tso"),
     Ecall(r"ecall"),
     Ebreak(r"ebreak"),
 
@@ -74,9 +74,9 @@ define_insts! {
     Lwu(r"lwu\s+{},\s+{}\({}\)", rd, imm, rs1),
     Ld(r"ld\s+{},\s+{}\({}\)", rd, imm, rs1),
     Sd(r"sd\s+{},\s+{}\({}\)", rs2, imm, rs1),
-    // `slli` is the same as its RV32I version.
-    // `srli` is the same as its RV32I version.
-    // `srai` is the same as its RV32I version.
+    // `slli` is the same as its RV32I version
+    // `srli` is the same as its RV32I version
+    // `srai` is the same as its RV32I version
     Addiw(r"addiw\s+{},\s+{},\s+{}", rd, rs1, imm),
     Slliw(r"slliw\s+{},\s+{},\s+{}", rd, rs1, imm),
     Srliw(r"srliw\s+{},\s+{},\s+{}", rd, rs1, imm),
@@ -212,7 +212,8 @@ define_insts! {
     FmvDX(r"fmv\.d\.x\s+{},\s+{}", frd, rs1),
 
     // Pseudoinstructions
-    // Pseudoinstructions using symbols are compiled to other instructions.
+
+    // Pseudoinstructions using symbols are compiled to base instructions
 
     Nop(r"nop"),
     Li(r"li\s+{},\s+{}", rd, imm),
@@ -240,24 +241,27 @@ define_insts! {
     Bltz(r"bltz\s+{},\s+{}", rs1, addr),
     Bgtz(r"bgtz\s+{},\s+{}", rs1, addr),
 
-    // `bgt` is compiled to other instructions.
-    // `ble` is compiled to other instructions.
-    // `bgtu` is compiled to other instructions.
-    // `bleu` is compiled to other instructions.
+    // `bgt` is compiled to base instructions
+    // `ble` is compiled to base instructions
+    // `bgtu` is compiled to base instructions
+    // `bleu` is compiled to base instructions
 
     J(r"j\s+{}", addr),
     PseudoJal(r"jal\s+{}", addr),
     Jr(r"jr\s+{}", rs1),
     PseudoJalr(r"jalr\s+{}", rs1),
     Ret(r"ret"),
-    // `call` is compiled to other instructions.
-    // `tail` is compiled to other instructions.
+    // `call` is compiled to base instructions
+    // `tail` is compiled to base instructions
 
     PseudoFence(r"fence"),
 
     Rdinstret(r"rdinstret\s+{}", rd),
+    // `rdinstreth` is for RV32I only
     Rdcycle(r"rdcycle\s+{}", rd),
+    // `rdcycleh` is for RV32I only
     Rdtime(r"rdtime\s+{}", rd),
+    // `rdtimeh` is for RV32I only
 
     Csrr(r"csrr\s+{},\s+{}", rd, csr),
     Csrw(r"csrw\s+{},\s+{}", csr, rs1),
@@ -286,7 +290,7 @@ define_insts! {
     OffsetJr(r"jr\s+{}\({}\)", imm, rs1),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Reg {
     Zero,
     Ra,
@@ -405,7 +409,7 @@ impl Display for Reg {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum FReg {
     Ft0,
     Ft1,
@@ -524,14 +528,13 @@ impl Display for FReg {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord, Default)]
 pub struct Imm(pub i64);
 
 impl Imm {
     pub fn new(s: &str) -> Self {
         Imm(s
-            .parse()
-            .unwrap_or_else(|_| panic!("Invalid immediate `{s}`")))
+            .parse().expect("Invalid immediate `{s}`"))
     }
 }
 
@@ -542,12 +545,12 @@ impl Display for Imm {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord, Default)]
 pub struct Addr(pub u64);
 
 impl Addr {
     pub fn new(s: &str) -> Self {
-        Addr(u64::from_str_radix(s, 16).unwrap_or_else(|_| panic!("Invalid address `{s}`")))
+        Addr(u64::from_str_radix(s, 16).expect("Invalid address `{s}`"))
     }
 }
 
@@ -558,7 +561,7 @@ impl Display for Addr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum CSR {
     Fflags,
     Frm,
@@ -566,9 +569,9 @@ pub enum CSR {
     Cycle,
     Time,
     Instret,
-    // `Cycleh` is RV32I only.
-    // `Timeh` is RV32I only.
-    // `Instreth` is RV32I only.
+    // `Cycleh` is for RV32I only
+    // `Timeh` is for RV32I only
+    // `Instreth` is for RV32I only
 }
 
 impl CSR {
@@ -587,7 +590,7 @@ impl CSR {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum MO {
     Mono,
     Aq,
@@ -609,7 +612,7 @@ impl MO {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum RM {
     Rne,
     Rtz,
