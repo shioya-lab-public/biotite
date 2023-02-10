@@ -853,14 +853,14 @@ pub enum Inst {
         ty1: Type,
         val: Value,
         ty2: Type,
-        rm: RV::RM,
+        rm: RM,
     },
     Fptosi {
         rslt: Value,
         ty1: Type,
         val: Value,
         ty2: Type,
-        rm: RV::RM,
+        rm: RM,
     },
     Uitofp {
         rslt: Value,
@@ -1040,13 +1040,13 @@ impl Display for Inst {
             Fptrunc { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fptrunc {ty1} {val} to {ty2}"),
             Fpext { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fpext {ty1} {val} to {ty2}"),
             Fptoui { rslt, ty1, val, ty2, rm } => match rm {
-                RV::RM::Rdn => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptoui({ty1} {val}, i1 1)"),
-                RV::RM::Rup => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptoui({ty1} {val}, i1 0)"),
+                RM::Downward => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptoui({ty1} {val}, i1 1)"),
+                RM::Upward => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptoui({ty1} {val}, i1 0)"),
                 _ => write!(f, "{rslt} = fptoui {ty1} {val} to {ty2}"),
             }
             Fptosi { rslt, ty1, val, ty2, rm } => match rm {
-                RV::RM::Rdn => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptosi({ty1} {val}, i1 1)"),
-                RV::RM::Rup => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptosi({ty1} {val}, i1 0)"),
+                RM::Downward => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptosi({ty1} {val}, i1 1)"),
+                RM::Upward => write!(f, "{rslt} = call {ty2} @.round_{ty2}_{ty1}_fptosi({ty1} {val}, i1 0)"),
                 _ => write!(f, "{rslt} = fptosi {ty1} {val} to {ty2}"),
             }
             Uitofp { rslt, ty1, val, ty2 } => write!(f, "{rslt} = uitofp {ty1} {val} to {ty2}"),
@@ -1217,10 +1217,10 @@ impl Display for Value {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum MO {
-    Mono,
-    Aq,
-    Rl,
-    AqRl,
+    Monotonic,
+    Acquire,
+    Release,
+    SeqCst,
 }
 
 impl Display for MO {
@@ -1228,10 +1228,10 @@ impl Display for MO {
         use MO::*;
 
         match self {
-            Mono => write!(f, "monotonic"),
-            Aq => write!(f, "acquire"),
-            Rl => write!(f, "release"),
-            AqRl => write!(f, "acq_rel"),
+            Monotonic => write!(f, "monotonic"),
+            Acquire => write!(f, "acquire"),
+            Release => write!(f, "release"),
+            SeqCst => write!(f, "seq_cst"),
         }
     }
 }
@@ -1313,4 +1313,14 @@ impl Display for FCond {
             Ole => write!(f, "ole"),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum RM {
+    Dynamic,
+    Tonearest,
+    Downward,
+    Upward,
+    Towardzero,
+    Tonearestaway,
 }

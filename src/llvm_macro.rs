@@ -10,7 +10,7 @@ macro_rules! translate_rv_inst {
             $(
                 RV::Inst::$rv_inst { address, is_compressed, $( $rv_field, )* .. } => {
                     vec![
-                        $( Inst::$inst { $( $field: expand_value!($value, address, is_compressed), )* }, )*
+                        $( Inst::$inst { $( $field: expand_value!($value, address, is_compressed) ),* }, )*
                     ]
                 }
             )*
@@ -203,10 +203,23 @@ macro_rules! _10 {
 macro_rules! mo {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
         match $value {
-            RV::MO::Mono => MO::Mono,
-            RV::MO::Aq => MO::Aq,
-            RV::MO::Rl => MO::Rl,
-            RV::MO::AqRl => MO::AqRl,
+            RV::MO::Mono => MO::Monotonic,
+            RV::MO::Aq => MO::Acquire,
+            RV::MO::Rl => MO::Release,
+            RV::MO::AqRl => MO::SeqCst,
+        }
+    };
+}
+
+macro_rules! rm {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
+        match $value {
+            RV::RM::Rne => RM::Tonearest,
+            RV::RM::Rtz => RM::Towardzero,
+            RV::RM::Rdn => RM::Downward,
+            RV::RM::Rup => RM::Upward,
+            RV::RM::Rmm => RM::Tonearestaway,
+            RV::RM::Dyn => RM::Dynamic,
         }
     };
 }
@@ -223,12 +236,6 @@ macro_rules! next_pc {
         let len = if $is_compressed { 2 } else { 4 };
         Value::Addr(RV::Addr(addr + len))
     }};
-}
-
-macro_rules! rm {
-    ( $value:ident, $address:expr, $is_compressed:expr ) => {
-        $value
-    };
 }
 
 pub(crate) use {
