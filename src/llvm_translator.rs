@@ -7,7 +7,7 @@ pub fn run(rv_prog: RV::Program, sys_call: Option<String>, src_funcs: Vec<String
     let (memory, sp, phdr) = build_memory(&rv_prog.data_blocks);
     Program {
         entry: rv_prog.entry,
-        tdata: rv_prog.tdata,
+        tdata: rv_prog.tdata.unwrap_or(RV::Addr(0)),
         funcs: rv_prog
             .code_blocks
             .into_par_iter()

@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
     pub entry: Addr,
-    pub tdata: Addr,
+    pub tdata: Option<Addr>,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
     pub symbols: HashMap<(String, Addr), bool>,
@@ -13,17 +13,17 @@ pub struct Program {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataBlock {
+    pub address: Addr,
     pub section: String,
     pub symbol: String,
-    pub address: Addr,
     pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodeBlock {
+    pub address: Addr,
     pub section: String,
     pub symbol: String,
-    pub address: Addr,
     pub insts: Vec<Inst>,
 }
 
@@ -533,8 +533,7 @@ pub struct Imm(pub i64);
 
 impl Imm {
     pub fn new(s: &str) -> Self {
-        Imm(s
-            .parse().expect("Invalid immediate `{s}`"))
+        Imm(s.parse().expect("Invalid immediate `{s}`"))
     }
 }
 

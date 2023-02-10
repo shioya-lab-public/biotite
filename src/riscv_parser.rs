@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::mem;
 
 static SECTION_SIZE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\s+\S+\s+(\S+)\s+([[:xdigit:]]+)\s+([[:xdigit:]]+)").unwrap());
+    Lazy::new(|| Regex::new(r"\S+\s+(\S+)\s+([[:xdigit:]]+)\s+([[:xdigit:]]+)").unwrap());
 static SYMBOL_SIZE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"([[:xdigit:]]+)\s+\S+\s+(\S+\s+)?\S+\s+([[:xdigit:]]+)\s+(\.hidden\s+)?(\S+)?")
         .unwrap()
@@ -14,28 +14,26 @@ static SYMBOL_SIZE: Lazy<Regex> = Lazy::new(|| {
 static SECTION: Lazy<Regex> = Lazy::new(|| Regex::new(r"Disassembly of section (\S+):").unwrap());
 static SYMBOL: Lazy<Regex> = Lazy::new(|| Regex::new(r"([[:xdigit:]]+) <(\S+)>:").unwrap());
 static BYTES: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\s+[[:xdigit:]]+:\s+(([[:xdigit:]][[:xdigit:]] )+)").unwrap());
-static CONTENTS: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+([[:xdigit:]]+)\s+(.{35})").unwrap());
+    Lazy::new(|| Regex::new(r"[[:xdigit:]]+:\s+(([[:xdigit:]][[:xdigit:]] )+)").unwrap());
+static TDATA: Lazy<Regex> = Lazy::new(|| Regex::new(r"([[:xdigit:]]+)\s+(.{35})").unwrap());
 
-pub fn run(src: String, tdata: Option<String>) -> Program {
-    let mut src = src.lines();
-    let entry = parse_entry(&mut src);
-    let sections = parse_sections(&mut src);
-    let symbols = parse_symbols(&mut src);
-    let (mut data_blocks, code_blocks) = parse_assembly(&mut src);
+pub fn run(mut src: String, tdata: Option<String>) -> Program {
+    src.push('\n');
+    let mut lines = src.lines();
+    let entry = parse_entry(&mut lines);
+    let sections = parse_sections(&mut lines);
+    let symbols = parse_symbols(&mut lines);
+    let (mut data_blocks, code_blocks) = parse_disassembly(&mut lines);
     expand_data_blocks(&mut data_blocks, &sections, &symbols);
-    let tdata_addr = match tdata {
-        Some(tdata) => {
-            let (tdata_addr, tdata_block) = parse_tdata(tdata);
-            data_blocks.push(tdata_block);
-            data_blocks.sort_unstable_by_key(|b| b.address);
-            tdata_addr
-        }
-        None => Addr(0),
-    };
+    let tdata = tdata.map(|tdata| {
+        let (tdata_addr, tdata_block) = parse_tdata(tdata);
+        data_blocks.push(tdata_block);
+        data_blocks.sort_unstable_by_key(|b| b.address);
+        tdata_addr
+    });
     Program {
         entry,
-        tdata: tdata_addr,
+        tdata,
         data_blocks,
         code_blocks,
         symbols: symbols
@@ -45,20 +43,25 @@ pub fn run(src: String, tdata: Option<String>) -> Program {
     }
 }
 
-fn parse_entry<'a>(src: &mut impl Iterator<Item = &'a str>) -> Addr {
-    let mut src = src.skip(3);
+fn parse_entry<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Addr {
     Addr::new(
-        src.next()
-            .expect("Missing file header")
+        lines
+            .skip(3)
+            .next()
+            .expect("Missing file headers")
             .strip_prefix("start address: 0x")
-            .expect("Invalid file header"),
+            .expect("Invalid file headers"),
     )
 }
 
-fn parse_sections<'a>(src: &mut impl Iterator<Item = &'a str>) -> HashMap<(String, Addr), usize> {
-    let mut src = src.skip(4);
+fn parse_sections<'a>(lines: &mut impl Iterator<Item = &'a str>) -> HashMap<(String, Addr), usize> {
+    let mut lines = lines.skip(4);
     let mut sections = HashMap::new();
-    while let Some(caps) = SECTION_SIZE.captures(src.next().expect("Missing section header")) {
+    while let Some(caps) = SECTION_SIZE.captures(
+        lines
+            .next()
+            .expect("Section headers should end with an empty line"),
+    ) {
         let section = (String::from(&caps[1]), Addr::new(&caps[3]));
         let size = usize::from_str_radix(&caps[2], 16).unwrap();
         sections.insert(section, size);
@@ -67,68 +70,62 @@ fn parse_sections<'a>(src: &mut impl Iterator<Item = &'a str>) -> HashMap<(Strin
 }
 
 fn parse_symbols<'a>(
-    src: &mut impl Iterator<Item = &'a str>,
+    lines: &mut impl Iterator<Item = &'a str>,
 ) -> HashMap<(String, Addr), (usize, bool)> {
-    let mut src = src.skip(1);
+    let mut lines = lines.skip(1);
     let mut symbols = HashMap::new();
-    while let Some(caps) = SYMBOL_SIZE.captures(src.next().expect("Missing symbol table")) {
-        let name = caps.get(5).map(|m| m.as_str()).unwrap_or_default();
-        let symbol = (String::from(name), Addr::new(&caps[1]));
+    while let Some(caps) = SYMBOL_SIZE.captures(
+        lines
+            .next()
+            .expect("The symbol table should end with an empty line"),
+    ) {
+        let addr = Addr::new(&caps[1]);
+        let is_func = caps
+            .get(2)
+            .map(|m| m.as_str().trim() == "F")
+            .unwrap_or_default();
         let size = usize::from_str_radix(&caps[3], 16).unwrap();
-        let is_func = caps.get(2).map(|m| m.as_str()).unwrap_or_default().trim();
-        symbols.insert(symbol, (size, is_func == "F"));
+        let name = caps
+            .get(5)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+        symbols.insert((name, addr), (size, is_func));
     }
     symbols
 }
 
-fn parse_assembly<'a>(src: &mut impl Iterator<Item = &'a str>) -> (Vec<DataBlock>, Vec<CodeBlock>) {
+fn parse_disassembly<'a>(
+    lines: &mut impl Iterator<Item = &'a str>,
+) -> (Vec<DataBlock>, Vec<CodeBlock>) {
     let mut data_blocks = Vec::new();
     let mut code_blocks = Vec::new();
     let mut section = String::new();
     let mut symbol = String::new();
     let mut address = Addr(0);
-    let mut lines = Vec::new();
-    for line in src.filter(|l| !l.is_empty()) {
-        if let Some(caps) = SYMBOL.captures(line) {
-            let sym = caps[2].to_string();
-            let addr = Addr::new(&caps[1]);
-            let raw_block = (
-                section.clone(),
-                mem::replace(&mut symbol, sym),
-                mem::replace(&mut address, addr),
-                mem::take(&mut lines),
-            );
-            if raw_block.3.is_empty() {
-                continue;
-            } else if raw_block.0 == ".text" {
-                code_blocks.push(raw_block);
-            } else if raw_block.2 != Addr(0) {
-                data_blocks.push(raw_block);
-            }
-        } else if let Some(caps) = SECTION.captures(line) {
-            let sec = caps[1].to_string();
-            let raw_block = (
-                mem::replace(&mut section, sec),
-                mem::take(&mut symbol),
+    let mut insts = Vec::new();
+    for line in lines {
+        if let Some(caps) = SECTION.captures(line) {
+            section = caps[1].to_string();
+        } else if let Some(caps) = SYMBOL.captures(line) {
+            address = Addr::new(&caps[1]);
+            symbol = caps[2].to_string();
+        } else if line.is_empty() {
+            let block = (
                 address,
-                mem::take(&mut lines),
+                section.clone(),
+                mem::take(&mut symbol),
+                mem::take(&mut insts),
             );
-            if raw_block.3.is_empty() {
+            if block.3.is_empty() {
                 continue;
-            } else if raw_block.0 == ".text" {
-                code_blocks.push(raw_block);
-            } else if raw_block.2 != Addr(0) {
-                data_blocks.push(raw_block);
+            } else if block.1 == ".text" {
+                code_blocks.push(block);
+            } else if block.0 != Addr(0) {
+                data_blocks.push(block);
             }
         } else {
-            lines.push(line);
+            insts.push(line);
         }
-    }
-    let raw_block = (section, symbol, address, lines);
-    if raw_block.0 == ".text" {
-        code_blocks.push(raw_block);
-    } else if raw_block.2 != Addr(0) {
-        data_blocks.push(raw_block);
     }
     (
         data_blocks.into_par_iter().map(parse_data_block).collect(),
@@ -137,35 +134,34 @@ fn parse_assembly<'a>(src: &mut impl Iterator<Item = &'a str>) -> (Vec<DataBlock
 }
 
 fn parse_data_block(
-    (section, symbol, address, lines): (String, String, Addr, Vec<&str>),
+    (address, section, symbol, insts): (Addr, String, String, Vec<&str>),
 ) -> DataBlock {
     let mut bytes = Vec::new();
-    if lines.len() > 1 || lines[0] != "..." {
-        for line in lines {
-            let caps = BYTES.captures(line).unwrap();
+    if insts[0] != "..." {
+        for inst in insts {
+            let caps = BYTES.captures(inst).unwrap();
             for byte_str in caps[1].split(' ').filter(|s| !s.is_empty()) {
-                let byte = u8::from_str_radix(byte_str, 16)
-                    .unwrap_or_else(|_| panic!("Invalid byte `{byte_str}`"));
+                let byte = u8::from_str_radix(byte_str, 16).unwrap();
                 bytes.push(byte);
             }
         }
     }
     DataBlock {
+        address,
         section,
         symbol,
-        address,
         bytes,
     }
 }
 
 fn parse_code_block(
-    (section, symbol, address, lines): (String, String, Addr, Vec<&str>),
+    (address, section, symbol, insts): (Addr, String, String, Vec<&str>),
 ) -> CodeBlock {
     CodeBlock {
+        address,
         section,
         symbol,
-        address,
-        insts: lines.into_iter().map(Inst::new).collect(),
+        insts: insts.into_iter().map(Inst::new).collect(),
     }
 }
 
@@ -194,14 +190,13 @@ fn expand_data_blocks(
 }
 
 fn parse_tdata(tdata: String) -> (Addr, DataBlock) {
-    let lines = tdata.lines().skip(3).filter(|l| !l.is_empty());
-    let mut addr = None;
+    let lines = tdata.lines().skip(3);
+    let mut address = None;
     let mut bytes = Vec::new();
     for line in lines {
-        let caps = CONTENTS.captures(line).unwrap();
-        if addr.is_none() {
-            addr = Some(Addr(u64::from_str_radix(&caps[1], 16).unwrap()));
-        }
+        let caps = TDATA.captures(line).unwrap();
+        let addr = Addr(u64::from_str_radix(&caps[1], 16).unwrap());
+        address = address.or(Some(addr));
         let byte_str: String = caps[2].chars().filter(|c| !c.is_whitespace()).collect();
         let mut i = 0;
         while i < byte_str.len() {
@@ -210,17 +205,17 @@ fn parse_tdata(tdata: String) -> (Addr, DataBlock) {
             i += 2;
         }
     }
-    if let Some(addr) = addr {
+    if let Some(address) = address {
         (
-            addr,
+            address,
             DataBlock {
                 section: String::from(".tdata"),
                 symbol: String::from(".tdata"),
-                address: addr,
+                address,
                 bytes,
             },
         )
     } else {
-        panic!("Empty `.tdata`");
+        panic!("The `tdata` section is empty");
     }
 }
