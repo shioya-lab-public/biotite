@@ -34,7 +34,7 @@ define i8* @.SYS_get_memory_ptr(i64 %addr) {{
   %is_zero = icmp eq i64 0, %addr
   br i1 %is_zero, label %dynamic, label %test_static
 test_static:
-  %ptr = call i8* @.get_memory_ptr(i64 %addr)  
+  %ptr = call i8* @.get_mem_ptr(i64 %addr)  
   ret i8* %ptr
 dynamic:
   %dynamic_ptr = inttoptr i64 %addr to i8*

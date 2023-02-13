@@ -4,22 +4,26 @@ use crate::riscv_isa as RV;
 use rayon::prelude::*;
 
 pub fn run(rv_prog: RV::Program, sys_call: Option<String>, src_funcs: Vec<String>) -> Program {
-    let (memory, sp, phdr) = build_memory(&rv_prog.data_blocks);
+    let (mem, sp, phdr) = build_memory(&rv_prog.data_blocks);
     Program {
-        entry: rv_prog.entry,
-        tdata: rv_prog.tdata.unwrap_or(RV::Addr(0)),
+        entry: Value::Addr(rv_prog.entry),
+        tdata: rv_prog.tdata.map(Value::Addr),
         funcs: rv_prog
             .code_blocks
             .into_par_iter()
             .map(translate_rv_code_block)
             .collect(),
-        src_funcs: src_funcs.clone(),
+        src_funcs: src_funcs.clone().into_iter().collect(),
         sys_call,
-        memory,
+        mem,
         sp,
         phdr,
-        func_syms: rv_prog.symbols,
-        native_mem_func: false,
+        func_syms: rv_prog
+            .symbols
+            .into_iter()
+            .map(|(n, a)| (n, Value::Addr(a)))
+            .collect(),
+        native_mem_utils: false,
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::riscv_macro::*;
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -8,7 +8,7 @@ pub struct Program {
     pub tdata: Option<Addr>,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
-    pub symbols: HashMap<(String, Addr), bool>,
+    pub symbols: HashSet<(String, Addr)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

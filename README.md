@@ -101,44 +101,48 @@ clang -static t.c --target=riscv64 -march=rv64gc --gcc-toolchain=/opt/riscv64-el
 
 ``` C
 #include <elf.h>
+#include <stdint.h>
 #include <sys/auxv.h>
 
-void init_auxv(unsigned long* sp, unsigned long guest_phdr, unsigned char* host_phdr_b, unsigned long tdata) {
-    // Initialize `AT_PHDR`.
-    Elf64_Phdr* host_phdr = (Elf64_Phdr*) host_phdr_b;
-    Elf64_Phdr* phdr = (Elf64_Phdr*) getauxval(AT_PHDR);
-    unsigned long phnum = getauxval(AT_PHNUM);
-    if (phdr && phnum) {
-        for (int i = 0; i < phnum; ++i) {
-            if (phdr->p_type == PT_TLS) {
-                *host_phdr = *phdr++;
-                host_phdr->p_vaddr = tdata;
-                ++host_phdr;
-            } else if (phdr->p_type == PT_GNU_RELRO) {
-                *host_phdr = *phdr++;
-                host_phdr->p_vaddr = tdata;
-                host_phdr->p_memsz = 0xac8;
-                ++host_phdr;
+void init_auxv(int64_t* auxv, int8_t* phdr, int64_t phdr_addr, int64_t tdata) {
+    // Initialize `AT_PHDR`
+    Elf64_Phdr* host_phdr = (Elf64_Phdr*) getauxval(AT_PHDR);
+    int64_t host_phnum = getauxval(AT_PHNUM);
+    if (host_phdr && host_phnum) {
+        Elf64_Phdr* guest_phdr = (Elf64_Phdr*) phdr;
+        for (int64_t i = 0; i < host_phnum; ++i) {
+            if (host_phdr->p_type == PT_TLS) {
+                *guest_phdr = *host_phdr++;
+                guest_phdr->p_vaddr = tdata;
+                ++guest_phdr;
+            } else if (host_phdr->p_type == PT_GNU_RELRO) {
+                *guest_phdr = *host_phdr++;
+                guest_phdr->p_vaddr = tdata;
+                guest_phdr->p_memsz = 0xac8;
+                ++guest_phdr;
             } else {
-                *host_phdr++ = *phdr++;
+                *guest_phdr++ = *host_phdr++;
             }
         }
-        *sp++ = AT_PHDR;
-        *sp++ = guest_phdr;
+        *auxv++ = AT_PHDR;
+        *auxv++ = phdr_addr;
     }
 
-    // Initialize other entries.
-    unsigned long entries[23] = {
-        0, 1, 2, 4, 5, 6, 7, 8, 9, 10,
-        11, 12, 13, 14, 15, 16, 17, 23, 24, 25,
-        26, 31, 51
+    // Initialize other entries
+    #define CNT 23
+    int64_t entries[CNT] = {
+        0, 1, 2,
+        4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+        23, 24, 25, 26,
+        31,
+        51,
     };
-    for (int i = 0; i < 23; ++i) {
-        unsigned long entry = entries[i];
-        unsigned long value = getauxval(entry);
+    for (int64_t i = 0; i < CNT; ++i) {
+        int64_t entry = entries[i];
+        int64_t value = getauxval(entry);
         if (value) {
-            *sp++ = entry;
-            *sp++ = value;
+            *auxv++ = entry;
+            *auxv++ = value;
         }
     }
 }
@@ -146,12 +150,13 @@ void init_auxv(unsigned long* sp, unsigned long guest_phdr, unsigned char* host_
 
 ``` C
 #include <stdbool.h>
+#include <stdint.h>
 
-long round(double f, bool is_rdn) {
-    long i = f;
-    if (f > 0 && !is_rdn && f != i) {
+int64_t rounding(double f, bool is_rdn) {
+    int64_t i = f;
+    if (i != f && f > 0 && !is_rdn) {
         return i + 1;
-    } else if (f < 0 && is_rdn && f != i) {
+    } else if (i != f && f < 0 && is_rdn) {
         return i - 1;
     } else {
         return i;
@@ -159,19 +164,12 @@ long round(double f, bool is_rdn) {
 }
 ```
 
-``` C
-long copy_str_arr(char** dest, char** src) {
-    long i = 1;
-    while ((*dest++ = *src++)) {
-        ++i;
-    }
-    return i;
-}
-```
 
 ``` C
-void memcpy(unsigned char* dest, unsigned char* src, unsigned long count) {
-    for (unsigned long i = 0; i < count; ++i) {
+#include <stdint.h>
+
+void mem_cpy(int8_t* dest, int8_t* src, int64_t count) {
+    for (int64_t i = 0; i < count; ++i) {
         *dest++ = *src++;
     }
 }

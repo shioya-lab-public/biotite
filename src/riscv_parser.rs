@@ -38,7 +38,9 @@ pub fn run(mut src: String, tdata: Option<String>) -> Program {
         code_blocks,
         symbols: symbols
             .into_iter()
-            .map(|((name, addr), (_, is_func))| ((name, addr), is_func))
+            .filter_map(
+                |((name, addr), (_, is_func))| if is_func { Some((name, addr)) } else { None },
+            )
             .collect(),
     }
 }

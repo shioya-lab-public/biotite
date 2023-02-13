@@ -5,7 +5,10 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
     let mut current = 0;
     for (i, func) in prog.funcs.iter().enumerate() {
         appended.push(Vec::new());
-        if prog.func_syms[&(func.symbol.clone(), func.address)] {
+        if prog
+            .func_syms
+            .contains(&(func.symbol.clone(), ll::Value::Addr(func.address)))
+        {
             current = i;
         } else {
             appended[current].push(i);

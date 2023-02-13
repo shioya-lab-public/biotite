@@ -3,7 +3,7 @@ use crate::riscv_isa as rv;
 use std::collections::HashSet;
 
 pub fn run(mut prog: ll::Program) -> ll::Program {
-    prog.native_mem_func = true;
+    prog.native_mem_utils = true;
     for func in &mut prog.funcs {
         for block in &mut func.inst_blocks {
             if let rv::Inst::PseudoJal {
