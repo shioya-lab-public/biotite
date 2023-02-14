@@ -1,9 +1,9 @@
 use crate::llvm_macro::next_pc;
-use crate::riscv_isa as RV;
+use crate::riscv_isa as rv;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Program {
     pub entry: Value,
     pub tdata: Option<Value>,
@@ -55,14 +55,12 @@ loop:
 
 {static_decls_defs}", init = self.build_init(), mem=self.build_mem(), rounding_funcs=Self::build_rounding_funcs(), static_decls_defs = include_str!("static_decls_defs.ll"));
         if self.native_mem_utils {
-            prog.push_str(
-                "
+            prog += "
 declare void @llvm.memcpy.p8.p8.i64(i8*, i8*, i64, i1)
 declare void @llvm.memmove.p8.p8.i64(i8*, i8*, i64, i1)
 declare void @llvm.memset.p8.i64(i8*, i8, i64, i1)
 declare i32 @memcmp(i8*, i8*, i64)
-",
-            );
+";
         };
         if let Some(sys_call) = &self.sys_call {
             prog += &format!("\n{sys_call}\n");
@@ -129,7 +127,7 @@ impl Program {
             mem = self
                 .mem
                 .iter()
-                .map(|b| format!("i8 {b}"))
+                .map(|byte| format!("i8 {byte}"))
                 .collect::<Vec<_>>()
                 .join(", "),
         );
@@ -155,16 +153,16 @@ dynamic:
         let mut func_dispatcher = Vec::new();
         for func in &self.funcs {
             let last_rv_inst = &func.inst_blocks.last().unwrap().rv_inst;
-            let RV::Addr(mut end) = last_rv_inst.address();
+            let rv::Addr(mut end) = last_rv_inst.address();
             end += if last_rv_inst.is_compressed() { 2 } else { 4 };
             dispatcher.resize(end as usize, String::from("i64 0"));
             func_dispatcher.resize(end as usize, String::from("i64 0"));
             let ptr = format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
             for inst_block in &func.inst_blocks {
-                let RV::Addr(addr) = inst_block.rv_inst.address();
+                let rv::Addr(addr) = inst_block.rv_inst.address();
                 dispatcher[addr as usize] = ptr.clone();
             }
-            let RV::Addr(addr) = func.inst_blocks[0].rv_inst.address();
+            let rv::Addr(addr) = func.inst_blocks[0].rv_inst.address();
             func_dispatcher[addr as usize] = ptr;
         }
         let dispatcher_len = dispatcher.len();
@@ -247,77 +245,95 @@ ret:
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct Func {
     pub section: String,
     pub symbol: String,
-    pub address: RV::Addr,
+    pub address: Value,
     pub inst_blocks: Vec<InstBlock>,
-    pub stack_vars: Vec<Value>,
     pub dynamic: bool,
-    pub used_regs: Vec<RV::Reg>,
-    pub used_fregs: Vec<RV::FReg>,
+    pub stack_vars: Vec<Value>,
+    pub used_regs: Vec<rv::Reg>,
+    pub used_fregs: Vec<rv::FReg>,
 }
 
 impl Display for Func {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        let stack_regs = self
-            .used_regs
-            .iter()
-            .map(|reg| format!("  {reg} = alloca i64", reg = Value::StkReg(*reg)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let stack_fregs = self
-            .used_fregs
-            .iter()
-            .map(|freg| format!("  {freg} = alloca double", freg = Value::StkFReg(*freg)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let stack_vars = self
-            .stack_vars
-            .iter()
-            .map(|var| {
-                if let Value::Stack(_, width) = var {
-                    format!("  {var} = alloca i{width}")
-                } else {
-                    unreachable!()
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let load_stack = build_load_stack(&self.used_regs, &self.used_fregs, "entry");
-        let store_stack = build_store_stack(&self.used_regs, &self.used_fregs, "ret");
-
-        let mut dispatcher = String::from("switch i64 %addr, label %func_dispatcher [");
-        let mut inst_blocks = String::new();
-        for inst_block in &self.inst_blocks {
-            let addr = Value::Addr(inst_block.rv_inst.address());
-            dispatcher += &format!("i64 {addr}, label %{addr} ");
-            inst_blocks += &format!("{inst_block}\n");
-        }
-        dispatcher.pop();
-        dispatcher += "]";
-        let last_rv_inst = &self.inst_blocks.last().unwrap().rv_inst;
-        let next_pc = next_pc!(
-            next_pc,
-            last_rv_inst.address(),
-            last_rv_inst.is_compressed()
-        );
-        let prologue = if self.dynamic {
-            format!(
-                "%entry_ptr = alloca i64
+        let mut func = format!(
+            "; {addr} {sec} <{sym}>
+define i64 @.{addr}(i64 %entry) {{
+  %entry_ptr = alloca i64
   store i64 %entry, i64* %entry_ptr
   %local_jalr_ptr = alloca i1, i1 0
-  br label %u0x0
-u0x0:
+  %ret_ptr = alloca i64
+",
+            addr = self.address,
+            sec = self.section,
+            sym = self.symbol
+        );
+        if !self.stack_vars.is_empty() {
+            let stack_vars = self
+                .stack_vars
+                .iter()
+                .map(|var| {
+                    let Value::Stack(_, width) = var else { unreachable!() };
+                    format!("  {var} = alloca i{width}")
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            func += &format!("\n{stack_vars}\n");
+        }
+        if !self.used_regs.is_empty() {
+            let stack_regs = self
+                .used_regs
+                .iter()
+                .map(|reg| format!("  {reg} = alloca i64", reg = Value::StkReg(*reg)))
+                .collect::<Vec<_>>()
+                .join("\n");
+            func += &format!("\n{stack_regs}\n");
+        }
+        if !self.used_fregs.is_empty() {
+            let stack_fregs = self
+                .used_fregs
+                .iter()
+                .map(|freg| format!("  {freg} = alloca double", freg = Value::StkFReg(*freg)))
+                .collect::<Vec<_>>()
+                .join("\n");
+            func += &format!("\n{stack_fregs}\n");
+        }
+        if !self.used_regs.is_empty() || !self.used_fregs.is_empty() {
+            let stack_loading =
+                Self::build_stack_loading(&self.used_regs, &self.used_fregs, "entry");
+            func += &format!("\n{stack_loading}\n");
+        }
+        if self.dynamic {
+            let mut dispatcher = String::from("switch i64 %addr, label %func_dispatcher [");
+            for inst_block in &self.inst_blocks {
+                let addr = Value::Addr(inst_block.rv_inst.address());
+                dispatcher += &format!("i64 {addr}, label %{addr} ");
+            }
+            dispatcher.pop();
+            dispatcher += "]";
+            let func_dispatcher = if !self.used_regs.is_empty() || !self.used_fregs.is_empty() {
+                let stack_storing =
+                        Self::build_stack_storing(&self.used_regs, &self.used_fregs, "disp_s");
+                let stack_loading =
+                Self::build_stack_loading(&self.used_regs, &self.used_fregs, "disp_l");
+                format!("{stack_storing}
+                %ra_val = call i64 @.dispatch_func(i64 %addr)
+                {stack_loading}")
+            } else {
+                "%ra_val = call i64 @.dispatch_func(i64 %addr)".to_string()
+            };
+            func += &format!(
+                "
+  br label %dispatcher
+
+dispatcher:
   %addr = load i64, i64* %entry_ptr
   {dispatcher}
 func_dispatcher:
-  %func = load i64, i64* %entry_ptr
-  {store_stack}
-  %ra_val = call i64 @.dispatch_func(i64 %func)
-  {load_stack}
+  {func_dispatcher}
   %fail = icmp eq i64 %ra_val, 0
   br i1 %fail, label %native_ret, label %cont
 native_ret:
@@ -325,102 +341,125 @@ native_ret:
   br label %ret
 cont:
   store i64 %ra_val, i64* %entry_ptr
-  br label %u0x0",
-                store_stack = build_store_stack(&self.used_regs, &self.used_fregs, "disps"),
-                load_stack = build_load_stack(&self.used_regs, &self.used_fregs, "displ")
-            )
+  br label %dispatcher
+");
         } else {
-            format!("  br label %u{}", self.inst_blocks[0].rv_inst.address())
+            let addr = Value::Addr(self.inst_blocks[0].rv_inst.address());
+            func += &format!("
+  br label %{addr}
+");
         };
-        write!(
-            f,
-            "; {} {} <{}>
-
-define i64 @.{}(i64 %entry) {{
-  %ret_ptr = alloca i64
-
-{stack_regs}
-{stack_fregs}
-{stack_vars}
-
-{load_stack}
-
-{prologue}
-
-{inst_blocks}
+        let inst_blocks = self
+            .inst_blocks
+            .iter()
+            .map(|block| block.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        func += &format!("\n{inst_blocks}\n");
+        let last_rv_inst = &self.inst_blocks.last().unwrap().rv_inst;
+        let next_pc = next_pc!(
+            next_pc,
+            last_rv_inst.address(),
+            last_rv_inst.is_compressed()
+        );
+        func += &format!(
+            "
 {next_pc}:
   store i64 {next_pc}, i64* %ret_ptr
   br label %ret
+");
+        if !self.used_regs.is_empty() || !self.used_fregs.is_empty() {
+            let stack_storing = Self::build_stack_storing(&self.used_regs, &self.used_fregs, "ret");
+            func += &format!("
 ret:
-{store_stack}
+{stack_storing}
 
   %ret_val = load i64, i64* %ret_ptr
   ret i64 %ret_val
-}}",
-            self.address, self.section, self.symbol, self.address
-        )
+}}");
+        } else {
+            func += &format!(
+    "
+ret:
+  %ret_val = load i64, i64* %ret_ptr
+  ret i64 %ret_val
+}}");
+        }
+        write!(f, "{func}")
     }
 }
 
-fn build_load_stack(regs: &Vec<RV::Reg>, fregs: &Vec<RV::FReg>, id: &str) -> String {
-    let load_stack_regs = regs
-        .iter()
-        .map(|reg| {
-            format!(
-                "  %{reg}_{id}_val = load i64, i64* {global}
-  store i64 %{reg}_{id}_val, i64* {stack}",
-                global = Value::Reg(*reg),
-                stack = Value::StkReg(*reg)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    let load_stack_fregs = fregs
-        .iter()
-        .map(|freg| {
-            format!(
-                "  %{freg}_{id}_val = load double, double* {global}
-  store double %{freg}_{id}_val, double* {stack}",
-                global = Value::FReg(*freg),
-                stack = Value::StkFReg(*freg)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!("{load_stack_regs}\n{load_stack_fregs}")
+impl Func {
+    pub fn build_stack_loading(regs: &Vec<rv::Reg>, fregs: &Vec<rv::FReg>, prefix: &str) -> String {
+        let regs = regs
+            .iter()
+            .map(|reg| {
+                format!(
+                    "  %{prefix}_{reg}_val = load i64, i64* {global}
+  store i64 %{prefix}_{reg}_val, i64* {stack}",
+                    global = Value::Reg(*reg),
+                    stack = Value::StkReg(*reg)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let fregs = fregs
+            .iter()
+            .map(|freg| {
+                format!(
+                    "  %{prefix}_{freg}_val = load double, double* {global}
+  store double %{prefix}_{freg}_val, double* {stack}",
+                    global = Value::FReg(*freg),
+                    stack = Value::StkFReg(*freg)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        match (regs.is_empty(), fregs.is_empty()) {
+            (true, true) => String::new(),
+            (true, false) => format!("{fregs}"),
+            (false, true) => format!("{regs}"),
+            (false, false) => format!("{regs}\n{fregs}"),
+        }
+    }
+
+    pub fn build_stack_storing(regs: &Vec<rv::Reg>, fregs: &Vec<rv::FReg>, prefix: &str) -> String {
+        let regs = regs
+            .iter()
+            .map(|reg| {
+                format!(
+                    "  %{prefix}_{reg}_val = load i64, i64* {stack}
+  store i64 %{prefix}_{reg}_val, i64* {global}",
+                    global = Value::Reg(*reg),
+                    stack = Value::StkReg(*reg)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let fregs = fregs
+            .iter()
+            .map(|freg| {
+                format!(
+                    "  %{prefix}_{freg}_val = load double, double* {stack}
+  store double %{prefix}_{freg}_val, double* {global}",
+                    global = Value::FReg(*freg),
+                    stack = Value::StkFReg(*freg)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        match (regs.is_empty(), fregs.is_empty()) {
+            (true, true) => String::new(),
+            (true, false) => format!("{fregs}"),
+            (false, true) => format!("{regs}"),
+            (false, false) => format!("{regs}\n{fregs}"),
+        }
+    }
 }
 
-fn build_store_stack(regs: &Vec<RV::Reg>, fregs: &Vec<RV::FReg>, id: &str) -> String {
-    let store_stack_regs = regs
-        .iter()
-        .map(|reg| {
-            format!(
-                "  %{reg}_{id}_val = load i64, i64* {stack}
-  store i64 %{reg}_{id}_val, i64* {global}",
-                global = Value::Reg(*reg),
-                stack = Value::StkReg(*reg)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    let store_stack_fregs = fregs
-        .iter()
-        .map(|freg| {
-            format!(
-                "  %{freg}_{id}_val = load double, double* {stack}
-  store double %{freg}_{id}_val, double* {global}",
-                global = Value::FReg(*freg),
-                stack = Value::StkFReg(*freg)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!("{store_stack_regs}\n{store_stack_fregs}")
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InstBlock {
-    pub rv_inst: RV::Inst,
+    pub rv_inst: rv::Inst,
     pub insts: Vec<Inst>,
 }
 
@@ -430,7 +469,7 @@ impl Display for InstBlock {
         let insts_str = self
             .insts
             .iter()
-            .map(|i| format!("  {i}"))
+            .map(|inst| format!("  {inst}"))
             .collect::<Vec<_>>()
             .join("\n");
         let br = if let Some(Inst::Ret { .. }) | Some(Inst::ConBr { .. }) | Some(Inst::Br { .. }) =
@@ -709,8 +748,8 @@ pub enum Inst {
     Call {
         rslt: Value,
         func: Value,
-        regs: Vec<RV::Reg>,
-        fregs: Vec<RV::FReg>,
+        regs: Vec<rv::Reg>,
+        fregs: Vec<rv::FReg>,
     },
 
     // Standard C/C++ Library Intrinsics
@@ -766,9 +805,9 @@ pub enum Inst {
     },
     DispFunc {
         func: Value,
-        regs: Vec<RV::Reg>,
-        fregs: Vec<RV::FReg>,
-        addr: RV::Addr,
+        regs: Vec<rv::Reg>,
+        fregs: Vec<rv::FReg>,
+        addr: rv::Addr,
     },
     CheckRet {
         addr: Value,
@@ -865,7 +904,7 @@ impl Display for Inst {
             Icmp { rslt, cond, op1, op2 } => write!(f, "{rslt} = icmp {cond} i64 {op1}, {op2}"),
             Fcmp {rslt,fcond,op1,op2} => write!(f, "{rslt} = fcmp {fcond} double {op1}, {op2}"),
             Select {rslt,cond, ty, op1,op2} => write!(f, "{rslt} = select i1 {cond}, {ty} {op1}, {ty} {op2}"),
-            Call { rslt, func, regs, fregs } => write!(f, "{store_stack}  {rslt} = call i64 @.{}(i64 {func})\n{load_stack}", &format!("{func}")[1..],store_stack= build_store_stack(regs, fregs, &format!("s{}", &rslt.to_string()[1..])),load_stack= build_load_stack(regs, fregs, &format!("l{}", &rslt.to_string()[1..]))),
+            Call { rslt, func, regs, fregs } => write!(f, "{store_stack}  {rslt} = call i64 @.{func}(i64 {func})\n{load_stack}",store_stack= Func::build_stack_storing(regs, fregs, &format!("s{}", &rslt.to_string()[1..])),load_stack= Func::build_stack_loading(regs, fregs, &format!("l{}", &rslt.to_string()[1..]))),
 
             // Standard C/C++ Library Intrinsics
             Sqrt { rslt, ty, arg } => write!(f,"{rslt} = call {ty} @llvm.sqrt.{ty}({ty} {arg})"),
@@ -884,26 +923,26 @@ impl Display for Inst {
 {addr}_f:
   store i64 0, i64* %ret_ptr
   br label %ret
-{addr}_t:", ra = if *stk {Value::StkReg(RV::Reg::Ra)} else {Value::Reg(RV::Reg::Ra)}),
+{addr}_t:", ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}),
             DispRet { addr, next_pc, stk } => write!(f, "%{addr}_ra = load i64, i64* {ra}
   %{addr}_fg = icmp eq i64 %{addr}_ra, {next_pc}
   br i1 %{addr}_fg, label %{addr}_t, label %{addr}_f
 {addr}_f:
   store i64 %{addr}_ra, i64* %entry_ptr
-  br label %u0x0
-{addr}_t:", ra = if *stk {Value::StkReg(RV::Reg::Ra)} else {Value::Reg(RV::Reg::Ra)}),
-            DispFunc { func ,regs, fregs, addr} => write!(f, "{store_stack}
-  {func}_ra = call i64 @.dispatch_func(i64 {func})
-  {load_stack}
-  {func}_fail = icmp eq i64 {func}_ra, 0
-  br i1 {func}_fail, label {func}_disp, label {func}_cont
+  br label %dispatcher
+{addr}_t:", ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}),
+DispFunc { func ,regs, fregs, addr} => write!(f, "{store_stack}
+{func}_ra = call i64 @.dispatch_func(i64 {func})
+{load_stack}
+{func}_fail = icmp eq i64 {func}_ra, 0
+br i1 {func}_fail, label {func}_disp, label {func}_cont
 {func_lbl}_disp:
-  store i64 {func}, i64* %entry_ptr
-  store i1 1, i1* %local_jalr_ptr
-  br label %u0x0
+store i64 {func}, i64* %entry_ptr
+store i1 1, i1* %local_jalr_ptr
+br label %dispatcher
 {func_lbl}_cont:
-  store i64 {func}_ra, i64* %entry_ptr
-  br label %u0x0", func_lbl=&func.to_string()[1..], store_stack = build_store_stack(regs, fregs, &format!("{addr}s")), load_stack = build_load_stack(regs, fregs, &format!("{addr}l"))),
+store i64 {func}_ra, i64* %entry_ptr
+br label %dispatcher", func_lbl=&func.to_string()[1..], store_stack = Func::build_stack_storing(regs, fregs, &format!("{addr}s")), load_stack = Func::build_stack_loading(regs, fregs, &format!("{addr}l"))),
             CheckRet { addr , stk} => write!(f, "%{addr}_0 = load i1, i1* %local_jalr_ptr
   %{addr}_1 = icmp eq i1 %{addr}_0, 1
   br i1 %{addr}_1, label %{addr}_local, label %{addr}_ret
@@ -911,10 +950,10 @@ impl Display for Inst {
   %{addr}_2 = load i64, i64* {ra}
   store i64 %{addr}_2, i64* %entry_ptr
   store i1 0, i1* %local_jalr_ptr
-  br label %u0x0
+  br label %dispatcher
 {addr}_ret:
   store i64 0, i64* %ret_ptr
-  br label %ret", ra = if *stk {Value::StkReg(RV::Reg::Ra)} else {Value::Reg(RV::Reg::Ra)}),
+  br label %ret", ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}),
 
             Memcpy { addr ,stk} => write!(f, "%{addr}_0 = load i64, i64* {a0}
   %{addr}_1 = call i8* @.get_mem_ptr(i64 %{addr}_0)
@@ -922,27 +961,27 @@ impl Display for Inst {
   %{addr}_3 = call i8* @.get_mem_ptr(i64 %{addr}_2)
   %{addr}_4 = load i64, i64* {a2}
   call void @llvm.memcpy.p8.p8.i64(i8* %{addr}_1, i8* %{addr}_3, i64 %{addr}_4, i1 false)"
-  , a0 = if *stk {Value::StkReg(RV::Reg::A0)} else {Value::Reg(RV::Reg::A0)}
-  , a1 = if *stk {Value::StkReg(RV::Reg::A1)} else {Value::Reg(RV::Reg::A1)}
-  , a2 = if *stk {Value::StkReg(RV::Reg::A2)} else {Value::Reg(RV::Reg::A2)}),
+  , a0 = if *stk {Value::StkReg(rv::Reg::A0)} else {Value::Reg(rv::Reg::A0)}
+  , a1 = if *stk {Value::StkReg(rv::Reg::A1)} else {Value::Reg(rv::Reg::A1)}
+  , a2 = if *stk {Value::StkReg(rv::Reg::A2)} else {Value::Reg(rv::Reg::A2)}),
             Memmove { addr ,stk} => write!(f, "%{addr}_0 = load i64, i64* {a0}
   %{addr}_1 = call i8* @.get_mem_ptr(i64 %{addr}_0)
   %{addr}_2 = load i64, i64* {a1}
   %{addr}_3 = call i8* @.get_mem_ptr(i64 %{addr}_2)
   %{addr}_4 = load i64, i64* {a2}
   call void @llvm.memmove.p8.p8.i64(i8* %{addr}_1, i8* %{addr}_3, i64 %{addr}_4, i1 false)"
-  , a0 = if *stk {Value::StkReg(RV::Reg::A0)} else {Value::Reg(RV::Reg::A0)}
-  , a1 = if *stk {Value::StkReg(RV::Reg::A1)} else {Value::Reg(RV::Reg::A1)}
-  , a2 = if *stk {Value::StkReg(RV::Reg::A2)} else {Value::Reg(RV::Reg::A2)}),
+  , a0 = if *stk {Value::StkReg(rv::Reg::A0)} else {Value::Reg(rv::Reg::A0)}
+  , a1 = if *stk {Value::StkReg(rv::Reg::A1)} else {Value::Reg(rv::Reg::A1)}
+  , a2 = if *stk {Value::StkReg(rv::Reg::A2)} else {Value::Reg(rv::Reg::A2)}),
             Memset { addr ,stk} => write!(f, "%{addr}_0 = load i64, i64* {a0}
   %{addr}_1 = call i8* @.get_mem_ptr(i64 %{addr}_0)
   %{addr}_2 = load i64, i64* {a1}
   %{addr}_3 = trunc i64 %{addr}_2 to i8
   %{addr}_4 = load i64, i64* {a2}
   call void @llvm.memset.p8.i64(i8* %{addr}_1, i8 %{addr}_3, i64 %{addr}_4, i1 false)"
-  , a0 = if *stk {Value::StkReg(RV::Reg::A0)} else {Value::Reg(RV::Reg::A0)}
-  , a1 = if *stk {Value::StkReg(RV::Reg::A1)} else {Value::Reg(RV::Reg::A1)}
-  , a2 = if *stk {Value::StkReg(RV::Reg::A2)} else {Value::Reg(RV::Reg::A2)}),
+  , a0 = if *stk {Value::StkReg(rv::Reg::A0)} else {Value::Reg(rv::Reg::A0)}
+  , a1 = if *stk {Value::StkReg(rv::Reg::A1)} else {Value::Reg(rv::Reg::A1)}
+  , a2 = if *stk {Value::StkReg(rv::Reg::A2)} else {Value::Reg(rv::Reg::A2)}),
             Memcmp { addr ,stk} => write!(f, "%{addr}_0 = load i64, i64* {a0}
   %{addr}_1 = call i8* @.get_mem_ptr(i64 %{addr}_0)
   %{addr}_2 = load i64, i64* {a1}
@@ -951,9 +990,9 @@ impl Display for Inst {
   %{addr}_5 = call i32 @memcmp(i8* %{addr}_1, i8* %{addr}_3, i64 %{addr}_4)
   %{addr}_6 = sext i32 %{addr}_5 to i64
   store i64 %{addr}_6, i64* {a0}"
-  , a0 = if *stk {Value::StkReg(RV::Reg::A0)} else {Value::Reg(RV::Reg::A0)}
-  , a1 = if *stk {Value::StkReg(RV::Reg::A1)} else {Value::Reg(RV::Reg::A1)}
-  , a2 = if *stk {Value::StkReg(RV::Reg::A2)} else {Value::Reg(RV::Reg::A2)}),
+  , a0 = if *stk {Value::StkReg(rv::Reg::A0)} else {Value::Reg(rv::Reg::A0)}
+  , a1 = if *stk {Value::StkReg(rv::Reg::A1)} else {Value::Reg(rv::Reg::A1)}
+  , a2 = if *stk {Value::StkReg(rv::Reg::A2)} else {Value::Reg(rv::Reg::A2)}),
         }
     }
 }
@@ -989,16 +1028,23 @@ impl Display for Type {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Value {
-    Reg(RV::Reg),
-    FReg(RV::FReg),
-    Imm(RV::Imm),
-    Addr(RV::Addr),
-    Temp(RV::Addr, usize),
+    Reg(rv::Reg),
+    FReg(rv::FReg),
+    Imm(rv::Imm),
+    Addr(rv::Addr),
+    Temp(rv::Addr, usize),
     RS,
     Stack(usize, usize),
     EntryPtr,
-    StkReg(RV::Reg),
-    StkFReg(RV::FReg),
+    Dispatcher,
+    StkReg(rv::Reg),
+    StkFReg(rv::FReg),
+}
+
+impl Default for Value {
+    fn default() -> Self {
+        Value::Addr(rv::Addr::default())
+    }
 }
 
 impl Display for Value {
@@ -1014,8 +1060,57 @@ impl Display for Value {
             RS => write!(f, "@.rs"),
             Stack(offset, width) => write!(f, "%stack.{offset}.i{width}"),
             EntryPtr => write!(f, "%entry_ptr"),
+            Dispatcher => write!(f, "dispatcher"),
             StkReg(reg) => write!(f, "%{reg}"),
             StkFReg(freg) => write!(f, "%{freg}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum Cond {
+    Eq,
+    Ne,
+    Uge,
+    Ult,
+    Sgt,
+    Sge,
+    Slt,
+    Sle,
+}
+
+impl Display for Cond {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use Cond::*;
+
+        match self {
+            Eq => write!(f, "eq"),
+            Ne => write!(f, "ne"),
+            Uge => write!(f, "uge"),
+            Ult => write!(f, "ult"),
+            Sgt => write!(f, "sgt"),
+            Sge => write!(f, "sge"),
+            Slt => write!(f, "slt"),
+            Sle => write!(f, "sle"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum FCond {
+    Oeq,
+    Olt,
+    Ole,
+}
+
+impl Display for FCond {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        use FCond::*;
+
+        match self {
+            Oeq => write!(f, "oeq"),
+            Olt => write!(f, "olt"),
+            Ole => write!(f, "ole"),
         }
     }
 }
@@ -1068,54 +1163,6 @@ impl Display for Op {
             Min => write!(f, "min"),
             Umax => write!(f, "umax"),
             Umin => write!(f, "umin"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum Cond {
-    Eq,
-    Ne,
-    Uge,
-    Ult,
-    Sgt,
-    Sge,
-    Slt,
-    Sle,
-}
-
-impl Display for Cond {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        use Cond::*;
-
-        match self {
-            Eq => write!(f, "eq"),
-            Ne => write!(f, "ne"),
-            Uge => write!(f, "uge"),
-            Ult => write!(f, "ult"),
-            Sgt => write!(f, "sgt"),
-            Sge => write!(f, "sge"),
-            Slt => write!(f, "slt"),
-            Sle => write!(f, "sle"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum FCond {
-    Oeq,
-    Olt,
-    Ole,
-}
-
-impl Display for FCond {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        use FCond::*;
-
-        match self {
-            Oeq => write!(f, "oeq"),
-            Olt => write!(f, "olt"),
-            Ole => write!(f, "ole"),
         }
     }
 }

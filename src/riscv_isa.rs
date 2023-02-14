@@ -2,16 +2,16 @@ use crate::riscv_macro::*;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Program {
     pub entry: Addr,
     pub tdata: Option<Addr>,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
-    pub symbols: HashSet<(String, Addr)>,
+    pub func_syms: HashSet<(String, Addr)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct DataBlock {
     pub address: Addr,
     pub section: String,
@@ -19,7 +19,7 @@ pub struct DataBlock {
     pub bytes: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct CodeBlock {
     pub address: Addr,
     pub section: String,

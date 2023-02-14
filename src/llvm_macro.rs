@@ -1,4 +1,4 @@
-macro_rules! translate_rv_inst {
+macro_rules! trans_rv_inst {
     ( $scrutinee: ident,
         $(
             $rv_inst:tt { $( $rv_field:ident ),* } => {
@@ -8,7 +8,7 @@ macro_rules! translate_rv_inst {
     ) => {
         match $scrutinee {
             $(
-                RV::Inst::$rv_inst { address, is_compressed, $( $rv_field, )* .. } => {
+                rv::Inst::$rv_inst { address, is_compressed, $( $rv_field, )* .. } => {
                     vec![
                         $( Inst::$inst { $( $field: expand_value!($value, address, is_compressed) ),* }, )*
                     ]
@@ -203,10 +203,10 @@ macro_rules! _10 {
 macro_rules! mo {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
         match $value {
-            RV::MO::Mono => MO::Monotonic,
-            RV::MO::Aq => MO::Acquire,
-            RV::MO::Rl => MO::Release,
-            RV::MO::AqRl => MO::SeqCst,
+            rv::MO::Mono => MO::Monotonic,
+            rv::MO::Aq => MO::Acquire,
+            rv::MO::Rl => MO::Release,
+            rv::MO::AqRl => MO::SeqCst,
         }
     };
 }
@@ -214,12 +214,12 @@ macro_rules! mo {
 macro_rules! rm {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
         match $value {
-            RV::RM::Rne => RM::Tonearest,
-            RV::RM::Rtz => RM::Towardzero,
-            RV::RM::Rdn => RM::Downward,
-            RV::RM::Rup => RM::Upward,
-            RV::RM::Rmm => RM::Tonearestaway,
-            RV::RM::Dyn => RM::Dynamic,
+            rv::RM::Rne => RM::Tonearest,
+            rv::RM::Rtz => RM::Towardzero,
+            rv::RM::Rdn => RM::Downward,
+            rv::RM::Rup => RM::Upward,
+            rv::RM::Rmm => RM::Tonearestaway,
+            rv::RM::Dyn => RM::Dynamic,
         }
     };
 }
@@ -232,14 +232,14 @@ macro_rules! pc {
 
 macro_rules! next_pc {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {{
-        let RV::Addr(addr) = $address;
+        let rv::Addr(addr) = $address;
         let len = if $is_compressed { 2 } else { 4 };
-        Value::Addr(RV::Addr(addr + len))
+        Value::Addr(rv::Addr(addr + len))
     }};
 }
 
 pub(crate) use {
     addr, d, expand_value, f, frd, frs1, frs2, frs3, i_1, i_128, i_16, i_32, i_64, i_8, imm, mo,
-    next_pc, pc, rd, rm, rs, rs1, rs2, translate_rv_inst, _0, _1, _10, _2, _3, _4, _5, _6, _7, _8,
+    next_pc, pc, rd, rm, rs, rs1, rs2, trans_rv_inst, _0, _1, _10, _2, _3, _4, _5, _6, _7, _8,
     _9,
 };

@@ -108,7 +108,7 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
                                 ptr: ll::Value::EntryPtr,
                             },
                             ll::Inst::Br {
-                                addr: ll::Value::Addr(rv::Addr(0)),
+                                addr: ll::Value::Dispatcher,
                             },
                         ]
                     }
@@ -133,7 +133,7 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
                                 ptr: ll::Value::EntryPtr,
                             },
                             ll::Inst::Br {
-                                addr: ll::Value::Addr(rv::Addr(0)),
+                                addr: ll::Value::Dispatcher,
                             },
                         ]
                     }

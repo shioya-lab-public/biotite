@@ -168,7 +168,7 @@ int64_t rounding(double f, bool is_rdn) {
 ``` C
 #include <stdint.h>
 
-void mem_cpy(int8_t* dest, int8_t* src, int64_t count) {
+void mem_copy(int8_t* dest, int8_t* src, int64_t count) {
     for (int64_t i = 0; i < count; ++i) {
         *dest++ = *src++;
     }

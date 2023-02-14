@@ -36,7 +36,7 @@ pub fn run(mut src: String, tdata: Option<String>) -> Program {
         tdata,
         data_blocks,
         code_blocks,
-        symbols: symbols
+        func_syms: symbols
             .into_iter()
             .filter_map(
                 |((name, addr), (_, is_func))| if is_func { Some((name, addr)) } else { None },

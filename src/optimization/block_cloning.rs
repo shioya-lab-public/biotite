@@ -7,7 +7,7 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
         appended.push(Vec::new());
         if prog
             .func_syms
-            .contains(&(func.symbol.clone(), ll::Value::Addr(func.address)))
+            .contains(&(func.symbol.clone(), func.address))
         {
             current = i;
         } else {

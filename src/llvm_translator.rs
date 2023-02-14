@@ -1,9 +1,9 @@
 use crate::llvm_isa::*;
 use crate::llvm_macro::*;
-use crate::riscv_isa as RV;
+use crate::riscv_isa as rv;
 use rayon::prelude::*;
 
-pub fn run(rv_prog: RV::Program, sys_call: Option<String>, src_funcs: Vec<String>) -> Program {
+pub fn run(rv_prog: rv::Program, sys_call: Option<String>, src_funcs: Vec<String>) -> Program {
     let (mem, sp, phdr) = build_memory(&rv_prog.data_blocks);
     Program {
         entry: Value::Addr(rv_prog.entry),
@@ -19,7 +19,7 @@ pub fn run(rv_prog: RV::Program, sys_call: Option<String>, src_funcs: Vec<String
         sp,
         phdr,
         func_syms: rv_prog
-            .symbols
+            .func_syms
             .into_iter()
             .map(|(n, a)| (n, Value::Addr(a)))
             .collect(),
@@ -27,29 +27,29 @@ pub fn run(rv_prog: RV::Program, sys_call: Option<String>, src_funcs: Vec<String
     }
 }
 
-fn build_memory(data_blocks: &Vec<RV::DataBlock>) -> (Vec<u8>, Value, Value) {
+fn build_memory(data_blocks: &Vec<rv::DataBlock>) -> (Vec<u8>, Value, Value) {
     // Merge data blocks
     let mut memory = Vec::new();
     for data_block in data_blocks {
-        let RV::Addr(start) = data_block.address;
+        let rv::Addr(start) = data_block.address;
         memory.resize(start as usize, 0);
         memory.extend(&data_block.bytes);
     }
 
     // Append the stack
     let stack_len = 8192 * 1024;
-    let sp = Value::Addr(RV::Addr(memory.len() as u64 + 8188 * 1024));
-    let phdr = Value::Addr(RV::Addr(memory.len() as u64 + 8190 * 1024));
+    let sp = Value::Addr(rv::Addr(memory.len() as u64 + 8188 * 1024));
+    let phdr = Value::Addr(rv::Addr(memory.len() as u64 + 8190 * 1024));
     memory.extend(vec![0; stack_len]);
 
     (memory, sp, phdr)
 }
 
-fn translate_rv_code_block(rv_code_block: RV::CodeBlock) -> Func {
+fn translate_rv_code_block(rv_code_block: rv::CodeBlock) -> Func {
     Func {
         section: rv_code_block.section,
         symbol: rv_code_block.symbol,
-        address: rv_code_block.address,
+        address: Value::Addr(rv_code_block.address),
         inst_blocks: rv_code_block
             .insts
             .into_iter()
@@ -63,16 +63,16 @@ fn translate_rv_code_block(rv_code_block: RV::CodeBlock) -> Func {
 }
 
 #[allow(dead_code)]
-fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
-    let insts = translate_rv_inst!(rv_inst,
+fn translate_rv_inst(rv_inst: rv::Inst) -> InstBlock {
+    let insts = trans_rv_inst!(rv_inst,
         // RV32I
         Lui { rd, imm } => {
-            Shl { rslt: _0, ty: i_32, op1: imm, op2: { Value::Imm(RV::Imm(12)) } },
+            Shl { rslt: _0, ty: i_32, op1: imm, op2: { Value::Imm(rv::Imm(12)) } },
             Sext { rslt: _1, ty1: i_32, val: _0, ty2: i_64 },
             Store { ty: i_64, val: _1, ptr: rd },
         }
         Auipc { rd, imm } => {
-            Shl { rslt: _0, ty: i_32, op1: imm, op2: { Value::Imm(RV::Imm(12)) } },
+            Shl { rslt: _0, ty: i_32, op1: imm, op2: { Value::Imm(rv::Imm(12)) } },
             Sext { rslt: _1, ty1: i_32, val: _0, ty2: i_64 },
             Add { rslt: _2, ty: i_64, op1: _1, op2: pc },
             Store { ty: i_64, val: _2, ptr: rd },
@@ -311,15 +311,15 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Fence { mo: { MO::SeqCst } },
         }
         Ecall {} => {
-            Load { rslt: _0, ty: i_64, ptr: { Value::Reg(RV::Reg::A7) } },
-            Load { rslt: _1, ty: i_64, ptr: { Value::Reg(RV::Reg::A0) } },
-            Load { rslt: _2, ty: i_64, ptr: { Value::Reg(RV::Reg::A1) } },
-            Load { rslt: _3, ty: i_64, ptr: { Value::Reg(RV::Reg::A2) } },
-            Load { rslt: _4, ty: i_64, ptr: { Value::Reg(RV::Reg::A3) } },
-            Load { rslt: _5, ty: i_64, ptr: { Value::Reg(RV::Reg::A4) } },
-            Load { rslt: _6, ty: i_64, ptr: { Value::Reg(RV::Reg::A5) } },
+            Load { rslt: _0, ty: i_64, ptr: { Value::Reg(rv::Reg::A7) } },
+            Load { rslt: _1, ty: i_64, ptr: { Value::Reg(rv::Reg::A0) } },
+            Load { rslt: _2, ty: i_64, ptr: { Value::Reg(rv::Reg::A1) } },
+            Load { rslt: _3, ty: i_64, ptr: { Value::Reg(rv::Reg::A2) } },
+            Load { rslt: _4, ty: i_64, ptr: { Value::Reg(rv::Reg::A3) } },
+            Load { rslt: _5, ty: i_64, ptr: { Value::Reg(rv::Reg::A4) } },
+            Load { rslt: _6, ty: i_64, ptr: { Value::Reg(rv::Reg::A5) } },
             Syscall { rslt: _7, nr: _0, arg1: _1, arg2: _2, arg3: _3, arg4: _4, arg5: _5, arg6: _6 },
-            Store { ty: i_64, val: _7, ptr: { Value::Reg(RV::Reg::A0) } },
+            Store { ty: i_64, val: _7, ptr: { Value::Reg(rv::Reg::A0) } },
         }
         Ebreak {} => {
             Unreachable {},
@@ -430,22 +430,22 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
 
         // RV32/RV64 Zicsr
         Csrrw { rd, csr, rs1 } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Csrrs { rd, csr, rs1 } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Csrrc { rd, csr, rs1 } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Csrrwi { rd, csr, imm } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Csrrsi { rd, csr, imm } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Csrrci { rd, csr, imm } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
 
         // RV32M
@@ -461,7 +461,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _2, ty: i_64, ptr: rs2 },
             Sext { rslt: _3, ty1: i_64, val: _2, ty2: i_128 },
             Mul { rslt: _4, ty: i_128, op1: _1, op2: _3 },
-            Lshr { rslt: _5, ty: i_128, op1: _4, op2: { Value::Imm(RV::Imm(64)) } },
+            Lshr { rslt: _5, ty: i_128, op1: _4, op2: { Value::Imm(rv::Imm(64)) } },
             Trunc { rslt: _6, ty1: i_128, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
@@ -471,7 +471,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _2, ty: i_64, ptr: rs2 },
             Zext { rslt: _3, ty1: i_64, val: _2, ty2: i_128 },
             Mul { rslt: _4, ty: i_128, op1: _1, op2: _3 },
-            Lshr { rslt: _5, ty: i_128, op1: _4, op2: { Value::Imm(RV::Imm(64)) } },
+            Lshr { rslt: _5, ty: i_128, op1: _4, op2: { Value::Imm(rv::Imm(64)) } },
             Trunc { rslt: _6, ty1: i_128, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
@@ -481,7 +481,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _2, ty: i_64, ptr: rs2 },
             Zext { rslt: _3, ty1: i_64, val: _2, ty2: i_128 },
             Mul { rslt: _4, ty: i_128, op1: _1, op2: _3 },
-            Lshr { rslt: _5, ty: i_128, op1: _4, op2: { Value::Imm(RV::Imm(64)) } },
+            Lshr { rslt: _5, ty: i_128, op1: _4, op2: { Value::Imm(rv::Imm(64)) } },
             Trunc { rslt: _6, ty1: i_128, val: _5, ty2: i_64 },
             Store { ty: i_64, val: _6, ptr: rd },
         }
@@ -571,8 +571,8 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _5, ty: i_64, ptr: rs2 },
             Trunc { rslt: _6, ty1: i_64, val: _5, ty2: i_32 },
             Cmpxchg { rslt: _7, ty: i_32, ptr: _2, cmp: _4, new: _6, mo: mo },
-            Extractvalue { rslt: _8, ty: i_32, val: _7, idx: { Value::Imm(RV::Imm(1)) } },
-            Xor { rslt: _9, ty: i_1, op1: _8, op2: { Value::Imm(RV::Imm(1)) } },
+            Extractvalue { rslt: _8, ty: i_32, val: _7, idx: { Value::Imm(rv::Imm(1)) } },
+            Xor { rslt: _9, ty: i_1, op1: _8, op2: { Value::Imm(rv::Imm(1)) } },
             Zext { rslt: _10, ty1: i_1, val: _9, ty2: i_64 },
             Store { ty: i_64, val: _10, ptr: rd },
         }
@@ -683,8 +683,8 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Load { rslt: _3, ty: i_64, ptr: rs },
             Load { rslt: _4, ty: i_64, ptr: rs2 },
             Cmpxchg { rslt: _5, ty: i_64, ptr: _2, cmp: _3, new: _4, mo: mo },
-            Extractvalue { rslt: _6, ty: i_64, val: _5, idx: { Value::Imm(RV::Imm(1)) } },
-            Xor { rslt: _7, ty: i_1, op1: _6, op2: { Value::Imm(RV::Imm(1)) } },
+            Extractvalue { rslt: _6, ty: i_64, val: _5, idx: { Value::Imm(rv::Imm(1)) } },
+            Xor { rslt: _7, ty: i_1, op1: _6, op2: { Value::Imm(rv::Imm(1)) } },
             Zext { rslt: _8, ty1: i_1, val: _7, ty2: i_64 },
             Store { ty: i_64, val: _8, ptr: rd },
         }
@@ -968,7 +968,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Store { ty: i_64, val: _3, ptr: rd },
         }
         FclassS { rd, frs1 } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         FcvtSW { frd, rs1, rm } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
@@ -1167,7 +1167,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Store { ty: i_64, val: _3, ptr: rd },
         }
         FclassD { rd, frs1 } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         FcvtWD { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
@@ -1237,17 +1237,17 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
         Not { rd, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Xor { rslt: _1, ty: i_64, op1: _0, op2: { Value::Imm(RV::Imm(-1)) } },
+            Xor { rslt: _1, ty: i_64, op1: _0, op2: { Value::Imm(rv::Imm(-1)) } },
             Store { ty: i_64, val: _1, ptr: rd },
         }
         Neg { rd, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Sub { rslt: _1, ty: i_64, op1: { Value::Imm(RV::Imm(0)) }, op2: _0 },
+            Sub { rslt: _1, ty: i_64, op1: { Value::Imm(rv::Imm(0)) }, op2: _0 },
             Store { ty: i_64, val: _1, ptr: rd },
         }
         Negw { rd, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Sub { rslt: _1, ty: i_64, op1: { Value::Imm(RV::Imm(0)) }, op2: _0 },
+            Sub { rslt: _1, ty: i_64, op1: { Value::Imm(rv::Imm(0)) }, op2: _0 },
             Trunc { rslt: _2, ty1: i_64, val: _1, ty2: i_32 },
             Sext { rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
@@ -1260,25 +1260,25 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
         Seqz { rd, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Icmp { rslt: _1, cond: { Cond::Eq }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
+            Icmp { rslt: _1, cond: { Cond::Eq }, op1: _0, op2: { Value::Imm(rv::Imm(0)) } },
             Zext { rslt: _2, ty1: i_1, val: _1, ty2: i_64 },
             Store { ty: i_64, val: _2, ptr: rd },
         }
         Snez { rd, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Icmp { rslt: _1, cond: { Cond::Ne }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
+            Icmp { rslt: _1, cond: { Cond::Ne }, op1: _0, op2: { Value::Imm(rv::Imm(0)) } },
             Zext { rslt: _2, ty1: i_1, val: _1, ty2: i_64 },
             Store { ty: i_64, val: _2, ptr: rd },
         }
         Sltz { rd, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Icmp { rslt: _1, cond: { Cond::Slt }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
+            Icmp { rslt: _1, cond: { Cond::Slt }, op1: _0, op2: { Value::Imm(rv::Imm(0)) } },
             Zext { rslt: _2, ty1: i_1, val: _1, ty2: i_64 },
             Store { ty: i_64, val: _2, ptr: rd },
         }
         Sgtz { rd, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Icmp { rslt: _1, cond: { Cond::Sgt }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
+            Icmp { rslt: _1, cond: { Cond::Sgt }, op1: _0, op2: { Value::Imm(rv::Imm(0)) } },
             Zext { rslt: _2, ty1: i_1, val: _1, ty2: i_64 },
             Store { ty: i_64, val: _2, ptr: rd },
         }
@@ -1318,37 +1318,37 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
 
         Beqz { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Icmp { rslt: _1, cond: { Cond::Eq }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
+            Icmp { rslt: _1, cond: { Cond::Eq }, op1: _0, op2: { Value::Imm(rv::Imm(0)) } },
             Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
         Bnez { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Icmp { rslt: _1, cond: { Cond::Ne }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
+            Icmp { rslt: _1, cond: { Cond::Ne }, op1: _0, op2: { Value::Imm(rv::Imm(0)) } },
             Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
         Blez { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Icmp { rslt: _1, cond: { Cond::Sle }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
+            Icmp { rslt: _1, cond: { Cond::Sle }, op1: _0, op2: { Value::Imm(rv::Imm(0)) } },
             Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
         Bgez { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Icmp { rslt: _1, cond: { Cond::Sge }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
+            Icmp { rslt: _1, cond: { Cond::Sge }, op1: _0, op2: { Value::Imm(rv::Imm(0)) } },
             Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
         Bltz { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Icmp { rslt: _1, cond: { Cond::Slt }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
+            Icmp { rslt: _1, cond: { Cond::Slt }, op1: _0, op2: { Value::Imm(rv::Imm(0)) } },
             Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
         Bgtz { rs1, addr } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Icmp { rslt: _1, cond: { Cond::Sgt }, op1: _0, op2: { Value::Imm(RV::Imm(0)) } },
+            Icmp { rslt: _1, cond: { Cond::Sgt }, op1: _0, op2: { Value::Imm(rv::Imm(0)) } },
             Select { rslt: _2, cond: _1, ty: i_64, op1: addr, op2: next_pc },
             Ret { val: _2 },
         }
@@ -1357,7 +1357,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Ret { val: addr },
         }
         PseudoJal { addr } => {
-            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(RV::Reg::Ra) } },
+            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(rv::Reg::Ra) } },
             Ret { val: addr },
         }
         Jr { rs1 } => {
@@ -1366,11 +1366,11 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
         PseudoJalr { rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
-            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(RV::Reg::Ra) } },
+            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(rv::Reg::Ra) } },
             Ret { val: _0 },
         }
         Ret {} => {
-            Load { rslt: _0, ty: i_64, ptr: { Value::Reg(RV::Reg::Ra) } },
+            Load { rslt: _0, ty: i_64, ptr: { Value::Reg(rv::Reg::Ra) } },
             Ret { val: _0 },
         }
 
@@ -1379,17 +1379,17 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         }
 
         Rdinstret { rd } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Rdcycle { rd } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Rdtime { rd } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
 
         Csrr { rd, csr } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Csrw { csr, rs1 } => {}
         Csrs { csr, rs1 } => {}
@@ -1400,26 +1400,26 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         Csrci { csr, imm } => {}
 
         Frcsr { rd } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Fscsr { rd, rs1 } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         PseudoFscsr { rs1 } => {}
 
         Frrm { rd } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Fsrm { rd, rs1 } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         PseudoFsrm { rs1 } => {}
 
         Frflags { rd } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         Fsflags { rd, rs1 } => {
-            Store { ty: i_64, val: { Value::Imm(RV::Imm(0)) }, ptr: rd },
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         PseudoFsflags { rs1 } => {}
 
@@ -1428,7 +1428,7 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
         OffsetJalr { imm, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
-            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(RV::Reg::Ra) } },
+            Store { ty: i_64, val: next_pc, ptr: { Value::Reg(rv::Reg::Ra) } },
             Ret { val: _1 },
         }
         OffsetJr { imm, rs1 } => {
@@ -1443,15 +1443,15 @@ fn translate_rv_inst(rv_inst: RV::Inst) -> InstBlock {
             Inst::Load {
                 rslt,
                 ty,
-                ptr: Value::Reg(RV::Reg::Zero),
+                ptr: Value::Reg(rv::Reg::Zero),
             } => Some(Inst::Add {
                 rslt,
                 ty,
-                op1: Value::Imm(RV::Imm(0)),
-                op2: Value::Imm(RV::Imm(0)),
+                op1: Value::Imm(rv::Imm(0)),
+                op2: Value::Imm(rv::Imm(0)),
             }),
             Inst::Store {
-                ptr: Value::Reg(RV::Reg::Zero),
+                ptr: Value::Reg(rv::Reg::Zero),
                 ..
             } => None,
             inst => Some(inst),
