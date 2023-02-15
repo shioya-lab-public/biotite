@@ -5,7 +5,6 @@ use std::collections::HashSet;
 
 fn get_next_pc(inst: &rv::Inst) -> ll::Value {
     use crate::llvm_isa::*;
-    use crate::riscv_isa as RV;
     next_pc!(next_pc, inst.address(), inst.is_compressed())
 }
 
@@ -33,12 +32,12 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
                 rv::Inst::J { address, addr, .. } => {
                     if !addrs.contains(&addr) {
                         let rslt = ll::Value::Temp(address, 0);
-                        let func = ll::Value::Addr(addr);
+                        let target = ll::Value::Addr(addr);
                         let val = ll::Value::Addr(rv::Addr(0));
                         block.insts = vec![
                             ll::Inst::Call {
                                 rslt,
-                                func,
+                                target,
                                 regs: Vec::new(),
                                 fregs: Vec::new(),
                             },
@@ -57,7 +56,7 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
                         },
                         ll::Inst::Call {
                             rslt: ll::Value::Temp(address, 0),
-                            func: ll::Value::Addr(addr),
+                            target: ll::Value::Addr(addr),
                             regs: Vec::new(),
                             fregs: Vec::new(),
                         },
@@ -77,7 +76,7 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
                         },
                         ll::Inst::Call {
                             rslt: ll::Value::Temp(address, 0),
-                            func: ll::Value::Addr(addr),
+                            target: ll::Value::Addr(addr),
                             regs: Vec::new(),
                             fregs: Vec::new(),
                         },
@@ -162,10 +161,10 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
                                 ptr: ll::Value::Reg(rd),
                             },
                             ll::Inst::DispFunc {
-                                func: ll::Value::Temp(address, 1),
+                                addr: ll::Value::Addr(address),
+                                target: ll::Value::Temp(address, 1),
                                 regs: Vec::new(),
                                 fregs: Vec::new(),
-                                addr: address,
                             },
                         ]
                     }
@@ -182,10 +181,10 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
                                 ptr: ll::Value::Reg(rv::Reg::Ra),
                             },
                             ll::Inst::DispFunc {
-                                func: ll::Value::Temp(address, 0),
+                                addr: ll::Value::Addr(address),
+                                target: ll::Value::Temp(address, 0),
                                 regs: Vec::new(),
                                 fregs: Vec::new(),
-                                addr: address,
                             },
                         ]
                     }
@@ -210,10 +209,10 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
                                 ptr: ll::Value::Reg(rv::Reg::Ra),
                             },
                             ll::Inst::DispFunc {
-                                func: ll::Value::Temp(address, 1),
+                                addr: ll::Value::Addr(address),
+                                target: ll::Value::Temp(address, 1),
                                 regs: Vec::new(),
                                 fregs: Vec::new(),
-                                addr: address,
                             },
                         ]
                     }
@@ -255,7 +254,7 @@ pub fn non_local_jumps(mut prog: ll::Program) -> ll::Program {
                             },
                             ll::Inst::Call {
                                 rslt: ll::Value::Temp(address, 0),
-                                func: ll::Value::Addr(addr),
+                                target: ll::Value::Addr(addr),
                                 regs: Vec::new(),
                                 fregs: Vec::new(),
                             },
@@ -275,7 +274,7 @@ pub fn non_local_jumps(mut prog: ll::Program) -> ll::Program {
                             },
                             ll::Inst::Call {
                                 rslt: ll::Value::Temp(address, 0),
-                                func: ll::Value::Addr(addr),
+                                target: ll::Value::Addr(addr),
                                 regs: Vec::new(),
                                 fregs: Vec::new(),
                             },

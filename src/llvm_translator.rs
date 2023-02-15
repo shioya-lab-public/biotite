@@ -308,7 +308,7 @@ fn translate_rv_inst(rv_inst: rv::Inst) -> InstBlock {
             Store { ty: i_64, val: _2, ptr: rd },
         }
         Fence {} => {
-            Fence { mo: { MO::SeqCst } },
+            Fence{},
         }
         Ecall {} => {
             Load { rslt: _0, ty: i_64, ptr: { Value::Reg(rv::Reg::A7) } },
@@ -425,7 +425,7 @@ fn translate_rv_inst(rv_inst: rv::Inst) -> InstBlock {
 
         // RV32/RV64 Zifencei
         FenceI {} => {
-            Fence { mo: { MO::SeqCst } },
+            Fence{},
         }
 
         // RV32/RV64 Zicsr
@@ -1375,7 +1375,7 @@ fn translate_rv_inst(rv_inst: rv::Inst) -> InstBlock {
         }
 
         PseudoFence {} => {
-            Fence { mo: { MO::SeqCst } },
+            Fence{},
         }
 
         Rdinstret { rd } => {

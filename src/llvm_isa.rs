@@ -265,7 +265,6 @@ define i64 @.{addr}(i64 %entry) {{
   %entry_ptr = alloca i64
   store i64 %entry, i64* %entry_ptr
   %local_jalr_ptr = alloca i1, i1 0
-  %ret_ptr = alloca i64
 ",
             addr = self.address,
             sec = self.section,
@@ -316,12 +315,14 @@ define i64 @.{addr}(i64 %entry) {{
             dispatcher += "]";
             let func_dispatcher = if !self.used_regs.is_empty() || !self.used_fregs.is_empty() {
                 let stack_storing =
-                        Self::build_stack_storing(&self.used_regs, &self.used_fregs, "disp_s");
+                    Self::build_stack_storing(&self.used_regs, &self.used_fregs, "disp_s");
                 let stack_loading =
-                Self::build_stack_loading(&self.used_regs, &self.used_fregs, "disp_l");
-                format!("{stack_storing}
+                    Self::build_stack_loading(&self.used_regs, &self.used_fregs, "disp_l");
+                format!(
+                    "{stack_storing}
                 %ra_val = call i64 @.dispatch_func(i64 %addr)
-                {stack_loading}")
+                {stack_loading}"
+                )
             } else {
                 "%ra_val = call i64 @.dispatch_func(i64 %addr)".to_string()
             };
@@ -337,17 +338,21 @@ func_dispatcher:
   %fail = icmp eq i64 %ra_val, 0
   br i1 %fail, label %native_ret, label %cont
 native_ret:
-  store i64 0, i64* %ret_ptr
+  %local_ra_val = load i64, i64* @.ra
+  store i64 %local_ra_val, i64* %entry_ptr
   br label %ret
 cont:
   store i64 %ra_val, i64* %entry_ptr
   br label %dispatcher
-");
+"
+            );
         } else {
             let addr = Value::Addr(self.inst_blocks[0].rv_inst.address());
-            func += &format!("
+            func += &format!(
+                "
   br label %{addr}
-");
+"
+            );
         };
         let inst_blocks = self
             .inst_blocks
@@ -365,25 +370,29 @@ cont:
         func += &format!(
             "
 {next_pc}:
-  store i64 {next_pc}, i64* %ret_ptr
+  store i64 {next_pc}, i64* %entry_ptr
   br label %ret
-");
+"
+        );
         if !self.used_regs.is_empty() || !self.used_fregs.is_empty() {
             let stack_storing = Self::build_stack_storing(&self.used_regs, &self.used_fregs, "ret");
-            func += &format!("
+            func += &format!(
+                "
 ret:
 {stack_storing}
 
-  %ret_val = load i64, i64* %ret_ptr
-  ret i64 %ret_val
-}}");
+  %target = load i64, i64* %entry_ptr
+  ret i64 %target
+}}"
+            );
         } else {
             func += &format!(
-    "
+                "
 ret:
-  %ret_val = load i64, i64* %ret_ptr
-  ret i64 %ret_val
-}}");
+  %target = load i64, i64* %entry_ptr
+  ret i64 %target
+}}"
+            );
         }
         write!(f, "{func}")
     }
@@ -466,26 +475,38 @@ pub struct InstBlock {
 impl Display for InstBlock {
     fn fmt(&self, f: &mut Formatter) -> Result {
         let addr = Value::Addr(self.rv_inst.address());
-        let insts_str = self
+        let insts = self
             .insts
             .iter()
             .map(|inst| format!("  {inst}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let br = if let Some(Inst::Ret { .. }) | Some(Inst::ConBr { .. }) | Some(Inst::Br { .. }) =
-            self.insts.last()
-        {
-            String::from("")
-        } else {
+        let mut block = format!(
+            "; {rv_inst:?}
+{addr}:
+{insts}
+",
+            rv_inst = self.rv_inst
+        );
+        if !matches!(
+            self.insts.last(),
+            Some(Inst::Ret { .. })
+                | Some(Inst::Br { .. })
+                | Some(Inst::ConBr { .. })
+                | Some(Inst::CheckRet { .. })
+                | Some(Inst::ContRet { .. })
+                | Some(Inst::DispFunc { .. })
+                | Some(Inst::DispRet { .. })
+        ) {
             let next_pc = next_pc!(
                 next_pc,
                 self.rv_inst.address(),
                 self.rv_inst.is_compressed()
             );
             let br = Inst::Br { addr: next_pc };
-            format!("\n  {br}")
+            block += &format!("  {br}");
         };
-        write!(f, "; {:?}\n{addr}:\n{insts_str}{br}", self.rv_inst)
+        write!(f, "{block}")
     }
 }
 
@@ -495,14 +516,15 @@ pub enum Inst {
     Ret {
         val: Value,
     },
+    Br {
+        addr: Value,
+    },
     ConBr {
         cond: Value,
         iftrue: Value,
         iffalse: Value,
     },
-    Br {
-        addr: Value,
-    },
+    Unreachable,
 
     // Unary Operations
     Fneg {
@@ -636,9 +658,7 @@ pub enum Inst {
         val: Value,
         ptr: Value,
     },
-    Fence {
-        mo: MO,
-    },
+    Fence,
     Cmpxchg {
         rslt: Value,
         ty: Type,
@@ -747,7 +767,7 @@ pub enum Inst {
     },
     Call {
         rslt: Value,
-        func: Value,
+        target: Value,
         regs: Vec<rv::Reg>,
         fregs: Vec<rv::FReg>,
     },
@@ -792,25 +812,25 @@ pub enum Inst {
         arg5: Value,
         arg6: Value,
     },
-    Unreachable,
+
+    CheckRet {
+        addr: Value,
+        stk: bool,
+    },
     ContRet {
         addr: Value,
         next_pc: Value,
         stk: bool,
     },
+    DispFunc {
+        addr: Value,
+        target: Value,
+        regs: Vec<rv::Reg>,
+        fregs: Vec<rv::FReg>,
+    },
     DispRet {
         addr: Value,
         next_pc: Value,
-        stk: bool,
-    },
-    DispFunc {
-        func: Value,
-        regs: Vec<rv::Reg>,
-        fregs: Vec<rv::FReg>,
-        addr: rv::Addr,
-    },
-    CheckRet {
-        addr: Value,
         stk: bool,
     },
 
@@ -838,9 +858,11 @@ impl Display for Inst {
 
         match self {
             // Terminator Instructions
-            Ret { val } => write!(f, "store i64 {val}, i64* %ret_ptr\n  br label %ret"),
-            ConBr { cond, iftrue, iffalse } => write!(f, "br i1 {cond}, label %{iftrue}, label %{iffalse}"),
+            Ret { val } => write!(f, "store i64 {val}, i64* %entry_ptr
+  br label %ret"),
             Br { addr } => write!(f, "br label %{addr}"),
+            ConBr { cond, iftrue, iffalse } => write!(f, "br i1 {cond}, label %{iftrue}, label %{iffalse}"),
+            Unreachable => write!(f, "unreachable"),
 
             // Unary Operations
             Fneg { rslt, ty, op } => write!(f, "{rslt} = fneg {ty} {op}"),
@@ -867,12 +889,12 @@ impl Display for Inst {
             Xor { rslt, ty, op1, op2 } => write!(f, "{rslt} = xor {ty} {op1}, {op2}"),
 
             // Aggregate Operations
-            Extractvalue { rslt, ty, val, idx } => write!(f, "{rslt} = extractvalue {{ {ty}, i1 }} {val}, {idx}"),
+            Extractvalue { rslt, ty, val, idx } => write!(f, "{rslt} = extractvalue {{{ty}, i1}} {val}, {idx}"),
 
             // Memory Access and Addressing Operations
             Load { rslt, ty, ptr } => write!(f, "{rslt} = load {ty}, {ty}* {ptr}"),
             Store { ty, val, ptr } => write!(f, "store {ty} {val}, {ty}* {ptr}"),
-            Fence { mo } => write!(f, "fence {mo}"),
+            Fence => write!(f, "fence seq_cst"),
             Cmpxchg { rslt, ty, ptr, cmp, new, mo } => write!(f, "{rslt} = cmpxchg {ty}* {ptr}, {ty} {cmp}, {ty} {new} {mo} monotonic"),
             Atomicrmw { rslt, op, ty, ptr, val, mo } => write!(f, "{rslt} = atomicrmw {op} {ty}* {ptr}, {ty} {val} {mo}"),
             Getelementptr { rslt, ptr, offset } => write!(f, "{rslt} = getelementptr i8, i8* {ptr}, i64 {offset}"),
@@ -884,13 +906,13 @@ impl Display for Inst {
             Fptrunc { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fptrunc {ty1} {val} to {ty2}"),
             Fpext { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fpext {ty1} {val} to {ty2}"),
             Fptoui { rslt, ty1, val, ty2, rm } => match rm {
-                RM::Downward => write!(f, "{rslt} = call {ty2} @.rounding_{ty2}_{ty1}_fptoui_uitofp({ty1} {val}, i1 1)"),
-                RM::Upward => write!(f, "{rslt} = call {ty2} @.rounding_{ty2}_{ty1}_fptoui_uitofp({ty1} {val}, i1 0)"),
+                RM::Downward => write!(f, "{rslt} = call {ty2} @.rounding_{ty1}_{ty2}_fptoui_uitofp({ty1} {val}, i1 1)"),
+                RM::Upward => write!(f, "{rslt} = call {ty2} @.rounding_{ty1}_{ty2}_fptoui_uitofp({ty1} {val}, i1 0)"),
                 _ => write!(f, "{rslt} = fptoui {ty1} {val} to {ty2}"),
             }
             Fptosi { rslt, ty1, val, ty2, rm } => match rm {
-                RM::Downward => write!(f, "{rslt} = call {ty2} @.rounding_{ty2}_{ty1}_fptosi_sitofp({ty1} {val}, i1 1)"),
-                RM::Upward => write!(f, "{rslt} = call {ty2} @.rounding_{ty2}_{ty1}_fptosi_sitofp({ty1} {val}, i1 0)"),
+                RM::Downward => write!(f, "{rslt} = call {ty2} @.rounding_{ty1}_{ty2}_fptosi_sitofp({ty1} {val}, i1 1)"),
+                RM::Upward => write!(f, "{rslt} = call {ty2} @.rounding_{ty1}_{ty2}_fptosi_sitofp({ty1} {val}, i1 0)"),
                 _ => write!(f, "{rslt} = fptosi {ty1} {val} to {ty2}"),
             }
             Uitofp { rslt, ty1, val, ty2 } => write!(f, "{rslt} = uitofp {ty1} {val} to {ty2}"),
@@ -904,7 +926,13 @@ impl Display for Inst {
             Icmp { rslt, cond, op1, op2 } => write!(f, "{rslt} = icmp {cond} i64 {op1}, {op2}"),
             Fcmp {rslt,fcond,op1,op2} => write!(f, "{rslt} = fcmp {fcond} double {op1}, {op2}"),
             Select {rslt,cond, ty, op1,op2} => write!(f, "{rslt} = select i1 {cond}, {ty} {op1}, {ty} {op2}"),
-            Call { rslt, func, regs, fregs } => write!(f, "{store_stack}  {rslt} = call i64 @.{func}(i64 {func})\n{load_stack}",store_stack= Func::build_stack_storing(regs, fregs, &format!("s{}", &rslt.to_string()[1..])),load_stack= Func::build_stack_loading(regs, fregs, &format!("l{}", &rslt.to_string()[1..]))),
+            Call { rslt, target, regs, fregs } => if !regs.is_empty() || !fregs.is_empty() {
+                write!(f, "{stack_storing}
+{rslt} = call i64 @.{target}(i64 {target})
+{stack_loading}",stack_storing= Func::build_stack_storing(regs, fregs, &format!("{}_s", &rslt.to_string()[1..])),stack_loading= Func::build_stack_loading(regs, fregs, &format!("{}_l", &rslt.to_string()[1..])))
+            } else {
+                write!(f, "{rslt} = call i64 @.{target}(i64 {target})")
+            }
 
             // Standard C/C++ Library Intrinsics
             Sqrt { rslt, ty, arg } => write!(f,"{rslt} = call {ty} @llvm.sqrt.{ty}({ty} {arg})"),
@@ -916,44 +944,46 @@ impl Display for Inst {
             Getmemptr { rslt, addr } => write!(f, "{rslt} = call i8* @.get_mem_ptr(i64 {addr})"),
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, i64, i64, i64, i64, i64, i64) @.system_call(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
-            Unreachable => write!(f, "unreachable"),
-            ContRet { addr, next_pc , stk} => write!(f, "%{addr}_ra = load i64, i64* {ra}
-  %{addr}_fg = icmp eq i64 %{addr}_ra, {next_pc}
-  br i1 %{addr}_fg, label %{addr}_t, label %{addr}_f
-{addr}_f:
-  store i64 0, i64* %ret_ptr
-  br label %ret
-{addr}_t:", ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}),
-            DispRet { addr, next_pc, stk } => write!(f, "%{addr}_ra = load i64, i64* {ra}
-  %{addr}_fg = icmp eq i64 %{addr}_ra, {next_pc}
-  br i1 %{addr}_fg, label %{addr}_t, label %{addr}_f
-{addr}_f:
-  store i64 %{addr}_ra, i64* %entry_ptr
-  br label %dispatcher
-{addr}_t:", ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}),
-DispFunc { func ,regs, fregs, addr} => write!(f, "{store_stack}
-{func}_ra = call i64 @.dispatch_func(i64 {func})
-{load_stack}
-{func}_fail = icmp eq i64 {func}_ra, 0
-br i1 {func}_fail, label {func}_disp, label {func}_cont
-{func_lbl}_disp:
-store i64 {func}, i64* %entry_ptr
-store i1 1, i1* %local_jalr_ptr
-br label %dispatcher
-{func_lbl}_cont:
-store i64 {func}_ra, i64* %entry_ptr
-br label %dispatcher", func_lbl=&func.to_string()[1..], store_stack = Func::build_stack_storing(regs, fregs, &format!("{addr}s")), load_stack = Func::build_stack_loading(regs, fregs, &format!("{addr}l"))),
-            CheckRet { addr , stk} => write!(f, "%{addr}_0 = load i1, i1* %local_jalr_ptr
-  %{addr}_1 = icmp eq i1 %{addr}_0, 1
-  br i1 %{addr}_1, label %{addr}_local, label %{addr}_ret
+
+            CheckRet { addr , stk} => write!(f, "%{addr}_0 = load i64, i64* {ra}
+  store i64 %{addr}_0, i64* %entry_ptr
+  %{addr}_1 = load i1, i1* %local_jalr_ptr
+  %{addr}_2 = icmp eq i1 %{addr}_1, 1
+  br i1 %{addr}_2, label %{addr}_local, label %ret
 {addr}_local:
-  %{addr}_2 = load i64, i64* {ra}
-  store i64 %{addr}_2, i64* %entry_ptr
   store i1 0, i1* %local_jalr_ptr
-  br label %dispatcher
-{addr}_ret:
-  store i64 0, i64* %ret_ptr
+  br label %dispatcher", ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}),
+            ContRet { addr, next_pc , stk} => write!(f, "%{addr}_ra = load i64, i64* {ra}
+  %{addr}_is_next_pc = icmp eq i64 %{addr}_ra, {next_pc}
+  br i1 %{addr}_is_next_pc, label %{next_pc}, label %{addr}_cont
+{addr}_cont:
+  store i64 %{addr}_ra, i64* %entry_ptr
   br label %ret", ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}),
+  DispFunc { addr, target ,regs, fregs} => {
+    let call = if !regs.is_empty() || !fregs.is_empty() {
+        format!("{stack_storing}
+  %{addr}_ra = call i64 @.dispatch_func(i64 {target})
+  {stack_loading}", stack_storing = Func::build_stack_storing(regs, fregs, &format!("{addr}_s")), stack_loading = Func::build_stack_loading(regs, fregs, &format!("{addr}_l")))
+    } else {
+        format!("%{addr}_ra = call i64 @.dispatch_func(i64 {target})")
+    };
+    write!(f, "{call}
+  %{addr}_fail = icmp eq i64 %{addr}_ra, 0
+  br i1 %{addr}_fail, label %{addr}_disp, label %{addr}_cont
+{addr}_disp:
+  store i64 {target}, i64* %entry_ptr
+  store i1 1, i1* %local_jalr_ptr
+  br label %dispatcher
+{addr}_cont:
+  store i64 %{addr}_ra, i64* %entry_ptr
+  br label %dispatcher")
+  }
+            DispRet { addr, next_pc, stk } => write!(f, "%{addr}_ra = load i64, i64* {ra}
+  %{addr}_is_next_pc = icmp eq i64 %{addr}_ra, {next_pc}
+  br i1 %{addr}_is_next_pc, label %{next_pc}, label %{addr}_disp
+{addr}_disp:
+  store i64 %{addr}_ra, i64* %entry_ptr
+  br label %dispatcher", ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}),
 
             Memcpy { addr ,stk} => write!(f, "%{addr}_0 = load i64, i64* {a0}
   %{addr}_1 = call i8* @.get_mem_ptr(i64 %{addr}_0)
@@ -1035,10 +1065,10 @@ pub enum Value {
     Temp(rv::Addr, usize),
     RS,
     Stack(usize, usize),
-    EntryPtr,
-    Dispatcher,
     StkReg(rv::Reg),
     StkFReg(rv::FReg),
+    EntryPtr,
+    Dispatcher,
 }
 
 impl Default for Value {
@@ -1058,11 +1088,11 @@ impl Display for Value {
             Addr(addr) => write!(f, "u{addr}"),
             Temp(addr, i) => write!(f, "%u{addr}_{i}"),
             RS => write!(f, "@.rs"),
-            Stack(offset, width) => write!(f, "%stack.{offset}.i{width}"),
-            EntryPtr => write!(f, "%entry_ptr"),
-            Dispatcher => write!(f, "dispatcher"),
+            Stack(offset, width) => write!(f, "%stk_{offset}_i{width}"),
             StkReg(reg) => write!(f, "%{reg}"),
             StkFReg(freg) => write!(f, "%{freg}"),
+            EntryPtr => write!(f, "%entry_ptr"),
+            Dispatcher => write!(f, "dispatcher"),
         }
     }
 }
