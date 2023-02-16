@@ -11,7 +11,7 @@ mod stack_regs;
 use crate::llvm_isa::Prog;
 
 macro_rules! opts {
-    ( $($opt:ident,)* ) => {
+    ( $( $opt:ident, )* ) => {
         pub fn optimize(
             mut prog: Prog,
             enable_all_opts: bool,
@@ -20,15 +20,14 @@ macro_rules! opts {
             disable_opts: Vec<String>,
         ) -> Prog {
             let opts = if enable_all_opts {
-                vec![$( stringify!($opt), )*]
+                vec![$( stringify!($opt) ),*]
             } else if disable_all_opts {
                 Vec::new()
             } else if !enable_opts.is_empty() {
                 enable_opts.iter().map(|opt| opt.as_str()).collect()
             } else {
-                vec![$( stringify!($opt), )*].iter().filter(|opt| !disable_opts.contains(&opt.to_string())).copied().collect()
+                vec![$( stringify!($opt) ),*].iter().filter(|opt| !disable_opts.contains(&opt.to_string())).copied().collect()
             };
-
             for opt in opts {
                 match opt {
                     $(
@@ -37,7 +36,6 @@ macro_rules! opts {
                     _ => panic!("Unknown optimization `{opt}`"),
                 }
             }
-
             prog
         }
 

@@ -12,7 +12,10 @@ all CSR are ignored
 all rm are ignored, except RDN and RUP for all 8 fp-to-int instructions
 fmv only sect result int val
 fclass is not supported
+
+Ignore the address hint in `arg1` in `mmap`
 mprotect always return 0, because it fails for legal input in RISC-V
+`getmainvars` is not available in x86_64
 readlinkat will change the return value to -22 if its -1, as RISC-V seems to require this particular value
 Adjust the layout of `struct stat`
     https://codebrowser.dev/linux/linux/arch/x86/include/uapi/asm/stat.h.html
