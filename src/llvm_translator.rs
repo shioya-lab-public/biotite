@@ -3,68 +3,65 @@ use crate::llvm_macro::*;
 use crate::riscv_isa as rv;
 use rayon::prelude::*;
 
-pub fn run(rv_prog: rv::Program, sys_call: Option<String>, src_funcs: Vec<String>) -> Program {
-    let (mem, sp, phdr) = build_memory(&rv_prog.data_blocks);
-    Program {
+pub fn run(rv_prog: rv::Prog, sys_call: Option<String>, src_funcs: Vec<String>) -> Prog {
+    let (mem, sp, phdr) = build_mem(&rv_prog.data_blocks);
+    let funcs = rv_prog
+    .code_blocks
+    .into_par_iter()
+    .map(trans_code_block)
+    .collect();
+let func_syms = rv_prog
+.func_syms
+.into_iter()
+.map(|(name, addr)| (name, Value::Addr(addr)))
+.collect();
+    Prog {
         entry: Value::Addr(rv_prog.entry),
         tdata: rv_prog.tdata.map(Value::Addr),
-        funcs: rv_prog
-            .code_blocks
-            .into_par_iter()
-            .map(translate_rv_code_block)
-            .collect(),
-        src_funcs: src_funcs.clone().into_iter().collect(),
-        sys_call,
         mem,
         sp,
         phdr,
-        func_syms: rv_prog
-            .func_syms
-            .into_iter()
-            .map(|(n, a)| (n, Value::Addr(a)))
-            .collect(),
+        funcs,
+        sys_call,
+        src_funcs: src_funcs.clone().into_iter().collect(),
+        func_syms,
         native_mem_utils: false,
     }
 }
 
-fn build_memory(data_blocks: &Vec<rv::DataBlock>) -> (Vec<u8>, Value, Value) {
-    // Merge data blocks
-    let mut memory = Vec::new();
+fn build_mem(data_blocks: &Vec<rv::DataBlock>) -> (Vec<u8>, Value, Value) {
+    let mut mem = Vec::new();
     for data_block in data_blocks {
         let rv::Addr(start) = data_block.address;
-        memory.resize(start as usize, 0);
-        memory.extend(&data_block.bytes);
+        mem.resize(start as usize, 0);
+        mem.extend(&data_block.bytes);
     }
-
-    // Append the stack
-    let stack_len = 8192 * 1024;
-    let sp = Value::Addr(rv::Addr(memory.len() as u64 + 8188 * 1024));
-    let phdr = Value::Addr(rv::Addr(memory.len() as u64 + 8190 * 1024));
-    memory.extend(vec![0; stack_len]);
-
-    (memory, sp, phdr)
+    let stk_len = 8192 * 1024;
+    mem.extend(vec![0; stk_len]);
+    let sp = Value::Addr(rv::Addr(mem.len() as u64 + 8188 * 1024));
+    let phdr = Value::Addr(rv::Addr(mem.len() as u64 + 8190 * 1024));
+    (mem, sp, phdr)
 }
 
-fn translate_rv_code_block(rv_code_block: rv::CodeBlock) -> Func {
+fn trans_code_block(code_block: rv::CodeBlock) -> Func {
     Func {
-        section: rv_code_block.section,
-        symbol: rv_code_block.symbol,
-        address: Value::Addr(rv_code_block.address),
-        inst_blocks: rv_code_block
+        section: code_block.section,
+        symbol: code_block.symbol,
+        address: Value::Addr(code_block.address),
+        inst_blocks: code_block
             .insts
             .into_iter()
-            .map(translate_rv_inst)
+            .map(trans_inst)
             .collect(),
-        stack_vars: Vec::new(),
         dynamic: true,
+        stack_vars: Vec::new(),
         used_regs: Vec::new(),
         used_fregs: Vec::new(),
     }
 }
 
-#[allow(dead_code)]
-fn translate_rv_inst(rv_inst: rv::Inst) -> InstBlock {
-    let insts = trans_rv_inst!(rv_inst,
+fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
+    let insts = trans_inst!(rv_inst,
         // RV32I
         Lui { rd, imm } => {
             Shl { rslt: _0, ty: i_32, op1: imm, op2: { Value::Imm(rv::Imm(12)) } },
@@ -559,8 +556,8 @@ fn translate_rv_inst(rv_inst: rv::Inst) -> InstBlock {
             Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_32 },
             Load { rslt: _3, ty: i_32, ptr: _2 },
             Sext { rslt: _4, ty1: i_32, val: _3, ty2: i_64 },
-            Store { ty: i_64, val: _4, ptr: rd },
             Store { ty: i_64, val: _4, ptr: rs },
+            Store { ty: i_64, val: _4, ptr: rd },
         }
         ScW { mo, rd, rs2, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
@@ -673,8 +670,8 @@ fn translate_rv_inst(rv_inst: rv::Inst) -> InstBlock {
             Getmemptr { rslt: _1, addr: _0 },
             Bitcast { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
             Load { rslt: _3, ty: i_64, ptr: _2 },
-            Store { ty: i_64, val: _3, ptr: rd },
             Store { ty: i_64, val: _3, ptr: rs },
+            Store { ty: i_64, val: _3, ptr: rd },
         }
         ScD { mo, rd, rs2, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
@@ -1289,17 +1286,13 @@ fn translate_rv_inst(rv_inst: rv::Inst) -> InstBlock {
         }
         FabsS { frd, frs1 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fabs { rslt: _2, ty: f, arg: _1 },
-            Fpext { rslt: _3, ty1: f, val: _2, ty2: d },
-            Store { ty: d, val: _3, ptr: frd },
+            Fabs { rslt: _1, ty: f, arg: _0 },
+            Store { ty: d, val: _1, ptr: frd },
         }
         FnegS { frd, frs1 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fneg { rslt: _2, ty: f, op: _1 },
-            Fpext { rslt: _3, ty1: f, val: _2, ty2: d },
-            Store { ty: d, val: _3, ptr: frd },
+            Fneg { rslt: _1, ty: f, op: _0 },
+            Store { ty: d, val: _1, ptr: frd },
         }
         FmvD { frd, frs1 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },

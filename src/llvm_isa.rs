@@ -4,20 +4,20 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Program {
+pub struct Prog {
     pub entry: Value,
     pub tdata: Option<Value>,
     pub mem: Vec<u8>,
     pub sp: Value,
     pub phdr: Value,
     pub funcs: Vec<Func>,
-    pub src_funcs: HashSet<String>,
     pub sys_call: Option<String>,
+    pub src_funcs: HashSet<String>,
     pub func_syms: HashSet<(String, Value)>,
     pub native_mem_utils: bool,
 }
 
-impl Display for Program {
+impl Display for Prog {
     fn fmt(&self, f: &mut Formatter) -> Result {
         let funcs = self
             .funcs
@@ -69,7 +69,7 @@ declare i32 @memcmp(i8*, i8*, i64)
     }
 }
 
-impl Program {
+impl Prog {
     fn build_init(&self) -> String {
         let mut init = format!(
             "  ; Initialize the stack pointer
@@ -303,7 +303,7 @@ define i64 @.{addr}(i64 %entry) {{
         if !self.used_regs.is_empty() || !self.used_fregs.is_empty() {
             let stack_loading =
                 Self::build_stack_loading(&self.used_regs, &self.used_fregs, "entry");
-            func += &format!("\n{stack_loading}\n");
+            func += &format!("\n  {stack_loading}\n");
         }
         if self.dynamic {
             let mut dispatcher = String::from("switch i64 %addr, label %func_dispatcher [");
@@ -320,8 +320,8 @@ define i64 @.{addr}(i64 %entry) {{
                     Self::build_stack_loading(&self.used_regs, &self.used_fregs, "disp_l");
                 format!(
                     "{stack_storing}
-                %ra_val = call i64 @.dispatch_func(i64 %addr)
-                {stack_loading}"
+  %ra_val = call i64 @.dispatch_func(i64 %addr)
+  {stack_loading}"
                 )
             } else {
                 "%ra_val = call i64 @.dispatch_func(i64 %addr)".to_string()
@@ -379,7 +379,7 @@ cont:
             func += &format!(
                 "
 ret:
-{stack_storing}
+  {stack_storing}
 
   %target = load i64, i64* %entry_ptr
   ret i64 %target
@@ -426,9 +426,9 @@ impl Func {
             .join("\n");
         match (regs.is_empty(), fregs.is_empty()) {
             (true, true) => String::new(),
-            (true, false) => format!("{fregs}"),
-            (false, true) => format!("{regs}"),
-            (false, false) => format!("{regs}\n{fregs}"),
+            (true, false) => format!("{fregs}", fregs=&fregs[2..]),
+            (false, true) => format!("{regs}", regs=&regs[2..]),
+            (false, false) => format!("{regs}\n{fregs}", regs=&regs[2..]),
         }
     }
 
@@ -459,9 +459,9 @@ impl Func {
             .join("\n");
         match (regs.is_empty(), fregs.is_empty()) {
             (true, true) => String::new(),
-            (true, false) => format!("{fregs}"),
-            (false, true) => format!("{regs}"),
-            (false, false) => format!("{regs}\n{fregs}"),
+            (true, false) => format!("{fregs}", fregs=&fregs[2..]),
+            (false, true) => format!("{regs}", regs=&regs[2..]),
+            (false, false) => format!("{regs}\n{fregs}", regs=&regs[2..]),
         }
     }
 }
@@ -484,8 +484,7 @@ impl Display for InstBlock {
         let mut block = format!(
             "; {rv_inst:?}
 {addr}:
-{insts}
-",
+{insts}",
             rv_inst = self.rv_inst
         );
         if !matches!(
@@ -504,7 +503,8 @@ impl Display for InstBlock {
                 self.rv_inst.is_compressed()
             );
             let br = Inst::Br { addr: next_pc };
-            block += &format!("  {br}");
+            block += &format!("
+  {br}");
         };
         write!(f, "{block}")
     }
@@ -928,8 +928,8 @@ impl Display for Inst {
             Select {rslt,cond, ty, op1,op2} => write!(f, "{rslt} = select i1 {cond}, {ty} {op1}, {ty} {op2}"),
             Call { rslt, target, regs, fregs } => if !regs.is_empty() || !fregs.is_empty() {
                 write!(f, "{stack_storing}
-{rslt} = call i64 @.{target}(i64 {target})
-{stack_loading}",stack_storing= Func::build_stack_storing(regs, fregs, &format!("{}_s", &rslt.to_string()[1..])),stack_loading= Func::build_stack_loading(regs, fregs, &format!("{}_l", &rslt.to_string()[1..])))
+  {rslt} = call i64 @.{target}(i64 {target})
+  {stack_loading}",stack_storing= Func::build_stack_storing(regs, fregs, &format!("{}_s", &rslt.to_string()[1..])),stack_loading= Func::build_stack_loading(regs, fregs, &format!("{}_l", &rslt.to_string()[1..])))
             } else {
                 write!(f, "{rslt} = call i64 @.{target}(i64 {target})")
             }

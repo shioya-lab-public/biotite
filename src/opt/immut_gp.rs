@@ -1,7 +1,7 @@
 use crate::llvm_isa as ll;
 use crate::riscv_isa as rv;
 
-pub fn run(mut prog: ll::Program) -> ll::Program {
+pub fn run(mut prog: ll::Prog) -> ll::Prog {
     let Some(gp) = find_gp(&prog) else {return prog;};
     for func in &mut prog.funcs {
         for block in &mut func.inst_blocks {
@@ -551,7 +551,7 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
     prog
 }
 
-fn find_gp(prog: &ll::Program) -> Option<i64> {
+fn find_gp(prog: &ll::Prog) -> Option<i64> {
     for func in &prog.funcs {
         let mut i = 0;
         while i < func.inst_blocks.len() - 1 {

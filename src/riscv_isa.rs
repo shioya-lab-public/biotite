@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Program {
+pub struct Prog {
     pub entry: Addr,
     pub tdata: Option<Addr>,
     pub data_blocks: Vec<DataBlock>,

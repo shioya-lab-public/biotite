@@ -8,7 +8,7 @@ fn get_next_pc(inst: &rv::Inst) -> ll::Value {
     next_pc!(next_pc, inst.address(), inst.is_compressed())
 }
 
-pub fn run(mut prog: ll::Program) -> ll::Program {
+pub fn run(mut prog: ll::Prog) -> ll::Prog {
     for func in &mut prog.funcs {
         let is_dyn = func.inst_blocks.iter().any(|block| {
             matches!(
@@ -237,7 +237,7 @@ pub fn run(mut prog: ll::Program) -> ll::Program {
     non_local_jumps(prog)
 }
 
-pub fn non_local_jumps(mut prog: ll::Program) -> ll::Program {
+pub fn non_local_jumps(mut prog: ll::Prog) -> ll::Prog {
     for func in &mut prog.funcs {
         if is_longjmp_except_func(func) {
             func.dynamic = true;

@@ -3,7 +3,7 @@ use crate::riscv_isa as rv;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-pub fn run(mut prog: ll::Program) -> ll::Program {
+pub fn run(mut prog: ll::Prog) -> ll::Prog {
     for func in &mut prog.funcs {
         if func.dynamic {
             continue;

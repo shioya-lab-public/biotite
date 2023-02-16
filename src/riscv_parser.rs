@@ -17,7 +17,7 @@ static BYTES: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"[[:xdigit:]]+:\s+(([[:xdigit:]][[:xdigit:]] )+)").unwrap());
 static TDATA: Lazy<Regex> = Lazy::new(|| Regex::new(r"([[:xdigit:]]+)\s+(.{35})").unwrap());
 
-pub fn run(mut src: String, tdata: Option<String>) -> Program {
+pub fn run(mut src: String, tdata: Option<String>) -> Prog {
     src.push('\n');
     let mut lines = src.lines();
     let entry = parse_entry(&mut lines);
@@ -31,7 +31,7 @@ pub fn run(mut src: String, tdata: Option<String>) -> Program {
         data_blocks.sort_unstable_by_key(|b| b.address);
         tdata_addr
     });
-    Program {
+    Prog {
         entry,
         tdata,
         data_blocks,

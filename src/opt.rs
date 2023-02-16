@@ -8,17 +8,17 @@ mod native_mem_utils;
 mod native_stack_vars;
 mod stack_regs;
 
-use crate::llvm_isa::Program;
+use crate::llvm_isa::Prog;
 
 macro_rules! opts {
     ( $($opt:ident,)* ) => {
         pub fn optimize(
-            mut prog: Program,
+            mut prog: Prog,
             enable_all_opts: bool,
             disable_all_opts: bool,
             enable_opts: Vec<String>,
             disable_opts: Vec<String>,
-        ) -> Program {
+        ) -> Prog {
             let opts = if enable_all_opts {
                 vec![$( stringify!($opt), )*]
             } else if disable_all_opts {

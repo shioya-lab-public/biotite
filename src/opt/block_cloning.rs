@@ -1,6 +1,6 @@
 use crate::llvm_isa as ll;
 
-pub fn run(mut prog: ll::Program) -> ll::Program {
+pub fn run(mut prog: ll::Prog) -> ll::Prog {
     let mut appended = Vec::new();
     let mut current = 0;
     for (i, func) in prog.funcs.iter().enumerate() {
