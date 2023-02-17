@@ -53,7 +53,7 @@ fn trans_code_block(code_block: rv::CodeBlock) -> Func {
             .into_iter()
             .map(trans_inst)
             .collect(),
-        dynamic: true,
+        opaque: true,
         stack_vars: Vec::new(),
         used_regs: Vec::new(),
         used_fregs: Vec::new(),
@@ -170,30 +170,30 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Store { ty: i_64, val: _5, ptr: rd },
         }
         Sb { rs2, imm, rs1 } => {
-            Load { rslt: _0, ty: i_64, ptr: rs2 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_8 },
-            Load { rslt: _2, ty: i_64, ptr: rs1 },
-            Add { rslt: _3, ty: i_64, op1: _2, op2: imm },
-            Getmemptr { rslt: _4, addr: _3 },
-            Store { ty: i_8, val: _1, ptr: _4 },
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Load { rslt: _3, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _4, ty1: i_64, val: _3, ty2: i_8 },
+            Store { ty: i_8, val: _4, ptr: _2 },
         }
         Sh { rs2, imm, rs1 } => {
-            Load { rslt: _0, ty: i_64, ptr: rs2 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_16 },
-            Load { rslt: _2, ty: i_64, ptr: rs1 },
-            Add { rslt: _3, ty: i_64, op1: _2, op2: imm },
-            Getmemptr { rslt: _4, addr: _3 },
-            Bitcast { rslt: _5, ty1: i_8, val: _4, ty2: i_16 },
-            Store { ty: i_16, val: _1, ptr: _5 },
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_16 },
+            Load { rslt: _4, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _5, ty1: i_64, val: _4, ty2: i_16 },
+            Store { ty: i_16, val: _5, ptr: _3 },
         }
         Sw { rs2, imm, rs1 } => {
-            Load { rslt: _0, ty: i_64, ptr: rs2 },
-            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
-            Load { rslt: _2, ty: i_64, ptr: rs1 },
-            Add { rslt: _3, ty: i_64, op1: _2, op2: imm },
-            Getmemptr { rslt: _4, addr: _3 },
-            Bitcast { rslt: _5, ty1: i_8, val: _4, ty2: i_32 },
-            Store { ty: i_32, val: _1, ptr: _5 },
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_32 },
+            Load { rslt: _4, ty: i_64, ptr: rs2 },
+            Trunc { rslt: _5, ty1: i_64, val: _4, ty2: i_32 },
+            Store { ty: i_32, val: _5, ptr: _3 },
         }
         Addi { rd, rs1, imm } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
@@ -341,12 +341,12 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Store { ty: i_64, val: _4, ptr: rd },
         }
         Sd { rs2, imm, rs1 } => {
-            Load { rslt: _0, ty: i_64, ptr: rs2 },
-            Load { rslt: _1, ty: i_64, ptr: rs1 },
-            Add { rslt: _2, ty: i_64, op1: _1, op2: imm },
-            Getmemptr { rslt: _3, addr: _2 },
-            Bitcast { rslt: _4, ty1: i_8, val: _3, ty2: i_64 },
-            Store { ty: i_64, val: _0, ptr: _4 },
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_64 },
+            Load { rslt: _4, ty: i_64, ptr: rs2 },
+            Store { ty: i_64, val: _4, ptr: _3 },
         }
         Addiw { rd, rs1, imm } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
@@ -770,14 +770,14 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Store { ty: d, val: _6, ptr: frd },
         }
         Fsw { frs2, imm, rs1 } => {
-            Load { rslt: _0, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Bitcast { rslt: _2, ty1: f, val: _1, ty2: i_32 },
-            Load { rslt: _3, ty: i_64, ptr: rs1 },
-            Add { rslt: _4, ty: i_64, op1: _3, op2: imm },
-            Getmemptr { rslt: _5, addr: _4 },
-            Bitcast { rslt: _6, ty1: i_8, val: _5, ty2: i_32 },
-            Store { ty: i_32, val: _2, ptr: _6 },
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_32 },
+            Load { rslt: _4, ty: d, ptr: frs2 },
+            Fptrunc { rslt: _5, ty1: d, val: _4, ty2: f },
+            Bitcast { rslt: _6, ty1: f, val: _5, ty2: i_32 },
+            Store { ty: i_32, val: _6, ptr: _3 },
         }
         FmaddS { frd, frs1, frs2, frs3, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
@@ -1026,13 +1026,13 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Store { ty: d, val: _5, ptr: frd },
         }
         Fsd { frs2, imm, rs1 } => {
-            Load { rslt: _0, ty: d, ptr: frs2 },
-            Bitcast { rslt: _1, ty1: d, val: _0, ty2: i_64 },
-            Load { rslt: _2, ty: i_64, ptr: rs1 },
-            Add { rslt: _3, ty: i_64, op1: _2, op2: imm },
-            Getmemptr { rslt: _4, addr: _3 },
-            Bitcast { rslt: _5, ty1: i_8, val: _4, ty2: i_64 },
-            Store { ty: i_64, val: _1, ptr: _5 },
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
+            Getmemptr { rslt: _2, addr: _1 },
+            Bitcast { rslt: _3, ty1: i_8, val: _2, ty2: i_64 },
+            Load { rslt: _4, ty: d, ptr: frs2 },
+            Bitcast { rslt: _5, ty1: d, val: _4, ty2: i_64 },
+            Store { ty: i_64, val: _5, ptr: _3 },
         }
         FmaddD { frd, frs1, frs2, frs3, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },

@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 pub fn run(mut prog: ll::Prog) -> ll::Prog {
     for func in &mut prog.funcs {
-        if func.dynamic {
+        if func.opaque {
             continue;
         }
         let mut regs = HashSet::new();

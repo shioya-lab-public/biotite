@@ -17,30 +17,30 @@ pub fn run(mut prog: ll::Prog) -> ll::Prog {
                     Some("<memcpy>") => {
                         block.insts = vec![ll::Inst::Memcpy {
                             addr: ll::Value::Addr(*address),
-                            stk: !func.dynamic,
+                            stk: !func.opaque,
                         }]
                     }
                     Some("<memmove>") => {
                         block.insts = vec![ll::Inst::Memmove {
                             addr: ll::Value::Addr(*address),
-                            stk: !func.dynamic,
+                            stk: !func.opaque,
                         }]
                     }
                     Some("<memset>") => {
                         block.insts = vec![ll::Inst::Memset {
                             addr: ll::Value::Addr(*address),
-                            stk: !func.dynamic,
+                            stk: !func.opaque,
                         }]
                     }
                     Some("<memcmp>") => {
                         block.insts = vec![ll::Inst::Memcmp {
                             addr: ll::Value::Addr(*address),
-                            stk: !func.dynamic,
+                            stk: !func.opaque,
                         }]
                     }
                     _ => continue,
                 }
-                if !func.dynamic {
+                if !func.opaque {
                     func.used_regs
                         .extend(vec![rv::Reg::A0, rv::Reg::A1, rv::Reg::A2]);
                     let set: HashSet<_> = func.used_regs.drain(..).collect();

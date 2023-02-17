@@ -1,22 +1,43 @@
-use crate::llvm_isa as ll;
+use crate::llvm_isa::*;
 use crate::riscv_isa as rv;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-pub fn run(mut prog: ll::Prog) -> ll::Prog {
+macro_rules! use_cache {
+    ( $rs1:ident, $func:ident, $block:ident, $cache:ident, $imm:ident) => {
+        if $rs1 != &rv::Reg::Gp && ($func.stack_vars.is_empty() || $rs1 != &rv::Reg::Sp) {
+            let Inst::Getmemptr { rslt, .. } = $block.insts[2] else { unreachable!() };
+            if let Some((ptr, offset)) = $cache.get($rs1) {
+                let inst = Inst::Getelementptr {
+                    rslt,
+                    ptr: *ptr,
+                    offset: Value::Imm(rv::Imm($imm - offset)),
+                };
+                $block.insts.splice(0..3, vec![inst]);
+            }
+            $cache.insert($rs1, (rslt, *$imm));
+        }
+    };
+}
+
+pub fn run(mut prog: Prog) -> Prog {
     for func in &mut prog.funcs {
-        if func.dynamic {
+        if func.opaque {
             continue;
         }
-
         let targets = find_jump_targets(func);
-        let mut stat = HashMap::new();
+        let mut cache = HashMap::new();
         for block in &mut func.inst_blocks {
             if targets.contains(&block.rv_inst.address()) {
-                stat.clear();
+                cache.clear();
             }
             match &block.rv_inst {
                 rv::Inst::Lb {
+                    rd,
+                    imm: rv::Imm(imm),
+                    rs1,
+                    ..
+                }|
+                rv::Inst::Lh {
                     rd,
                     imm: rv::Imm(imm),
                     rs1,
@@ -52,24 +73,10 @@ pub fn run(mut prog: ll::Prog) -> ll::Prog {
                     rs1,
                     ..
                 } => {
-                    if rs1 == &rv::Reg::Gp {
-                        stat.remove(rd);
-                    } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                        stat.remove(rd);
-                    } else {
-                        let ll::Inst::Getmemptr { rslt, .. } = block.insts[2] else { unreachable!()};
-                        if let Some((offset, ptr)) = stat.get(rs1) {
-                            let inst = ll::Inst::Getelementptr {
-                                rslt,
-                                ptr: *ptr,
-                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                            };
-                            block.insts.splice(0..3, vec![inst]);
-                        }
-                        stat.insert(rs1, (*imm, rslt));
-                        stat.remove(rd);
-                    }
+                    use_cache!(rs1, func, block, cache, imm);
+                    cache.remove(rd);
                 }
+                
                 rv::Inst::Sb {
                     imm: rv::Imm(imm),
                     rs1,
@@ -84,43 +91,12 @@ pub fn run(mut prog: ll::Prog) -> ll::Prog {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                } => {
-                    if rs1 == &rv::Reg::Gp {
-                    } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                    } else {
-                        let ll::Inst::Getmemptr { rslt, .. } = block.insts[4] else {unreachable!()};
-                        if let Some((offset, ptr)) = stat.get(rs1) {
-                            let inst = ll::Inst::Getelementptr {
-                                rslt,
-                                ptr: *ptr,
-                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                            };
-                            block.insts.splice(2..5, vec![inst]);
-                        }
-                        stat.insert(rs1, (*imm, rslt));
-                    }
-                }
-                rv::Inst::Sd {
+                } 
+                |rv::Inst::Sd {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                } => {
-                    if rs1 == &rv::Reg::Gp {
-                    } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                    } else {
-                        let ll::Inst::Getmemptr { rslt, .. } = block.insts[3] else {unreachable!()};
-                        if let Some((offset, ptr)) = stat.get(rs1) {
-                            let inst = ll::Inst::Getelementptr {
-                                rslt,
-                                ptr: *ptr,
-                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                            };
-                            block.insts.splice(1..4, vec![inst]);
-                        }
-                        stat.insert(rs1, (*imm, rslt));
-                    }
-                }
-                rv::Inst::Flw {
+                } |rv::Inst::Flw {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
@@ -129,63 +105,17 @@ pub fn run(mut prog: ll::Prog) -> ll::Prog {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                } => {
-                    if rs1 == &rv::Reg::Gp {
-                    } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                    } else {
-                        let ll::Inst::Getmemptr { rslt, .. } = block.insts[2] else { unreachable!()};
-                        if let Some((offset, ptr)) = stat.get(rs1) {
-                            let inst = ll::Inst::Getelementptr {
-                                rslt,
-                                ptr: *ptr,
-                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                            };
-                            block.insts.splice(0..3, vec![inst]);
-                        }
-                        stat.insert(rs1, (*imm, rslt));
-                    }
-                }
-                rv::Inst::Fsw {
+                } |rv::Inst::Fsw {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                } => {
-                    if rs1 == &rv::Reg::Gp {
-                    } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                    } else {
-                        let ll::Inst::Getmemptr { rslt, .. } = block.insts[5] else {unreachable!()};
-                        if let Some((offset, ptr)) = stat.get(rs1) {
-                            let inst = ll::Inst::Getelementptr {
-                                rslt,
-                                ptr: *ptr,
-                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                            };
-                            block.insts.splice(3..6, vec![inst]);
-                        }
-                        stat.insert(rs1, (*imm, rslt));
-                    }
-                }
-                rv::Inst::Fsd {
+                } |rv::Inst::Fsd {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                } => {
-                    if rs1 == &rv::Reg::Gp {
-                    } else if rs1 == &rv::Reg::Sp && !func.stack_vars.is_empty() {
-                    } else {
-                        let ll::Inst::Getmemptr { rslt, .. } = block.insts[4] else {unreachable!()};
-                        if let Some((offset, ptr)) = stat.get(rs1) {
-                            let inst = ll::Inst::Getelementptr {
-                                rslt,
-                                ptr: *ptr,
-                                offset: ll::Value::Imm(rv::Imm(imm - offset)),
-                            };
-                            block.insts.splice(2..5, vec![inst]);
-                        }
-                        stat.insert(rs1, (*imm, rslt));
-                    }
-                }
+                } => use_cache!(rs1, func, block, cache, imm),
 
+                // RV32/RV64
                 rv::Inst::Lui {rd,..}
                 | rv::Inst::Auipc {rd,..}
                 | rv::Inst::Addi {rd,..}
@@ -268,6 +198,7 @@ pub fn run(mut prog: ll::Prog) -> ll::Prog {
                 | rv::Inst::AmominuD {rd,..}
                 | rv::Inst::AmomaxuD {rd,..}
 
+                // RV32F/RV64F/RV32D/RV64D
                 | rv::Inst::FcvtWS {rd,..}
                 | rv::Inst::FcvtWuS {rd,..}
                 | rv::Inst::FmvXW {rd,..}
@@ -287,6 +218,7 @@ pub fn run(mut prog: ll::Prog) -> ll::Prog {
                 | rv::Inst::FcvtLuD {rd,..}
                 | rv::Inst::FmvXD {rd,..}
 
+                // Pseudoinstructions
                 | rv::Inst::Li {rd,..}
                 | rv::Inst::Mv {rd,..}
                 | rv::Inst::Not {rd,..}
@@ -306,57 +238,60 @@ pub fn run(mut prog: ll::Prog) -> ll::Prog {
                 | rv::Inst::Frrm {rd,..}
                 | rv::Inst::Fsrm {rd,..}
                 | rv::Inst::Frflags {rd,..}
-                | rv::Inst::Fsflags {rd,..} => {stat.remove(rd);}
-                rv::Inst::Ecall {..} => {stat.remove(&rv::Reg::A0);}
+                | rv::Inst::Fsflags {rd,..} => {cache.remove(rd);}
+
+                // Function calls
                 rv::Inst::Jal {rd,..}
                 | rv::Inst::Jalr {rd,..} => {
-                    stat.remove(rd);
-                    stat.remove(&rv::Reg::Ra);
-                    stat.remove(&rv::Reg::T0);
-                    stat.remove(&rv::Reg::T1);
-                    stat.remove(&rv::Reg::T2);
-                    stat.remove(&rv::Reg::T3);
-                    stat.remove(&rv::Reg::T4);
-                    stat.remove(&rv::Reg::T5);
-                    stat.remove(&rv::Reg::T6);
-                    stat.remove(&rv::Reg::A0);
-                    stat.remove(&rv::Reg::A1);
-                    stat.remove(&rv::Reg::A2);
-                    stat.remove(&rv::Reg::A3);
-                    stat.remove(&rv::Reg::A4);
-                    stat.remove(&rv::Reg::A5);
-                    stat.remove(&rv::Reg::A6);
-                    stat.remove(&rv::Reg::A7);
+                    cache.remove(rd);
+                    cache.remove(&rv::Reg::Ra);
+                    cache.remove(&rv::Reg::T0);
+                    cache.remove(&rv::Reg::T1);
+                    cache.remove(&rv::Reg::T2);
+                    cache.remove(&rv::Reg::A0);
+                    cache.remove(&rv::Reg::A1);
+                    cache.remove(&rv::Reg::A2);
+                    cache.remove(&rv::Reg::A3);
+                    cache.remove(&rv::Reg::A4);
+                    cache.remove(&rv::Reg::A5);
+                    cache.remove(&rv::Reg::A6);
+                    cache.remove(&rv::Reg::A7);
+                    cache.remove(&rv::Reg::T3);
+                    cache.remove(&rv::Reg::T4);
+                    cache.remove(&rv::Reg::T5);
+                    cache.remove(&rv::Reg::T6);
                 }
+                rv::Inst::Ecall {..} => {cache.remove(&rv::Reg::A0);}
                 rv::Inst::PseudoJal{..}
                 | rv::Inst::PseudoJalr{..}
                 | rv::Inst::OffsetJalr{..} => {
-                    stat.remove(&rv::Reg::Ra);
-                    stat.remove(&rv::Reg::T0);
-                    stat.remove(&rv::Reg::T1);
-                    stat.remove(&rv::Reg::T2);
-                    stat.remove(&rv::Reg::T3);
-                    stat.remove(&rv::Reg::T4);
-                    stat.remove(&rv::Reg::T5);
-                    stat.remove(&rv::Reg::T6);
-                    stat.remove(&rv::Reg::A0);
-                    stat.remove(&rv::Reg::A1);
-                    stat.remove(&rv::Reg::A2);
-                    stat.remove(&rv::Reg::A3);
-                    stat.remove(&rv::Reg::A4);
-                    stat.remove(&rv::Reg::A5);
-                    stat.remove(&rv::Reg::A6);
-                    stat.remove(&rv::Reg::A7);
+                    cache.remove(&rv::Reg::Ra);
+                    cache.remove(&rv::Reg::T0);
+                    cache.remove(&rv::Reg::T1);
+                    cache.remove(&rv::Reg::T2);
+                    cache.remove(&rv::Reg::A0);
+                    cache.remove(&rv::Reg::A1);
+                    cache.remove(&rv::Reg::A2);
+                    cache.remove(&rv::Reg::A3);
+                    cache.remove(&rv::Reg::A4);
+                    cache.remove(&rv::Reg::A5);
+                    cache.remove(&rv::Reg::A6);
+                    cache.remove(&rv::Reg::A7);
+                    cache.remove(&rv::Reg::T3);
+                    cache.remove(&rv::Reg::T4);
+                    cache.remove(&rv::Reg::T5);
+                    cache.remove(&rv::Reg::T6);
                 }
-                _ => ()
+
+                _ => continue,
             }
         }
     }
     prog
 }
 
-fn find_jump_targets(func: &ll::Func) -> HashSet<rv::Addr> {
-    let mut blocks = HashSet::new();
+fn find_jump_targets(func: &Func) -> HashSet<rv::Addr> {
+    let mut targets = HashSet::new();
     for block in &func.inst_blocks {
         match &block.rv_inst {
             rv::Inst::Beq { addr, .. }
@@ -371,9 +306,9 @@ fn find_jump_targets(func: &ll::Func) -> HashSet<rv::Addr> {
             | rv::Inst::Bgez { addr, .. }
             | rv::Inst::Bltz { addr, .. }
             | rv::Inst::Bgtz { addr, .. }
-            | rv::Inst::J { addr, .. } => blocks.insert(*addr),
+            | rv::Inst::J { addr, .. } => targets.insert(*addr),
             _ => continue,
         };
     }
-    blocks
+    targets
 }

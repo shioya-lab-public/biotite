@@ -251,7 +251,7 @@ pub struct Func {
     pub symbol: String,
     pub address: Value,
     pub inst_blocks: Vec<InstBlock>,
-    pub dynamic: bool,
+    pub opaque: bool,
     pub stack_vars: Vec<Value>,
     pub used_regs: Vec<rv::Reg>,
     pub used_fregs: Vec<rv::FReg>,
@@ -305,7 +305,7 @@ define i64 @.{addr}(i64 %entry) {{
                 Self::build_stack_loading(&self.used_regs, &self.used_fregs, "entry");
             func += &format!("\n  {stack_loading}\n");
         }
-        if self.dynamic {
+        if self.opaque {
             let mut dispatcher = String::from("switch i64 %addr, label %func_dispatcher [");
             for inst_block in &self.inst_blocks {
                 let addr = Value::Addr(inst_block.rv_inst.address());

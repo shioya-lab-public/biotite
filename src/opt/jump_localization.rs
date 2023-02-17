@@ -20,7 +20,7 @@ pub fn run(mut prog: ll::Prog) -> ll::Prog {
                     | rv::Inst::OffsetJalr { .. }
             )
         });
-        func.dynamic = is_dyn;
+        func.opaque = is_dyn;
 
         let addrs: HashSet<_> = func
             .inst_blocks
@@ -240,7 +240,7 @@ pub fn run(mut prog: ll::Prog) -> ll::Prog {
 pub fn non_local_jumps(mut prog: ll::Prog) -> ll::Prog {
     for func in &mut prog.funcs {
         if is_longjmp_except_func(func) {
-            func.dynamic = true;
+            func.opaque = true;
             for block in &mut func.inst_blocks {
                 match block.rv_inst {
                     rv::Inst::Jal {
