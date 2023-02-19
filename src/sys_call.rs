@@ -27,7 +27,8 @@ pub fn build(arch: Option<String>) -> Option<String> {
 }}"))
         .collect::<Vec<_>>()
         .join("\n\n");
-    Some(format!("declare i64 @syscall(i64, ...)
+    Some(format!(
+        "declare i64 @syscall(i64, ...)
 declare i32* @__errno_location()
 
 define i8* @.sys_get_mem_ptr(i64 %addr) {{
@@ -68,5 +69,6 @@ not_found:
   ret i64 -1
 }}
 
-{funcs}"))
+{funcs}"
+    ))
 }

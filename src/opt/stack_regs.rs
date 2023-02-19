@@ -1,65 +1,62 @@
-use crate::llvm_isa as ll;
+use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
 use std::collections::HashSet;
 
-pub fn run(mut prog: ll::Prog) -> ll::Prog {
+pub fn run(mut prog: Prog) -> Prog {
     for func in &mut prog.funcs {
-        if func.opaque {
+        if func.is_opaque {
             continue;
         }
         let mut regs = HashSet::new();
         let mut fregs = HashSet::new();
-        let mut ecall = false;
         for block in &func.inst_blocks {
-            let (rs, frs) = get_regs(block.rv_inst.clone());
+            let (rs, frs) = get_regs(&block.rv_inst);
             regs.extend(rs);
             fregs.extend(frs);
-            if let rv::Inst::Ecall { .. } = block.rv_inst {
-                ecall = true;
+            if let rv::Inst::J { .. } = block.rv_inst {
+                if let Inst::Call { .. } = block.insts[0] {
+                    regs.insert(rv::Reg::Ra);
+                }
             }
-        }
-        if ecall {
-            regs.extend(vec![
-                rv::Reg::A7,
-                rv::Reg::A0,
-                rv::Reg::A1,
-                rv::Reg::A2,
-                rv::Reg::A3,
-                rv::Reg::A4,
-                rv::Reg::A5,
-            ]);
+            if let rv::Inst::Jal { .. } | rv::Inst::PseudoJal { .. } = block.rv_inst {
+                if let Inst::Memcpy { .. }
+                | Inst::Memmove { .. }
+                | Inst::Memset { .. }
+                | Inst::Memcmp { .. } = block.insts[1]
+                {
+                    regs.extend(vec![rv::Reg::A0, rv::Reg::A1, rv::Reg::A2]);
+                }
+            }
         }
         func.used_regs = regs.into_iter().collect();
         func.used_fregs = fregs.into_iter().collect();
         for block in &mut func.inst_blocks {
             for inst in &mut block.insts {
-                if let ll::Inst::Call { regs, fregs, .. } = inst {
-                    *regs = func.used_regs.clone();
-                    *fregs = func.used_fregs.clone();
-                }
                 match inst {
-                    ll::Inst::Load { ptr, .. } => {
-                        if let ll::Value::Reg(reg) = ptr {
-                            *ptr = ll::Value::StkReg(*reg);
-                        } else if let ll::Value::FReg(freg) = ptr {
-                            *ptr = ll::Value::StkFReg(*freg);
-                        }
-                    }
-                    ll::Inst::Store { ptr, .. } => {
-                        if let ll::Value::Reg(reg) = ptr {
-                            *ptr = ll::Value::StkReg(*reg);
-                        } else if let ll::Value::FReg(freg) = ptr {
-                            *ptr = ll::Value::StkFReg(*freg);
-                        }
-                    }
-                    ll::Inst::ContRet { stk, .. } => *stk = true,
-                    ll::Inst::DispRet { stk, .. } => *stk = true,
-                    ll::Inst::DispFunc { regs, fregs, .. } => {
+                    Inst::Call { regs, fregs, .. } => {
                         *regs = func.used_regs.clone();
                         *fregs = func.used_fregs.clone();
                     }
-                    ll::Inst::CheckRet { stk, .. } => *stk = true,
-                    _ => (),
+                    Inst::Load { ptr, .. }|Inst::Store { ptr, .. } => {
+                        if let Value::Reg(reg) = ptr {
+                            *ptr = Value::StkReg(*reg);
+                        } else if let Value::FReg(freg) = ptr {
+                            *ptr = Value::StkFReg(*freg);
+                        }
+                    }
+                    Inst::Checkret { stk, .. }
+                    | Inst::Contret { stk, .. }
+                    | Inst::Dispret { stk, .. }
+                    | Inst::Memcpy { stk, .. }
+                    | Inst::Memmove { stk, .. }
+                    | Inst::Memset { stk, .. }
+                    | Inst::Memcmp { stk, .. }
+                    => *stk = true,
+                    Inst::Dispfunc { regs, fregs, .. } => {
+                        *regs = func.used_regs.clone();
+                        *fregs = func.used_fregs.clone();
+                    }
+                    _ => continue,
                 }
             }
         }
@@ -67,10 +64,10 @@ pub fn run(mut prog: ll::Prog) -> ll::Prog {
     prog
 }
 
-fn get_regs(inst: rv::Inst) -> (Vec<rv::Reg>, Vec<rv::FReg>) {
+fn get_regs(inst: &rv::Inst) -> (Vec<rv::Reg>, Vec<rv::FReg>) {
     use rv::Inst::*;
 
-    match inst {
+    match inst.clone() {
         // RV32I
         Lui { rd, .. } => (vec![rd], vec![]),
         Auipc { rd, .. } => (vec![rd], vec![]),
@@ -110,16 +107,24 @@ fn get_regs(inst: rv::Inst) -> (Vec<rv::Reg>, Vec<rv::FReg>) {
         Or { rd, rs1, rs2, .. } => (vec![rd, rs1, rs2], vec![]),
         And { rd, rs1, rs2, .. } => (vec![rd, rs1, rs2], vec![]),
         Fence { .. } => (vec![], vec![]),
-        Ecall { .. } => (vec![], vec![]),
+        Ecall { .. } => (
+            vec![
+                rv::Reg::A7,
+                rv::Reg::A0,
+                rv::Reg::A1,
+                rv::Reg::A2,
+                rv::Reg::A3,
+                rv::Reg::A4,
+                rv::Reg::A5,
+            ],
+            vec![],
+        ),
         Ebreak { .. } => (vec![], vec![]),
 
         // RV64I (in addition to RV32I)
         Lwu { rd, rs1, .. } => (vec![rd, rs1], vec![]),
         Ld { rd, rs1, .. } => (vec![rd, rs1], vec![]),
         Sd { rs2, rs1, .. } => (vec![rs2, rs1], vec![]),
-        // `slli` is the same as its RV32I version.
-        // `srli` is the same as its RV32I version.
-        // `srai` is the same as its RV32I version.
         Addiw { rd, rs1, .. } => (vec![rd, rs1], vec![]),
         Slliw { rd, rs1, .. } => (vec![rd, rs1], vec![]),
         Srliw { rd, rs1, .. } => (vec![rd, rs1], vec![]),
@@ -339,7 +344,6 @@ fn get_regs(inst: rv::Inst) -> (Vec<rv::Reg>, Vec<rv::FReg>) {
         FmvDX { frd, rs1, .. } => (vec![rs1], vec![frd]),
 
         // Pseudoinstructions
-        // Pseudoinstructions using symbols are compiled to other instructions.
         Nop { .. } => (vec![], vec![]),
         Li { rd, .. } => (vec![rd], vec![]),
         Mv { rd, rs1, .. } => (vec![rd, rs1], vec![]),
@@ -366,17 +370,12 @@ fn get_regs(inst: rv::Inst) -> (Vec<rv::Reg>, Vec<rv::FReg>) {
         Bltz { rs1, .. } => (vec![rs1], vec![]),
         Bgtz { rs1, .. } => (vec![rs1], vec![]),
 
-        // `bgt` is compiled to other instructions.
-        // `ble` is compiled to other instructions.
-        // `bgtu` is compiled to other instructions.
-        // `bleu` is compiled to other instructions.
         J { .. } => (vec![], vec![]),
         PseudoJal { .. } => (vec![rv::Reg::Ra], vec![]),
         Jr { rs1, .. } => (vec![rs1], vec![]),
         PseudoJalr { rs1, .. } => (vec![rs1, rv::Reg::Ra], vec![]),
         Ret { .. } => (vec![rv::Reg::Ra], vec![]),
-        // `call` is compiled to other instructions.
-        // `tail` is compiled to other instructions.
+
         PseudoFence { .. } => (vec![], vec![]),
 
         Rdinstret { rd, .. } => (vec![rd], vec![]),

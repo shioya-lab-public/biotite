@@ -251,7 +251,7 @@ pub struct Func {
     pub symbol: String,
     pub address: Value,
     pub inst_blocks: Vec<InstBlock>,
-    pub opaque: bool,
+    pub is_opaque: bool,
     pub stack_vars: Vec<Value>,
     pub used_regs: Vec<rv::Reg>,
     pub used_fregs: Vec<rv::FReg>,
@@ -305,7 +305,7 @@ define i64 @.{addr}(i64 %entry) {{
                 Self::build_stack_loading(&self.used_regs, &self.used_fregs, "entry");
             func += &format!("\n  {stack_loading}\n");
         }
-        if self.opaque {
+        if self.is_opaque {
             let mut dispatcher = String::from("switch i64 %addr, label %func_dispatcher [");
             for inst_block in &self.inst_blocks {
                 let addr = Value::Addr(inst_block.rv_inst.address());
@@ -426,9 +426,9 @@ impl Func {
             .join("\n");
         match (regs.is_empty(), fregs.is_empty()) {
             (true, true) => String::new(),
-            (true, false) => format!("{fregs}", fregs=&fregs[2..]),
-            (false, true) => format!("{regs}", regs=&regs[2..]),
-            (false, false) => format!("{regs}\n{fregs}", regs=&regs[2..]),
+            (true, false) => format!("{fregs}", fregs = &fregs[2..]),
+            (false, true) => format!("{regs}", regs = &regs[2..]),
+            (false, false) => format!("{regs}\n{fregs}", regs = &regs[2..]),
         }
     }
 
@@ -459,9 +459,9 @@ impl Func {
             .join("\n");
         match (regs.is_empty(), fregs.is_empty()) {
             (true, true) => String::new(),
-            (true, false) => format!("{fregs}", fregs=&fregs[2..]),
-            (false, true) => format!("{regs}", regs=&regs[2..]),
-            (false, false) => format!("{regs}\n{fregs}", regs=&regs[2..]),
+            (true, false) => format!("{fregs}", fregs = &fregs[2..]),
+            (false, true) => format!("{regs}", regs = &regs[2..]),
+            (false, false) => format!("{regs}\n{fregs}", regs = &regs[2..]),
         }
     }
 }
@@ -491,11 +491,11 @@ impl Display for InstBlock {
             self.insts.last(),
             Some(Inst::Ret { .. })
                 | Some(Inst::Br { .. })
-                | Some(Inst::ConBr { .. })
-                | Some(Inst::CheckRet { .. })
-                | Some(Inst::ContRet { .. })
-                | Some(Inst::DispFunc { .. })
-                | Some(Inst::DispRet { .. })
+                | Some(Inst::Conbr { .. })
+                | Some(Inst::Checkret { .. })
+                | Some(Inst::Contret { .. })
+                | Some(Inst::Dispfunc { .. })
+                | Some(Inst::Dispret { .. })
         ) {
             let next_pc = next_pc!(
                 next_pc,
@@ -503,8 +503,10 @@ impl Display for InstBlock {
                 self.rv_inst.is_compressed()
             );
             let br = Inst::Br { addr: next_pc };
-            block += &format!("
-  {br}");
+            block += &format!(
+                "
+  {br}"
+            );
         };
         write!(f, "{block}")
     }
@@ -519,7 +521,7 @@ pub enum Inst {
     Br {
         addr: Value,
     },
-    ConBr {
+    Conbr {
         cond: Value,
         iftrue: Value,
         iffalse: Value,
@@ -813,22 +815,22 @@ pub enum Inst {
         arg6: Value,
     },
 
-    CheckRet {
+    Checkret {
         addr: Value,
         stk: bool,
     },
-    ContRet {
+    Contret {
         addr: Value,
         next_pc: Value,
         stk: bool,
     },
-    DispFunc {
+    Dispfunc {
         addr: Value,
         target: Value,
         regs: Vec<rv::Reg>,
         fregs: Vec<rv::FReg>,
     },
-    DispRet {
+    Dispret {
         addr: Value,
         next_pc: Value,
         stk: bool,
@@ -861,7 +863,7 @@ impl Display for Inst {
             Ret { val } => write!(f, "store i64 {val}, i64* %entry_ptr
   br label %ret"),
             Br { addr } => write!(f, "br label %{addr}"),
-            ConBr { cond, iftrue, iffalse } => write!(f, "br i1 {cond}, label %{iftrue}, label %{iffalse}"),
+            Conbr { cond, iftrue, iffalse } => write!(f, "br i1 {cond}, label %{iftrue}, label %{iffalse}"),
             Unreachable => write!(f, "unreachable"),
 
             // Unary Operations
@@ -945,7 +947,7 @@ impl Display for Inst {
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, i64, i64, i64, i64, i64, i64) @.sys_call(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
 
-            CheckRet { addr , stk} => write!(f, "%{addr}_0 = load i64, i64* {ra}
+            Checkret { addr , stk} => write!(f, "%{addr}_0 = load i64, i64* {ra}
   store i64 %{addr}_0, i64* %entry_ptr
   %{addr}_1 = load i1, i1* %local_jalr_ptr
   %{addr}_2 = icmp eq i1 %{addr}_1, 1
@@ -953,13 +955,13 @@ impl Display for Inst {
 {addr}_local:
   store i1 0, i1* %local_jalr_ptr
   br label %dispatcher", ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}),
-            ContRet { addr, next_pc , stk} => write!(f, "%{addr}_ra = load i64, i64* {ra}
+            Contret { addr, next_pc , stk} => write!(f, "%{addr}_ra = load i64, i64* {ra}
   %{addr}_is_next_pc = icmp eq i64 %{addr}_ra, {next_pc}
   br i1 %{addr}_is_next_pc, label %{next_pc}, label %{addr}_cont
 {addr}_cont:
   store i64 %{addr}_ra, i64* %entry_ptr
   br label %ret", ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}),
-  DispFunc { addr, target ,regs, fregs} => {
+  Dispfunc { addr, target ,regs, fregs} => {
     let call = if !regs.is_empty() || !fregs.is_empty() {
         format!("{stack_storing}
   %{addr}_ra = call i64 @.dispatch_func(i64 {target})
@@ -978,7 +980,7 @@ impl Display for Inst {
   store i64 %{addr}_ra, i64* %entry_ptr
   br label %dispatcher")
   }
-            DispRet { addr, next_pc, stk } => write!(f, "%{addr}_ra = load i64, i64* {ra}
+            Dispret { addr, next_pc, stk } => write!(f, "%{addr}_ra = load i64, i64* {ra}
   %{addr}_is_next_pc = icmp eq i64 %{addr}_ra, {next_pc}
   br i1 %{addr}_is_next_pc, label %{next_pc}, label %{addr}_disp
 {addr}_disp:

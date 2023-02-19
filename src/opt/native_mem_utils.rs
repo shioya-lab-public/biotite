@@ -1,50 +1,43 @@
-use crate::llvm_isa as ll;
+use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
-use std::collections::HashSet;
 
-pub fn run(mut prog: ll::Prog) -> ll::Prog {
+pub fn run(mut prog: Prog) -> Prog {
     prog.native_mem_utils = true;
     for func in &mut prog.funcs {
         for block in &mut func.inst_blocks {
-            if let rv::Inst::PseudoJal {
+            if let rv::Inst::Jal {
                 symbol, address, ..
             }
-            | rv::Inst::Jal {
+            | rv::Inst::PseudoJal {
                 symbol, address, ..
             } = &block.rv_inst
             {
                 match symbol.as_deref() {
                     Some("<memcpy>") => {
-                        block.insts = vec![ll::Inst::Memcpy {
-                            addr: ll::Value::Addr(*address),
-                            stk: !func.opaque,
-                        }]
+                        block.insts[1] = Inst::Memcpy {
+                            addr: Value::Addr(*address),
+                            stk: false,
+                        }
                     }
                     Some("<memmove>") => {
-                        block.insts = vec![ll::Inst::Memmove {
-                            addr: ll::Value::Addr(*address),
-                            stk: !func.opaque,
-                        }]
+                        block.insts[1] = Inst::Memmove {
+                            addr: Value::Addr(*address),
+                            stk: false,
+                        }
                     }
                     Some("<memset>") => {
-                        block.insts = vec![ll::Inst::Memset {
-                            addr: ll::Value::Addr(*address),
-                            stk: !func.opaque,
-                        }]
+                        block.insts[1] = Inst::Memset {
+                            addr: Value::Addr(*address),
+                            stk: false,
+                        }
                     }
                     Some("<memcmp>") => {
-                        block.insts = vec![ll::Inst::Memcmp {
-                            addr: ll::Value::Addr(*address),
-                            stk: !func.opaque,
-                        }]
+                        block.insts[1] = Inst::Memcmp {
+                            addr: Value::Addr(*address),
+                            stk: false,
+                        }
                     }
                     _ => continue,
-                }
-                if !func.opaque {
-                    func.used_regs
-                        .extend(vec![rv::Reg::A0, rv::Reg::A1, rv::Reg::A2]);
-                    let set: HashSet<_> = func.used_regs.drain(..).collect();
-                    func.used_regs.extend(set.into_iter());
                 }
             }
         }

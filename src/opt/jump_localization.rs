@@ -1,291 +1,149 @@
-use crate::llvm_isa as ll;
+use crate::llvm_isa::{Func, Inst, Prog, Type, Value};
 use crate::llvm_macro::next_pc;
 use crate::riscv_isa as rv;
 use std::collections::HashSet;
 
-fn get_next_pc(inst: &rv::Inst) -> ll::Value {
-    use crate::llvm_isa::*;
-    next_pc!(next_pc, inst.address(), inst.is_compressed())
-}
-
-pub fn run(mut prog: ll::Prog) -> ll::Prog {
+pub fn run(mut prog: Prog) -> Prog {
     for func in &mut prog.funcs {
-        let is_dyn = func.inst_blocks.iter().any(|block| {
+        func.is_opaque = func.inst_blocks.iter().any(|block| {
             matches!(
                 block.rv_inst,
-                rv::Inst::Jr { .. }
-                    | rv::Inst::OffsetJr { .. }
-                    | rv::Inst::Jalr { .. }
+                rv::Inst::Jalr { .. }
+                    | rv::Inst::Jr { .. }
                     | rv::Inst::PseudoJalr { .. }
                     | rv::Inst::OffsetJalr { .. }
+                    | rv::Inst::OffsetJr { .. }
             )
         });
-        func.opaque = is_dyn;
 
         let addrs: HashSet<_> = func
             .inst_blocks
             .iter()
-            .map(|b| b.rv_inst.address())
+            .map(|block| block.rv_inst.address())
             .collect();
         for block in &mut func.inst_blocks {
             match block.rv_inst {
                 rv::Inst::J { address, addr, .. } => {
                     if !addrs.contains(&addr) {
-                        let rslt = ll::Value::Temp(address, 0);
-                        let target = ll::Value::Addr(addr);
-                        let val = ll::Value::Addr(rv::Addr(0));
                         block.insts = vec![
-                            ll::Inst::Call {
-                                rslt,
-                                target,
+                            Inst::Call {
+                                rslt: Value::Temp(address, 0),
+                                target: Value::Addr(addr),
                                 regs: Vec::new(),
                                 fregs: Vec::new(),
                             },
-                            ll::Inst::Ret { val },
+                            Inst::Load {
+                                rslt: Value::Temp(address, 1),
+                                ty: Type::I64,
+                                ptr: Value::Reg(rv::Reg::Ra),
+                            },
+                            Inst::Ret {
+                                val: Value::Temp(address, 1),
+                            },
                         ];
                     }
                 }
-                rv::Inst::Jal {
-                    address, rd, addr, ..
-                } => {
-                    block.insts = vec![
-                        ll::Inst::Store {
-                            ty: ll::Type::I64,
-                            val: get_next_pc(&block.rv_inst),
-                            ptr: ll::Value::Reg(rd),
-                        },
-                        ll::Inst::Call {
-                            rslt: ll::Value::Temp(address, 0),
-                            target: ll::Value::Addr(addr),
-                            regs: Vec::new(),
-                            fregs: Vec::new(),
-                        },
-                        ll::Inst::ContRet {
-                            addr: ll::Value::Addr(address),
-                            next_pc: get_next_pc(&block.rv_inst),
-                            stk: false,
-                        },
-                    ]
+                rv::Inst::Jal { address, addr, .. } | rv::Inst::PseudoJal { address, addr, .. }
+                    if matches!(block.insts[1], Inst::Ret { .. }) =>
+                {
+                    block.insts.splice(
+                        1..2,
+                        vec![
+                            Inst::Call {
+                                rslt: Value::Temp(address, 0),
+                                target: Value::Addr(addr),
+                                regs: Vec::new(),
+                                fregs: Vec::new(),
+                            },
+                            Inst::Contret {
+                                addr: Value::Addr(address),
+                                next_pc: next_pc!(
+                                    next_pc,
+                                    block.rv_inst.address(),
+                                    block.rv_inst.is_compressed()
+                                ),
+                                stk: false,
+                            },
+                        ],
+                    );
                 }
-                rv::Inst::PseudoJal { address, addr, .. } => {
-                    block.insts = vec![
-                        ll::Inst::Store {
-                            ty: ll::Type::I64,
-                            val: get_next_pc(&block.rv_inst),
-                            ptr: ll::Value::Reg(rv::Reg::Ra),
-                        },
-                        ll::Inst::Call {
-                            rslt: ll::Value::Temp(address, 0),
-                            target: ll::Value::Addr(addr),
-                            regs: Vec::new(),
-                            fregs: Vec::new(),
-                        },
-                        ll::Inst::ContRet {
-                            addr: ll::Value::Addr(address),
-                            next_pc: get_next_pc(&block.rv_inst),
-                            stk: false,
-                        },
-                    ]
-                }
-                _ => (),
+                _ => continue,
             }
         }
 
-        if is_dyn {
+        if func.is_opaque {
             for block in &mut func.inst_blocks {
                 match block.rv_inst {
-                    rv::Inst::Jr { address, rs1, .. } => {
-                        block.insts = vec![
-                            ll::Inst::Load {
-                                rslt: ll::Value::Temp(address, 0),
-                                ty: ll::Type::I64,
-                                ptr: ll::Value::Reg(rs1),
-                            },
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: ll::Value::Temp(address, 0),
-                                ptr: ll::Value::EntryPtr,
-                            },
-                            ll::Inst::Br {
-                                addr: ll::Value::Dispatcher,
-                            },
-                        ]
+                    rv::Inst::Jalr { address, .. } | rv::Inst::OffsetJalr { address, .. } => {
+                        block.insts[3] = Inst::Dispfunc {
+                            addr: Value::Addr(address),
+                            target: Value::Temp(address, 1),
+                            regs: Vec::new(),
+                            fregs: Vec::new(),
+                        }
                     }
-                    rv::Inst::OffsetJr {
-                        address, imm, rs1, ..
-                    } => {
-                        block.insts = vec![
-                            ll::Inst::Load {
-                                rslt: ll::Value::Temp(address, 0),
-                                ty: ll::Type::I64,
-                                ptr: ll::Value::Reg(rs1),
-                            },
-                            ll::Inst::Add {
-                                rslt: ll::Value::Temp(address, 1),
-                                ty: ll::Type::I64,
-                                op1: ll::Value::Temp(address, 0),
-                                op2: ll::Value::Imm(imm),
-                            },
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: ll::Value::Temp(address, 1),
-                                ptr: ll::Value::EntryPtr,
-                            },
-                            ll::Inst::Br {
-                                addr: ll::Value::Dispatcher,
-                            },
-                        ]
+                    rv::Inst::Jr { address, .. } => {
+                        block.insts.splice(
+                            1..2,
+                            vec![
+                                Inst::Store {
+                                    ty: Type::I64,
+                                    val: Value::Temp(address, 0),
+                                    ptr: Value::EntryPtr,
+                                },
+                                Inst::Br {
+                                    addr: Value::Dispatcher,
+                                },
+                            ],
+                        );
                     }
-                    rv::Inst::Jalr {
-                        address,
-                        rd,
-                        imm,
-                        rs1,
-                        ..
-                    } => {
-                        block.insts = vec![
-                            ll::Inst::Load {
-                                rslt: ll::Value::Temp(address, 0),
-                                ty: ll::Type::I64,
-                                ptr: ll::Value::Reg(rs1),
-                            },
-                            ll::Inst::Add {
-                                rslt: ll::Value::Temp(address, 1),
-                                ty: ll::Type::I64,
-                                op1: ll::Value::Temp(address, 0),
-                                op2: ll::Value::Imm(imm),
-                            },
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: get_next_pc(&block.rv_inst),
-                                ptr: ll::Value::Reg(rd),
-                            },
-                            ll::Inst::DispFunc {
-                                addr: ll::Value::Addr(address),
-                                target: ll::Value::Temp(address, 1),
-                                regs: Vec::new(),
-                                fregs: Vec::new(),
-                            },
-                        ]
-                    }
-                    rv::Inst::PseudoJalr { address, rs1, .. } => {
-                        block.insts = vec![
-                            ll::Inst::Load {
-                                rslt: ll::Value::Temp(address, 0),
-                                ty: ll::Type::I64,
-                                ptr: ll::Value::Reg(rs1),
-                            },
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: get_next_pc(&block.rv_inst),
-                                ptr: ll::Value::Reg(rv::Reg::Ra),
-                            },
-                            ll::Inst::DispFunc {
-                                addr: ll::Value::Addr(address),
-                                target: ll::Value::Temp(address, 0),
-                                regs: Vec::new(),
-                                fregs: Vec::new(),
-                            },
-                        ]
-                    }
-                    rv::Inst::OffsetJalr {
-                        address, imm, rs1, ..
-                    } => {
-                        block.insts = vec![
-                            ll::Inst::Load {
-                                rslt: ll::Value::Temp(address, 0),
-                                ty: ll::Type::I64,
-                                ptr: ll::Value::Reg(rs1),
-                            },
-                            ll::Inst::Add {
-                                rslt: ll::Value::Temp(address, 1),
-                                ty: ll::Type::I64,
-                                op1: ll::Value::Temp(address, 0),
-                                op2: ll::Value::Imm(imm),
-                            },
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: get_next_pc(&block.rv_inst),
-                                ptr: ll::Value::Reg(rv::Reg::Ra),
-                            },
-                            ll::Inst::DispFunc {
-                                addr: ll::Value::Addr(address),
-                                target: ll::Value::Temp(address, 1),
-                                regs: Vec::new(),
-                                fregs: Vec::new(),
-                            },
-                        ]
+                    rv::Inst::PseudoJalr { address, .. } => {
+                        block.insts[2] = Inst::Dispfunc {
+                            addr: Value::Addr(address),
+                            target: Value::Temp(address, 0),
+                            regs: Vec::new(),
+                            fregs: Vec::new(),
+                        }
                     }
                     rv::Inst::Ret { address, .. } => {
-                        block.insts = vec![ll::Inst::CheckRet {
-                            addr: ll::Value::Addr(address),
+                        block.insts = vec![Inst::Checkret {
+                            addr: Value::Addr(address),
                             stk: false,
                         }]
                     }
+                    rv::Inst::OffsetJr { address, .. } => {
+                        block.insts.splice(
+                            2..3,
+                            vec![
+                                Inst::Store {
+                                    ty: Type::I64,
+                                    val: Value::Temp(address, 1),
+                                    ptr: Value::EntryPtr,
+                                },
+                                Inst::Br {
+                                    addr: Value::Dispatcher,
+                                },
+                            ],
+                        );
+                    }
                     _ => (),
-                }
-            }
-        } else {
-            for block in &mut func.inst_blocks {
-                if let rv::Inst::Ret { .. } = block.rv_inst {
-                    let val = ll::Value::Addr(rv::Addr(0));
-                    block.insts = vec![ll::Inst::Ret { val }];
                 }
             }
         }
     }
-    non_local_jumps(prog)
+    catch_non_local_jumps(prog)
 }
 
-pub fn non_local_jumps(mut prog: ll::Prog) -> ll::Prog {
+fn catch_non_local_jumps(mut prog: Prog) -> Prog {
     for func in &mut prog.funcs {
         if is_longjmp_except_func(func) {
-            func.opaque = true;
+            func.is_opaque = true;
             for block in &mut func.inst_blocks {
-                match block.rv_inst {
-                    rv::Inst::Jal {
-                        address, rd, addr, ..
-                    } => {
-                        block.insts = vec![
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: get_next_pc(&block.rv_inst),
-                                ptr: ll::Value::Reg(rd),
-                            },
-                            ll::Inst::Call {
-                                rslt: ll::Value::Temp(address, 0),
-                                target: ll::Value::Addr(addr),
-                                regs: Vec::new(),
-                                fregs: Vec::new(),
-                            },
-                            ll::Inst::DispRet {
-                                addr: ll::Value::Addr(address),
-                                next_pc: get_next_pc(&block.rv_inst),
-                                stk: false,
-                            },
-                        ]
+                if let rv::Inst::Jal { .. } | rv::Inst::PseudoJal { .. } = block.rv_inst {
+                    if let Some(Inst::Contret { addr, next_pc, stk }) = block.insts.get(2).cloned()
+                    {
+                        block.insts[2] = Inst::Dispret { addr, next_pc, stk };
                     }
-                    rv::Inst::PseudoJal { address, addr, .. } => {
-                        block.insts = vec![
-                            ll::Inst::Store {
-                                ty: ll::Type::I64,
-                                val: get_next_pc(&block.rv_inst),
-                                ptr: ll::Value::Reg(rv::Reg::Ra),
-                            },
-                            ll::Inst::Call {
-                                rslt: ll::Value::Temp(address, 0),
-                                target: ll::Value::Addr(addr),
-                                regs: Vec::new(),
-                                fregs: Vec::new(),
-                            },
-                            ll::Inst::DispRet {
-                                addr: ll::Value::Addr(address),
-                                next_pc: get_next_pc(&block.rv_inst),
-                                stk: false,
-                            },
-                        ]
-                    }
-                    _ => (),
                 }
             }
         }
@@ -293,34 +151,15 @@ pub fn non_local_jumps(mut prog: ll::Prog) -> ll::Prog {
     prog
 }
 
-fn is_longjmp_except_func(func: &ll::Func) -> bool {
-    let mut i = 0;
-    while i < func.inst_blocks.len() - 1 {
-        if let (
-            rv::Inst::Auipc {
-                rd: rv::Reg::Ra, ..
-            },
-            rv::Inst::OffsetJalr {
-                rs1: rv::Reg::Ra, ..
-            },
-        ) = (
-            &func.inst_blocks[i].rv_inst,
-            &func.inst_blocks[i + 1].rv_inst,
-        ) {
-            return true;
-        }
-        i += 1;
-    }
-    if func
-        .inst_blocks
-        .iter()
-        .position(|block| matches!(block.rv_inst.symbol(), Some(sym) if sym == "<_setjmp>"))
-        .is_some()
-    {
-        return true;
-    }
-    func.inst_blocks
-        .iter()
-        .position(|block| matches!(block.rv_inst.symbol(), Some(sym) if sym == "<_Unwind_Resume>" || sym == "<__cxa_begin_catch>" || sym == "<__cxa_end_catch>"))
-        .is_some()
+fn is_longjmp_except_func(func: &Func) -> bool {
+    func.inst_blocks.iter().any(|block| {
+        matches!(
+            block.rv_inst.symbol(),
+            Some("<_setjmp>")
+                | Some("<setjmp>")
+                | Some("<_Unwind_Resume>")
+                | Some("<__cxa_begin_catch>")
+                | Some("<__cxa_end_catch>")
+        )
+    })
 }

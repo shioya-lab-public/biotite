@@ -6,15 +6,15 @@ use rayon::prelude::*;
 pub fn run(rv_prog: rv::Prog, sys_call: Option<String>, src_funcs: Vec<String>) -> Prog {
     let (mem, sp, phdr) = build_mem(&rv_prog.data_blocks);
     let funcs = rv_prog
-    .code_blocks
-    .into_par_iter()
-    .map(trans_code_block)
-    .collect();
-let func_syms = rv_prog
-.func_syms
-.into_iter()
-.map(|(name, addr)| (name, Value::Addr(addr)))
-.collect();
+        .code_blocks
+        .into_par_iter()
+        .map(trans_code_block)
+        .collect();
+    let func_syms = rv_prog
+        .func_syms
+        .into_iter()
+        .map(|(name, addr)| (name, Value::Addr(addr)))
+        .collect();
     Prog {
         entry: Value::Addr(rv_prog.entry),
         tdata: rv_prog.tdata.map(Value::Addr),
@@ -48,12 +48,8 @@ fn trans_code_block(code_block: rv::CodeBlock) -> Func {
         section: code_block.section,
         symbol: code_block.symbol,
         address: Value::Addr(code_block.address),
-        inst_blocks: code_block
-            .insts
-            .into_iter()
-            .map(trans_inst)
-            .collect(),
-        opaque: true,
+        inst_blocks: code_block.insts.into_iter().map(trans_inst).collect(),
+        is_opaque: true,
         stack_vars: Vec::new(),
         used_regs: Vec::new(),
         used_fregs: Vec::new(),

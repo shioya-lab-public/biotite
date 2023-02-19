@@ -1,4 +1,4 @@
-use crate::llvm_isa::*;
+use crate::llvm_isa::{Func, Inst, Prog, Value};
 use crate::riscv_isa as rv;
 use std::collections::{HashMap, HashSet};
 
@@ -21,7 +21,7 @@ macro_rules! use_cache {
 
 pub fn run(mut prog: Prog) -> Prog {
     for func in &mut prog.funcs {
-        if func.opaque {
+        if func.is_opaque {
             continue;
         }
         let targets = find_jump_targets(func);
@@ -76,7 +76,7 @@ pub fn run(mut prog: Prog) -> Prog {
                     use_cache!(rs1, func, block, cache, imm);
                     cache.remove(rd);
                 }
-                
+
                 rv::Inst::Sb {
                     imm: rv::Imm(imm),
                     rs1,
@@ -91,7 +91,7 @@ pub fn run(mut prog: Prog) -> Prog {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                } 
+                }
                 |rv::Inst::Sd {
                     imm: rv::Imm(imm),
                     rs1,
