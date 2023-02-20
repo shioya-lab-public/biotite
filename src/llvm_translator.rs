@@ -36,10 +36,9 @@ fn build_mem(data_blocks: &Vec<rv::DataBlock>) -> (Vec<u8>, Value, Value) {
         mem.resize(start as usize, 0);
         mem.extend(&data_block.bytes);
     }
-    let stk_len = 8192 * 1024;
-    mem.extend(vec![0; stk_len]);
     let sp = Value::Addr(rv::Addr(mem.len() as u64 + 8188 * 1024));
     let phdr = Value::Addr(rv::Addr(mem.len() as u64 + 8190 * 1024));
+    mem.extend(vec![0; 8192 * 1024]);
     (mem, sp, phdr)
 }
 
@@ -1282,12 +1281,12 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
         }
         FabsS { frd, frs1 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Fabs { rslt: _1, ty: f, arg: _0 },
+            Fabs { rslt: _1, ty: d, arg: _0 },
             Store { ty: d, val: _1, ptr: frd },
         }
         FnegS { frd, frs1 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Fneg { rslt: _1, ty: f, op: _0 },
+            Fneg { rslt: _1, ty: d, op: _0 },
             Store { ty: d, val: _1, ptr: frd },
         }
         FmvD { frd, frs1 } => {

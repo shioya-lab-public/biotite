@@ -1,9 +1,10 @@
 use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
+use rayon::prelude::*;
 
 pub fn run(mut prog: Prog) -> Prog {
     let Some(gp) = compute_gp(&prog) else {return prog;};
-    for func in &mut prog.funcs {
+    prog.funcs.par_iter_mut().for_each(|func| {
         for block in &mut func.inst_blocks {
             match block.rv_inst {
                 rv::Inst::Lb {
@@ -91,7 +92,7 @@ pub fn run(mut prog: Prog) -> Prog {
                 _ => continue,
             }
         }
-    }
+    });
     prog
 }
 

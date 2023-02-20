@@ -1,6 +1,7 @@
 use crate::llvm_isa::{Func, Inst, Prog, Value};
 use crate::riscv_isa as rv;
 use std::collections::{HashMap, HashSet};
+use rayon::prelude::*;
 
 macro_rules! use_cache {
     ( $rs1:ident, $func:ident, $block:ident, $cache:ident, $imm:ident) => {
@@ -20,9 +21,9 @@ macro_rules! use_cache {
 }
 
 pub fn run(mut prog: Prog) -> Prog {
-    for func in &mut prog.funcs {
+    prog.funcs.par_iter_mut().for_each(|func| {
         if func.is_opaque {
-            continue;
+            return;
         }
         let targets = find_jump_targets(func);
         let mut cache = HashMap::new();
@@ -286,7 +287,7 @@ pub fn run(mut prog: Prog) -> Prog {
                 _ => continue,
             }
         }
-    }
+    });
     prog
 }
 

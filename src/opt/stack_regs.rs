@@ -1,11 +1,12 @@
 use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
 use std::collections::HashSet;
+use rayon::prelude::*;
 
 pub fn run(mut prog: Prog) -> Prog {
-    for func in &mut prog.funcs {
+    prog.funcs.par_iter_mut().for_each(|func| {
         if func.is_opaque {
-            continue;
+            return;
         }
         let mut regs = HashSet::new();
         let mut fregs = HashSet::new();
@@ -60,7 +61,7 @@ pub fn run(mut prog: Prog) -> Prog {
                 }
             }
         }
-    }
+    });
     prog
 }
 

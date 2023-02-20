@@ -2,9 +2,10 @@ use crate::llvm_isa::{Func, Inst, Prog, Type, Value};
 use crate::llvm_macro::next_pc;
 use crate::riscv_isa as rv;
 use std::collections::HashSet;
+use rayon::prelude::*;
 
 pub fn run(mut prog: Prog) -> Prog {
-    for func in &mut prog.funcs {
+    prog.funcs.par_iter_mut().for_each(|func| {
         func.is_opaque = func.inst_blocks.iter().any(|block| {
             matches!(
                 block.rv_inst,
@@ -130,13 +131,13 @@ pub fn run(mut prog: Prog) -> Prog {
                 }
             }
         }
-    }
+    });
     catch_non_local_jumps(prog)
 }
 
 fn catch_non_local_jumps(mut prog: Prog) -> Prog {
-    for func in &mut prog.funcs {
-        if is_longjmp_except_func(func) {
+    prog.funcs.par_iter_mut().for_each(|func| {
+        if contain_non_local_jumps(func) {
             func.is_opaque = true;
             for block in &mut func.inst_blocks {
                 if let rv::Inst::Jal { .. } | rv::Inst::PseudoJal { .. } = block.rv_inst {
@@ -147,11 +148,11 @@ fn catch_non_local_jumps(mut prog: Prog) -> Prog {
                 }
             }
         }
-    }
+    });
     prog
 }
 
-fn is_longjmp_except_func(func: &Func) -> bool {
+fn contain_non_local_jumps(func: &Func) -> bool {
     func.inst_blocks.iter().any(|block| {
         matches!(
             block.rv_inst.symbol(),

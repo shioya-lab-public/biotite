@@ -1,8 +1,9 @@
 use crate::llvm_isa::{Inst, Prog, Type, Value};
 use crate::riscv_isa as rv;
+use rayon::prelude::*;
 
 pub fn run(mut prog: Prog) -> Prog {
-    'func: for func in &mut prog.funcs {
+    prog.funcs.par_iter_mut().for_each(|func| {
         let mut allocs = Vec::new();
         let mut frees = Vec::new();
         let mut ra_locs = Vec::new();
@@ -102,25 +103,25 @@ pub fn run(mut prog: Prog) -> Prog {
                     imm: rv::Imm(imm),
                     ..
                 } => vars.push((*imm, 64)),
-                inst if format!("{inst:?}").contains("Sp") => continue 'func,
+                inst if format!("{inst:?}").contains("Sp") => return,
                 _ => continue,
             }
         }
 
         if allocs.len() != 1 || frees.len() != 1 || allocs[0] + frees[0] != 0 {
-            continue;
+            return;
         }
         let max_offset = frees[0];
 
         if ra_locs.iter().min() != ra_locs.iter().max() {
-            continue;
+            return;
         }
         let ra_loc = ra_locs.get(0).cloned().unwrap_or_default();
 
         vars.sort_unstable();
         vars.dedup();
         if let Some((0, _)) = vars.first() {
-            continue;
+            return;
         }
         if let (_, true) = vars
             .iter()
@@ -132,7 +133,7 @@ pub fn run(mut prog: Prog) -> Prog {
                 }
             })
         {
-            continue;
+            return;
         }
         func.stack_vars = vars
             .into_iter()
@@ -535,7 +536,6 @@ pub fn run(mut prog: Prog) -> Prog {
                 _ => continue,
             }
         }
-    }
-
+    });
     prog
 }

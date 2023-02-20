@@ -1,9 +1,10 @@
 use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
+use rayon::prelude::*;
 
 pub fn run(mut prog: Prog) -> Prog {
     prog.native_mem_utils = true;
-    for func in &mut prog.funcs {
+    prog.funcs.par_iter_mut().for_each(|func| {
         for block in &mut func.inst_blocks {
             if let rv::Inst::Jal {
                 symbol, address, ..
@@ -41,6 +42,6 @@ pub fn run(mut prog: Prog) -> Prog {
                 }
             }
         }
-    }
+    });
     prog
 }
