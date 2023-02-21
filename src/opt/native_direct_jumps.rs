@@ -1,7 +1,7 @@
 use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
-use std::collections::HashSet;
 use rayon::prelude::*;
+use std::collections::HashSet;
 
 pub fn run(mut prog: Prog) -> Prog {
     prog.funcs.par_iter_mut().for_each(|func| {

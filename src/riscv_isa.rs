@@ -561,7 +561,7 @@ impl Display for Addr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum CSR {
+pub enum Csr {
     Fflags,
     Frm,
     Fcsr,
@@ -573,9 +573,9 @@ pub enum CSR {
     // `Instreth` is for RV32I only
 }
 
-impl CSR {
+impl Csr {
     pub fn new(s: &str) -> Self {
-        use CSR::*;
+        use Csr::*;
 
         match s {
             "fflags" => Fflags,

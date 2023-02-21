@@ -82,7 +82,9 @@ macro_rules! define_insts {
                 use Inst::*;
 
                 match self {
-                    $( $inst { address, .. } => *address, )*
+                    $(
+                        $inst { address, .. } => *address,
+                    )*
                 }
             }
 
@@ -90,7 +92,9 @@ macro_rules! define_insts {
                 use Inst::*;
 
                 match self {
-                    $( $inst { is_compressed, .. } => *is_compressed, )*
+                    $(
+                        $inst { is_compressed, .. } => *is_compressed,
+                    )*
                 }
             }
 
@@ -98,7 +102,9 @@ macro_rules! define_insts {
                 use Inst::*;
 
                 match self {
-                    $( $inst { symbol, .. } => symbol.as_deref(), )*
+                    $(
+                        $inst { symbol, .. } => symbol.as_deref(),
+                    )*
                 }
             }
         }
@@ -191,7 +197,7 @@ macro_rules! csr {
         CSR
     };
     ("type") => {
-        CSR
+        Csr
     };
 }
 

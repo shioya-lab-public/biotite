@@ -116,11 +116,12 @@ pub fn run(mut prog: Prog) -> Prog {
         if ra_locs.iter().min() != ra_locs.iter().max() {
             return;
         }
-        let ra_loc = ra_locs.get(0).cloned().unwrap_or_default();
+        let ra_loc = ra_locs.first().cloned().unwrap_or_default();
 
         vars.sort_unstable();
         vars.dedup();
         if let Some((0, _)) = vars.first() {
+            // The stack is used to pass arguments to other functions
             return;
         }
         if let (_, true) = vars
@@ -537,5 +538,6 @@ pub fn run(mut prog: Prog) -> Prog {
             }
         }
     });
+
     prog
 }

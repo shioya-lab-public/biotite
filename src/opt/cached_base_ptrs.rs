@@ -1,12 +1,12 @@
 use crate::llvm_isa::{Func, Inst, Prog, Value};
 use crate::riscv_isa as rv;
-use std::collections::{HashMap, HashSet};
 use rayon::prelude::*;
+use std::collections::{HashMap, HashSet};
 
 macro_rules! use_cache {
-    ( $rs1:ident, $func:ident, $block:ident, $cache:ident, $imm:ident) => {
+    ( $rs1:ident, $func:ident, $block:ident, $cache:ident, $imm:ident ) => {
         if $rs1 != &rv::Reg::Gp && ($func.stack_vars.is_empty() || $rs1 != &rv::Reg::Sp) {
-            let Inst::Getmemptr { rslt, .. } = $block.insts[2] else { unreachable!() };
+            let Inst::Getmemptr { rslt, .. } = $block.insts[2] else { unreachable!(); };
             if let Some((ptr, offset)) = $cache.get($rs1) {
                 let inst = Inst::Getelementptr {
                     rslt,
@@ -25,20 +25,22 @@ pub fn run(mut prog: Prog) -> Prog {
         if func.is_opaque {
             return;
         }
+
         let targets = find_jump_targets(func);
         let mut cache = HashMap::new();
         for block in &mut func.inst_blocks {
             if targets.contains(&block.rv_inst.address()) {
                 cache.clear();
             }
+
             match &block.rv_inst {
                 rv::Inst::Lb {
                     rd,
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                }|
-                rv::Inst::Lh {
+                }
+                | rv::Inst::Lh {
                     rd,
                     imm: rv::Imm(imm),
                     rs1,
@@ -93,11 +95,12 @@ pub fn run(mut prog: Prog) -> Prog {
                     rs1,
                     ..
                 }
-                |rv::Inst::Sd {
+                | rv::Inst::Sd {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                } |rv::Inst::Flw {
+                }
+                | rv::Inst::Flw {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
@@ -106,11 +109,13 @@ pub fn run(mut prog: Prog) -> Prog {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                } |rv::Inst::Fsw {
+                }
+                | rv::Inst::Fsw {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                } |rv::Inst::Fsd {
+                }
+                | rv::Inst::Fsd {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
@@ -239,7 +244,9 @@ pub fn run(mut prog: Prog) -> Prog {
                 | rv::Inst::Frrm {rd,..}
                 | rv::Inst::Fsrm {rd,..}
                 | rv::Inst::Frflags {rd,..}
-                | rv::Inst::Fsflags {rd,..} => {cache.remove(rd);}
+                | rv::Inst::Fsflags {rd,..} => {
+                    cache.remove(rd);
+                }
 
                 // Function calls
                 rv::Inst::Jal {rd,..}
@@ -262,7 +269,9 @@ pub fn run(mut prog: Prog) -> Prog {
                     cache.remove(&rv::Reg::T5);
                     cache.remove(&rv::Reg::T6);
                 }
-                rv::Inst::Ecall {..} => {cache.remove(&rv::Reg::A0);}
+                rv::Inst::Ecall {..} => {
+                    cache.remove(&rv::Reg::A0);
+                }
                 rv::Inst::PseudoJal{..}
                 | rv::Inst::PseudoJalr{..}
                 | rv::Inst::OffsetJalr{..} => {
@@ -288,6 +297,7 @@ pub fn run(mut prog: Prog) -> Prog {
             }
         }
     });
+
     prog
 }
 

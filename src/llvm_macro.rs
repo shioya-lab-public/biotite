@@ -10,7 +10,13 @@ macro_rules! trans_inst {
             $(
                 rv::Inst::$rv_inst { address, is_compressed, $( $rv_field, )* .. } => {
                     vec![
-                        $( Inst::$inst { $( $field: expand_value!($value, address, is_compressed) ),* }, )*
+                        $(
+                            Inst::$inst {
+                                $(
+                                    $field: expand_value!($value, address, is_compressed)
+                                ),*
+                            },
+                        )*
                     ]
                 }
             )*

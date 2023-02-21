@@ -18,7 +18,9 @@ static BYTES: Lazy<Regex> =
 static TDATA: Lazy<Regex> = Lazy::new(|| Regex::new(r"([[:xdigit:]]+)\s+(.{35})").unwrap());
 
 pub fn run(mut src: String, tdata: Option<String>) -> Prog {
+    // Make sure the last block is properly processed
     src.push('\n');
+
     let mut lines = src.lines();
     let entry = parse_entry(&mut lines);
     let sections = parse_sections(&mut lines);
@@ -32,25 +34,24 @@ pub fn run(mut src: String, tdata: Option<String>) -> Prog {
         data_blocks.sort_unstable_by_key(|b| b.address);
         tdata_addr
     });
+    let func_syms = symbols
+        .into_iter()
+        .filter_map(|((name, addr), (_, is_func))| if is_func { Some((name, addr)) } else { None })
+        .collect();
+
     Prog {
         entry,
         tdata,
         data_blocks,
         code_blocks,
-        func_syms: symbols
-            .into_iter()
-            .filter_map(
-                |((name, addr), (_, is_func))| if is_func { Some((name, addr)) } else { None },
-            )
-            .collect(),
+        func_syms,
     }
 }
 
 fn parse_entry<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Addr {
     Addr::new(
         lines
-            .skip(3)
-            .next()
+            .nth(3)
             .expect("Missing file headers")
             .strip_prefix("start address: 0x")
             .expect("Invalid file headers"),
@@ -168,6 +169,7 @@ fn parse_code_block(
     }
 }
 
+/// Expand symbols whose disassembly is simply `...` to their correct length
 fn expand_data_blocks(
     data_blocks: &mut Vec<DataBlock>,
     sections: &HashMap<(String, Addr), usize>,
@@ -192,27 +194,29 @@ fn expand_data_blocks(
     }
 }
 
+/// Recover the `load_gp` function if it is merged into the `_start` function
 fn split_load_gp(
     code_blocks: &mut Vec<CodeBlock>,
     symbols: &mut HashMap<(String, Addr), (usize, bool)>,
 ) {
     if let Some(start_pos) = code_blocks
         .iter()
-        .position(|block| block.symbol == "_start") {
-            let start = &mut code_blocks[start_pos];
-            if let Inst::Jal { addr, .. } | Inst::PseudoJal { addr, .. } = start.insts[0] {
-                if let Some(pos) = start.insts.iter().position(|inst| inst.address() == addr) {
-                    let load_gp = CodeBlock {
-                        section: String::from(".text"),
-                        symbol: String::from("load_gp"),
-                        address: addr,
-                        insts: start.insts.split_off(pos),
-                    };
-                    code_blocks.insert(start_pos + 1, load_gp);
-                    symbols.insert((String::from("load_gp"), addr), (16, true));
-                }
+        .position(|block| block.symbol == "_start")
+    {
+        let start = &mut code_blocks[start_pos];
+        if let Inst::Jal { addr, .. } | Inst::PseudoJal { addr, .. } = start.insts[0] {
+            if let Some(pos) = start.insts.iter().position(|inst| inst.address() == addr) {
+                let load_gp = CodeBlock {
+                    section: String::from(".text"),
+                    symbol: String::from("load_gp"),
+                    address: addr,
+                    insts: start.insts.split_off(pos),
+                };
+                code_blocks.insert(start_pos + 1, load_gp);
+                symbols.insert((String::from("load_gp"), addr), (16, true));
             }
         }
+    }
 }
 
 fn parse_tdata(tdata: String) -> (Addr, DataBlock) {

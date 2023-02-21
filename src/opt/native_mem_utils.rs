@@ -4,6 +4,7 @@ use rayon::prelude::*;
 
 pub fn run(mut prog: Prog) -> Prog {
     prog.native_mem_utils = true;
+
     prog.funcs.par_iter_mut().for_each(|func| {
         for block in &mut func.inst_blocks {
             if let rv::Inst::Jal {
@@ -43,5 +44,6 @@ pub fn run(mut prog: Prog) -> Prog {
             }
         }
     });
+
     prog
 }

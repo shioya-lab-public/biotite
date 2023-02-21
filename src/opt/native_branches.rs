@@ -1,7 +1,7 @@
 use crate::llvm_isa::{Inst, Prog};
 use crate::riscv_isa as rv;
-use std::collections::HashSet;
 use rayon::prelude::*;
+use std::collections::HashSet;
 
 pub fn run(mut prog: Prog) -> Prog {
     prog.funcs.par_iter_mut().for_each(|func| {
@@ -26,7 +26,7 @@ pub fn run(mut prog: Prog) -> Prog {
             {
                 if addrs.contains(&addr) {
                     block.insts.pop();
-                    let Inst::Select{ cond, op1, op2, ..} = block.insts.pop().unwrap() else {unreachable!();};
+                    let Inst::Select{ cond, op1, op2, ..} = block.insts.pop().unwrap() else { unreachable!(); };
                     block.insts.push(Inst::Conbr {
                         cond,
                         iftrue: op1,

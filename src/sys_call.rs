@@ -6,6 +6,7 @@ pub fn build(arch: Option<String>) -> Option<String> {
         None => return None,
         _ => panic!("Unknown architecture `{arch:?}`"),
     };
+
     let dispatcher = defs
         .iter()
         .map(|(name, nr, _)| format!("    i64 {nr}, label %sys_{name}"))

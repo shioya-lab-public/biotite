@@ -12,10 +12,16 @@ struct Args {
     #[arg(short, long)]
     output: Option<PathBuf>,
 
+    /// Specify the target architecture for system call support.
+    /// Omit it to avoid generating system-call-related functions.
+    /// See `src/sys_call` for a list of supported architectures.
     #[arg(long)]
     arch: Option<String>,
 
-    #[arg(long)]
+    /// See `src/opt` for a list of supported optimization.
+    /// Only one of the following four arguments should be set.
+    /// Try to turn off optimization if the translated binary does not function properly.
+    #[arg(long, default_value_t = true)]
     enable_all_opts: bool,
 
     #[arg(long)]
@@ -27,6 +33,7 @@ struct Args {
     #[arg(long, num_args = 1..)]
     disable_opts: Vec<String>,
 
+    /// Specify names of functions which will be substituted by source code.
     #[arg(long, num_args = 1..)]
     src_funcs: Vec<String>,
 }

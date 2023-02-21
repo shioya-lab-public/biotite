@@ -25,6 +25,7 @@ define void @.sys_conv_stat(i8* %statbuf_b_x86_64) {
   %stat_riscv64gc_4 = insertvalue %.sys_stat_riscv64gc %stat_riscv64gc_3, i32 %st_gid, 5
   %stat_riscv64gc_5 = insertvalue %.sys_stat_riscv64gc %stat_riscv64gc_4, i64 %st_rdev, 6
   store %.sys_stat_riscv64gc %stat_riscv64gc_5, %.sys_stat_riscv64gc* %statbuf_riscv64gc
+
   ret void
 }";
 

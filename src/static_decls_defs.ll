@@ -95,8 +95,8 @@ define void @.mem_copy(i8* %0, i8* %1, i64 %2) {
   br i1 %14, label %5, label %6
 }
 
-%struct.Elf64_Phdr = type { i32, i32, i64, i64, i64, i64, i64, i64 }
 declare i64 @getauxval(i64)
+%struct.Elf64_Phdr = type { i32, i32, i64, i64, i64, i64, i64, i64 }
 @.entries = constant [23 x i64] [i64 0, i64 1, i64 2, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9, i64 10, i64 11, i64 12, i64 13, i64 14, i64 15, i64 16, i64 17, i64 23, i64 24, i64 25, i64 26, i64 31, i64 51]
 
 define void @.init_auxv(i64* %0, i8* %1, i64 %2, i64 %3) {

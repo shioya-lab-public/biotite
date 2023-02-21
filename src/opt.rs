@@ -26,8 +26,13 @@ macro_rules! opts {
             } else if !enable_opts.is_empty() {
                 enable_opts.iter().map(|opt| opt.as_str()).collect()
             } else {
-                vec![$( stringify!($opt) ),*].iter().filter(|opt| !disable_opts.contains(&opt.to_string())).copied().collect()
+                vec![$( stringify!($opt) ),*]
+                    .iter()
+                    .filter(|opt| !disable_opts.contains(&opt.to_string()))
+                    .copied()
+                    .collect()
             };
+
             for opt in opts {
                 match opt {
                     $(
@@ -36,6 +41,7 @@ macro_rules! opts {
                     _ => panic!("Unknown optimization `{opt}`"),
                 }
             }
+
             prog
         }
 

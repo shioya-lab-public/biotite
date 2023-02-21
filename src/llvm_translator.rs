@@ -23,7 +23,7 @@ pub fn run(rv_prog: rv::Prog, sys_call: Option<String>, src_funcs: Vec<String>) 
         phdr,
         funcs,
         sys_call,
-        src_funcs: src_funcs.clone().into_iter().collect(),
+        src_funcs: src_funcs.into_iter().collect(),
         func_syms,
         native_mem_utils: false,
     }
@@ -55,6 +55,7 @@ fn trans_code_block(code_block: rv::CodeBlock) -> Func {
     }
 }
 
+#[allow(unused_variables)]
 fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
     let insts = trans_inst!(rv_inst,
         // RV32I
@@ -1425,6 +1426,7 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Ret { val: _1 },
         }
     );
+
     let insts = insts
         .into_iter()
         .filter_map(|inst| match inst {
@@ -1445,5 +1447,6 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             inst => Some(inst),
         })
         .collect();
+
     InstBlock { rv_inst, insts }
 }

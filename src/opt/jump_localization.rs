@@ -1,8 +1,8 @@
-use crate::llvm_isa::{Func, Inst, Prog, Type, Value};
+use crate::llvm_isa::{Inst, Prog, Type, Value};
 use crate::llvm_macro::next_pc;
 use crate::riscv_isa as rv;
-use std::collections::HashSet;
 use rayon::prelude::*;
+use std::collections::HashSet;
 
 pub fn run(mut prog: Prog) -> Prog {
     prog.funcs.par_iter_mut().for_each(|func| {
@@ -127,17 +127,27 @@ pub fn run(mut prog: Prog) -> Prog {
                             ],
                         );
                     }
-                    _ => (),
+                    _ => continue,
                 }
             }
         }
     });
+
     catch_non_local_jumps(prog)
 }
 
 fn catch_non_local_jumps(mut prog: Prog) -> Prog {
     prog.funcs.par_iter_mut().for_each(|func| {
-        if contain_non_local_jumps(func) {
+        if func.inst_blocks.iter().any(|block| {
+            matches!(
+                block.rv_inst.symbol(),
+                Some("<_setjmp>")
+                    | Some("<setjmp>")
+                    | Some("<_Unwind_Resume>")
+                    | Some("<__cxa_begin_catch>")
+                    | Some("<__cxa_end_catch>")
+            )
+        }) {
             func.is_opaque = true;
             for block in &mut func.inst_blocks {
                 if let rv::Inst::Jal { .. } | rv::Inst::PseudoJal { .. } = block.rv_inst {
@@ -150,17 +160,4 @@ fn catch_non_local_jumps(mut prog: Prog) -> Prog {
         }
     });
     prog
-}
-
-fn contain_non_local_jumps(func: &Func) -> bool {
-    func.inst_blocks.iter().any(|block| {
-        matches!(
-            block.rv_inst.symbol(),
-            Some("<_setjmp>")
-                | Some("<setjmp>")
-                | Some("<_Unwind_Resume>")
-                | Some("<__cxa_begin_catch>")
-                | Some("<__cxa_end_catch>")
-        )
-    })
 }

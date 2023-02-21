@@ -3,7 +3,8 @@ use crate::riscv_isa as rv;
 use rayon::prelude::*;
 
 pub fn run(mut prog: Prog) -> Prog {
-    let Some(gp) = compute_gp(&prog) else {return prog;};
+    let Some(gp) = compute_gp(&prog) else { return prog; };
+
     prog.funcs.par_iter_mut().for_each(|func| {
         for block in &mut func.inst_blocks {
             match block.rv_inst {
@@ -82,7 +83,7 @@ pub fn run(mut prog: Prog) -> Prog {
                     rs1: rv::Reg::Gp,
                     ..
                 } => {
-                    let Inst::Getmemptr { rslt, .. } = block.insts[2] else { unreachable!() };
+                    let Inst::Getmemptr { rslt, .. } = block.insts[2] else { unreachable!(); };
                     let inst = Inst::Getmemptr {
                         rslt,
                         addr: Value::Imm(rv::Imm(gp + imm)),
@@ -93,6 +94,7 @@ pub fn run(mut prog: Prog) -> Prog {
             }
         }
     });
+
     prog
 }
 

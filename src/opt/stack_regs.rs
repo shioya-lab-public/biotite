@@ -1,13 +1,14 @@
 use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
-use std::collections::HashSet;
 use rayon::prelude::*;
+use std::collections::HashSet;
 
 pub fn run(mut prog: Prog) -> Prog {
     prog.funcs.par_iter_mut().for_each(|func| {
         if func.is_opaque {
             return;
         }
+
         let mut regs = HashSet::new();
         let mut fregs = HashSet::new();
         for block in &func.inst_blocks {
@@ -31,6 +32,7 @@ pub fn run(mut prog: Prog) -> Prog {
         }
         func.used_regs = regs.into_iter().collect();
         func.used_fregs = fregs.into_iter().collect();
+
         for block in &mut func.inst_blocks {
             for inst in &mut block.insts {
                 match inst {
@@ -38,7 +40,7 @@ pub fn run(mut prog: Prog) -> Prog {
                         *regs = func.used_regs.clone();
                         *fregs = func.used_fregs.clone();
                     }
-                    Inst::Load { ptr, .. }|Inst::Store { ptr, .. } => {
+                    Inst::Load { ptr, .. } | Inst::Store { ptr, .. } => {
                         if let Value::Reg(reg) = ptr {
                             *ptr = Value::StkReg(*reg);
                         } else if let Value::FReg(freg) = ptr {
@@ -51,8 +53,7 @@ pub fn run(mut prog: Prog) -> Prog {
                     | Inst::Memcpy { stk, .. }
                     | Inst::Memmove { stk, .. }
                     | Inst::Memset { stk, .. }
-                    | Inst::Memcmp { stk, .. }
-                    => *stk = true,
+                    | Inst::Memcmp { stk, .. } => *stk = true,
                     Inst::Dispfunc { regs, fregs, .. } => {
                         *regs = func.used_regs.clone();
                         *fregs = func.used_fregs.clone();
@@ -62,6 +63,7 @@ pub fn run(mut prog: Prog) -> Prog {
             }
         }
     });
+
     prog
 }
 

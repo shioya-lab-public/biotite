@@ -7,6 +7,7 @@ mod riscv_macro;
 mod riscv_parser;
 mod sys_call;
 
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     rv_src: String,
     tdata_src: Option<String>,

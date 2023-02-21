@@ -14,6 +14,7 @@ pub fn run(mut prog: Prog) -> Prog {
             appended[cur].push(i);
         }
     }
+
     for (i, appended) in appended.into_iter().enumerate() {
         let appended: Vec<_> = appended
             .into_iter()
@@ -23,5 +24,6 @@ pub fn run(mut prog: Prog) -> Prog {
             prog.funcs[i].inst_blocks.extend(inst_blocks);
         }
     }
+
     prog
 }
