@@ -6,7 +6,6 @@ pub fn run(mut prog: Prog) -> Prog {
     prog.funcs.par_iter_mut().for_each(|func| {
         let mut allocs = Vec::new();
         let mut frees = Vec::new();
-        let mut ra_locs = Vec::new();
         let mut vars = Vec::new();
         for block in &func.inst_blocks {
             match &block.rv_inst {
@@ -22,12 +21,6 @@ pub fn run(mut prog: Prog) -> Prog {
                         frees.push(*imm);
                     }
                 }
-                rv::Inst::Ld {
-                    rd: rv::Reg::Ra,
-                    rs1: rv::Reg::Sp,
-                    imm: rv::Imm(imm),
-                    ..
-                } => ra_locs.push(*imm),
                 rv::Inst::Lb {
                     rs1: rv::Reg::Sp,
                     imm: rv::Imm(imm),
@@ -112,11 +105,6 @@ pub fn run(mut prog: Prog) -> Prog {
             return;
         }
         let max_offset = frees[0];
-
-        if ra_locs.iter().min() != ra_locs.iter().max() {
-            return;
-        }
-        let ra_loc = ra_locs.first().cloned().unwrap_or_default();
 
         vars.sort_unstable();
         vars.dedup();
@@ -384,7 +372,7 @@ pub fn run(mut prog: Prog) -> Prog {
                     imm: rv::Imm(imm),
                     rs1: rv::Reg::Sp,
                     ..
-                } if imm < max_offset && imm != ra_loc => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         Inst::Load {
                             rslt: Value::Temp(address, 0),
@@ -404,7 +392,7 @@ pub fn run(mut prog: Prog) -> Prog {
                     imm: rv::Imm(imm),
                     rs1: rv::Reg::Sp,
                     ..
-                } if imm < max_offset && imm != ra_loc => {
+                } if imm < max_offset => {
                     block.insts = vec![
                         Inst::Load {
                             rslt: Value::Temp(address, 0),

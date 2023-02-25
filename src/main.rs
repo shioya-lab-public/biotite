@@ -18,10 +18,10 @@ struct Args {
     #[arg(long)]
     arch: Option<String>,
 
+    /// At most one of the following four arguments should be set.
+    /// Omit them will enable all optimization.
     /// See `src/opt` for a list of supported optimization.
-    /// Only one of the following four arguments should be set.
-    /// Try to turn off optimization if the translated binary does not function properly.
-    #[arg(long, default_value_t = true)]
+    #[arg(long)]
     enable_all_opts: bool,
 
     #[arg(long)]

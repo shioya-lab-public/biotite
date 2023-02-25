@@ -34,6 +34,12 @@ clang --static test.bc -lm
     - `getmainvars` is not available in x86_64
     - readlinkat will change the return value to -22 if its -1, as RISC-V seems to require this particular value
     - Adjust the layout of `struct stat` based on [x86_64](https://github.com/torvalds/linux/blob/6f52b16c5b29b89d92c0e7236f4655dc8491ad70/arch/x86/include/uapi/asm/stat.h) and [riscv](https://github.com/riscv-collab/riscv-gnu-toolchain/blob/baefbdd8bcedfabf0cf89dce679a8bd1a9f27b39/linux-headers/include/asm-generic/stat.h)
+6. Try to turn off optimization if the translated binary does not function properly
+    - For `perlbench_s`
+        - `ulimit -s 81920` (refspeed only)
+        - disable `native_stack_vars`
+
+## src subs
 
 ## C Source Code for Supporting Functions
 
