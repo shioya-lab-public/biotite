@@ -512,7 +512,7 @@ impl Display for InstBlock {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Inst {
     // Terminator Instructions
     Ret {
@@ -1045,7 +1045,7 @@ impl Display for Inst {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum Type {
     I1,
     I8,
@@ -1074,7 +1074,7 @@ impl Display for Type {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum Value {
     Reg(rv::Reg),
     FReg(rv::FReg),
@@ -1115,7 +1115,7 @@ impl Display for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum Cond {
     Eq,
     Ne,
@@ -1144,7 +1144,7 @@ impl Display for Cond {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum FCond {
     Oeq,
     Olt,
@@ -1163,7 +1163,7 @@ impl Display for FCond {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum MO {
     Monotonic,
     Acquire,
@@ -1184,7 +1184,7 @@ impl Display for MO {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum Op {
     Xchg,
     Add,
@@ -1215,7 +1215,7 @@ impl Display for Op {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum RM {
     Dynamic,
     Tonearest,

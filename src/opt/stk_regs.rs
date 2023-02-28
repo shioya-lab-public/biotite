@@ -32,6 +32,8 @@ pub fn run(mut prog: Prog) -> Prog {
         }
         func.used_regs = regs.into_iter().collect();
         func.used_fregs = fregs.into_iter().collect();
+        func.used_regs.sort_unstable();
+        func.used_fregs.sort_unstable();
 
         for block in &mut func.inst_blocks {
             for inst in &mut block.insts {

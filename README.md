@@ -38,6 +38,9 @@ clang --static test.bc -lm
     - For `perlbench_s`
         - `ulimit -s 81920` (refspeed only)
         - disable `native_stack_vars`
+    - For `gcc_s`
+        - --disable-opts native_stk_vars
+7. `wrf_s` on in `O0`
 
 ## src subs
 

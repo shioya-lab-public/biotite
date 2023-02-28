@@ -290,7 +290,7 @@ define_insts! {
     OffsetJr(r"jr\s+{}\({}\)", imm, rs1),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum Reg {
     Zero,
     Ra,
@@ -409,7 +409,7 @@ impl Display for Reg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum FReg {
     Ft0,
     Ft1,
@@ -528,7 +528,7 @@ impl Display for FReg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Default)]
 pub struct Imm(pub i64);
 
 impl Imm {
@@ -544,7 +544,7 @@ impl Display for Imm {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Default)]
 pub struct Addr(pub u64);
 
 impl Addr {
@@ -560,7 +560,7 @@ impl Display for Addr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum Csr {
     Fflags,
     Frm,
@@ -589,7 +589,7 @@ impl Csr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum MO {
     Mono,
     Aq,
@@ -611,7 +611,7 @@ impl MO {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
 pub enum RM {
     Rne,
     Rtz,

@@ -5,8 +5,8 @@ mod jump_localization;
 mod native_branches;
 mod native_direct_jumps;
 mod native_mem_utils;
-mod native_stack_vars;
-mod stack_regs;
+mod native_stk_vars;
+mod stk_regs;
 
 use crate::llvm_isa::Prog;
 
@@ -55,7 +55,7 @@ opts! {
     native_direct_jumps,
     native_branches,
     jump_localization,
-    native_stack_vars,
-    stack_regs,
+    native_stk_vars,
+    stk_regs,
     cached_base_ptrs,
 }
