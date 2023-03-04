@@ -483,5 +483,12 @@ call:
             "  %tloc = call i8* @.sys_get_mem_ptr(i64 %arg1)
   %rslt = call i64 (i64, ...) @syscall(i64 201, i8* %tloc)"
         ),
+        (
+            "renameat2",
+            276,
+            "  %oldname = call i8* @.sys_get_mem_ptr(i64 %arg2)
+  %newname = call i8* @.sys_get_mem_ptr(i64 %arg4)
+  %rslt = call i64 (i64, ...) @syscall(i64 316, i64 %arg1, i8* %oldname, i64 %arg3, i8* %newname, i64 %arg5)"
+        ),
     ]
 });

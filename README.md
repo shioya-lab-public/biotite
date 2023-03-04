@@ -1,52 +1,43 @@
 # riscv2llvm
 
-`riscv2llvm` is a binary translator that lifts RISC-V to LLVM IR. Currently it can translate little-endian statically-linked Linux executable files compiled with RV64GC and LP64D ABI. It is tested with Rust 1.67.1 and LLVM 15.0.7.
+`riscv2llvm` is a binary translator that lifts RISC-V to LLVM IR. Currently it can translate little-endian statically-linked Linux executable files compiled with RV64GC ISA and LP64D ABI. It is implemented based on RISC-V Unprivileged Specification (version 20191213) and tested with Rust 1.67.1 and LLVM 15.0.7.
 
 ## Quick Start
 
-``` Bash
-# Disassemble the file waiting for translation
-llvm-objdump -fhtDz --mattr=a,c,d,f,m test > test.dump
+``` shell
+# Disassemble the target binary
+llvm-objdump -fhtDz --mattr=a,c,d,f,m example > example.dump
 
 # For binaries compiled with glibc, we also need the contents of the `.tdata` section
-llvm-objdump -sj.tdata test > test.tdata
+llvm-objdump -sj.tdata example > example.tdata
 
-# Translate the target file
-riscv2llvm --arch=x86_64 test.dump test.tdata
+# Perform the translation
+riscv2llvm --arch=x86_64 example.dump example.tdata
 
-# Convert LLVM IR to bitcode can significantly reduce the file size, as clang cannot handle very large IR files
-llvm-as test.ll
-
-# Compile the translated file to a native binary
+# Compile the translated LLVM IR to a native binary
 # Static linking is necessary if `.tdata` is provided as input
-clang --static test.bc -lm
+clang --static example.ll -lm
 ```
 
 ## Notes
 
-1. All CSR are ignored.
-2. All rm are ignored, except RDN and RUP for all 8 fp-to-int instructions.
-3. `fclass` is not supported
-4. AUXV initialization is based on [this](https://github.com/torvalds/linux/blob/7cd60e43a6def40ecb75deb8decc677995970d0b/include/uapi/linux/auxvec.h)
-5. System calls are implemented based on [riscv](https://github.com/riscv-software-src/riscv-pk/blob/7e9b671c0415dfd7b562ac934feb9380075d4aa2/pk/syscall.h) and [x86_64](https://chromium.googlesource.com/chromiumos/docs/+/a2622281357e45f2b2c74cdc4b428b0d1294488d/constants/syscalls.md)
-    - Ignore the address hint in `arg1` in `mmap`
-    - mprotect always return 0, because it fails for legal input in RISC-V
-    - `getmainvars` is not available in x86_64
-    - readlinkat will change the return value to -22 if its -1, as RISC-V seems to require this particular value
-    - Adjust the layout of `struct stat` based on [x86_64](https://github.com/torvalds/linux/blob/6f52b16c5b29b89d92c0e7236f4655dc8491ad70/arch/x86/include/uapi/asm/stat.h) and [riscv](https://github.com/riscv-collab/riscv-gnu-toolchain/blob/baefbdd8bcedfabf0cf89dce679a8bd1a9f27b39/linux-headers/include/asm-generic/stat.h)
-6. Try to turn off optimization if the translated binary does not function properly
-    - For `perlbench_s`
-        - `ulimit -s 81920` (refspeed only)
-        - disable `native_stack_vars`
-    - For `gcc_s`
-        - --disable-opts native_stk_vars
-7. `wrf_s` on in `O0`
-
-## src subs
+1. Convert LLVM IR to LLVM bitcode by using `llvm-as` can significantly reduce the file size.
+2. Try to turn off optimization if the translated binary does not function properly.
+3. Currently unsupported features are listed below:
+    - All CSR are ignored. Instructions reading them always return 0, and instructions writting to them are ignored.
+    - All rounding modes are ignored, except RDN and RUP for 8 FP-to-Int conversion instructions.
+    - `fclass` always returns 0.
+4. [These entries](https://github.com/torvalds/linux/blob/7cd60e43a6def40ecb75deb8decc677995970d0b/include/uapi/linux/auxvec.h) in the auxiliary vector are properly initialized.
+5. System calls are implemented based on [this (RISC-V)](https://github.com/riscv-software-src/riscv-pk/blob/7e9b671c0415dfd7b562ac934feb9380075d4aa2/pk/syscall.h) and [this (x86_64)](https://chromium.googlesource.com/chromiumos/docs/+/a2622281357e45f2b2c74cdc4b428b0d1294488d/constants/syscalls.md). Also pay attention to a few quirks listed below:
+    - The address hint in the first argument of `mmap` is always set to 0.
+    - `mprotect` is ignored and always return 0, because it fails even for legal input in RISC-V.
+    - `getmainvars` is not available in x86_64.
+    - `readlinkat` will change the error value from -1 to -22, as RISC-V seems to assume this particular value.
+    - The layout of the `stat` structure is automatically converted between [RISC-V](https://github.com/riscv-collab/riscv-gnu-toolchain/blob/baefbdd8bcedfabf0cf89dce679a8bd1a9f27b39/linux-headers/include/asm-generic/stat.h) and [x86_64](https://github.com/torvalds/linux/blob/6f52b16c5b29b89d92c0e7236f4655dc8491ad70/arch/x86/include/uapi/asm/stat.h).
 
 ## C Source Code for Supporting Functions
 
-``` C
+``` c
 #include <elf.h>
 #include <stdint.h>
 #include <sys/auxv.h>
@@ -95,7 +86,7 @@ void init_auxv(int64_t* auxv, int8_t* phdr, int64_t phdr_addr, int64_t tdata) {
 }
 ```
 
-``` C
+``` c
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -111,7 +102,7 @@ int64_t rounding(double f, bool is_rdn) {
 }
 ```
 
-``` C
+``` c
 #include <stdint.h>
 
 void mem_copy(int8_t* dest, int8_t* src, int64_t count) {

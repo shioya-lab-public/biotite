@@ -34,6 +34,7 @@ struct Args {
     disable_opts: Vec<String>,
 
     /// Specify names of functions which will be substituted by source code.
+    /// See `spec_qsort.ll` for an example.
     #[arg(long, num_args = 1..)]
     src_funcs: Vec<String>,
 }
