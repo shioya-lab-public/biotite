@@ -31,8 +31,7 @@ clang --static example.ll -lm
 5. System calls are implemented based on [this (RISC-V)](https://github.com/riscv-software-src/riscv-pk/blob/7e9b671c0415dfd7b562ac934feb9380075d4aa2/pk/syscall.h) and [this (x86_64)](https://chromium.googlesource.com/chromiumos/docs/+/a2622281357e45f2b2c74cdc4b428b0d1294488d/constants/syscalls.md). Also pay attention to a few quirks listed below:
     - The address hint in the first argument of `mmap` is always set to 0.
     - `mprotect` is ignored and always return 0, because it fails even for legal input in RISC-V.
-    - `getmainvars` is not available in x86_64.
-    - `readlinkat` will change the error value from -1 to -22, as RISC-V seems to assume this particular value.
+    - `getmainvars` returns -1 directly, because there is no enough information for this system call.
     - The layout of the `stat` structure is automatically converted between [RISC-V](https://github.com/riscv-collab/riscv-gnu-toolchain/blob/baefbdd8bcedfabf0cf89dce679a8bd1a9f27b39/linux-headers/include/asm-generic/stat.h) and [x86_64](https://github.com/torvalds/linux/blob/6f52b16c5b29b89d92c0e7236f4655dc8491ad70/arch/x86/include/uapi/asm/stat.h).
 
 ## C Source Code for Supporting Functions

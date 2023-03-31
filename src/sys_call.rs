@@ -1,7 +1,9 @@
+mod riscv;
 mod x86_64;
 
 pub fn build(arch: Option<String>) -> Option<String> {
     let (aux, defs) = match arch.as_deref() {
+        Some("riscv") => (riscv::AUX, &riscv::DEFS),
         Some("x86_64") => (x86_64::AUX, &x86_64::DEFS),
         None => return None,
         _ => panic!("Unknown architecture `{arch:?}`"),
