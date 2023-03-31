@@ -5,6 +5,14 @@ use rayon::prelude::*;
 use std::collections::HashSet;
 
 pub fn run(mut prog: Prog) -> Prog {
+    let funcs: HashSet<_> = prog
+        .funcs
+        .iter()
+        .map(|func| {
+            let Value::Addr(addr) = func.address else {unreachable!();};
+            addr
+        })
+        .collect();
     prog.funcs.par_iter_mut().for_each(|func| {
         func.is_opaque = func.inst_blocks.iter().any(|block| {
             matches!(
@@ -26,23 +34,43 @@ pub fn run(mut prog: Prog) -> Prog {
             match block.rv_inst {
                 rv::Inst::J { address, addr, .. } => {
                     if !addrs.contains(&addr) {
-                        block.insts = vec![
-                            Inst::Call {
-                                rslt: Value::Temp(address, 0),
-                                target: Value::Addr(addr),
-                                regs: Vec::new(),
-                                fregs: Vec::new(),
-                            },
-                            Inst::Load {
-                                rslt: Value::Temp(address, 1),
-                                ty: Type::I64,
-                                ptr: Value::Reg(rv::Reg::Ra),
-                            },
-                            Inst::Ret {
-                                val: Value::Temp(address, 1),
-                            },
-                        ];
+                        if funcs.contains(&addr) {
+                            block.insts = vec![
+                                Inst::Call {
+                                    rslt: Value::Temp(address, 0),
+                                    target: Value::Addr(addr),
+                                    regs: Vec::new(),
+                                    fregs: Vec::new(),
+                                },
+                                Inst::Load {
+                                    rslt: Value::Temp(address, 1),
+                                    ty: Type::I64,
+                                    ptr: Value::Reg(rv::Reg::Ra),
+                                },
+                                Inst::Ret {
+                                    val: Value::Temp(address, 1),
+                                },
+                            ];
+                        } else {
+                            block.insts = vec![Inst::Unreachable];
+                        }
                     }
+                }
+                rv::Inst::Beq { addr, .. }
+                | rv::Inst::Bne { addr, .. }
+                | rv::Inst::Blt { addr, .. }
+                | rv::Inst::Bge { addr, .. }
+                | rv::Inst::Bltu { addr, .. }
+                | rv::Inst::Bgeu { addr, .. }
+                | rv::Inst::Beqz { addr, .. }
+                | rv::Inst::Bnez { addr, .. }
+                | rv::Inst::Blez { addr, .. }
+                | rv::Inst::Bgez { addr, .. }
+                | rv::Inst::Bltz { addr, .. }
+                | rv::Inst::Bgtz { addr, .. }
+                    if !addrs.contains(&addr) =>
+                {
+                    block.insts = vec![Inst::Unreachable];
                 }
                 rv::Inst::Jal { address, addr, .. } | rv::Inst::PseudoJal { address, addr, .. }
                     if matches!(block.insts[1], Inst::Ret { .. }) =>
