@@ -28,11 +28,12 @@ clang --static example.ll -lm
     - All rounding modes are ignored, except RDN and RUP for 8 FP-to-Int conversion instructions.
     - `fclass` always returns 0.
 4. [These entries](https://github.com/torvalds/linux/blob/7cd60e43a6def40ecb75deb8decc677995970d0b/include/uapi/linux/auxvec.h) in the auxiliary vector are properly initialized.
-5. System calls are implemented based on [this (RISC-V)](https://github.com/riscv-software-src/riscv-pk/blob/7e9b671c0415dfd7b562ac934feb9380075d4aa2/pk/syscall.h) and [this (x86_64)](https://chromium.googlesource.com/chromiumos/docs/+/a2622281357e45f2b2c74cdc4b428b0d1294488d/constants/syscalls.md). Also pay attention to a few quirks listed below:
+5. System calls are implemented based on [this (`riscv64gc`)](https://github.com/riscv-software-src/riscv-pk/blob/7e9b671c0415dfd7b562ac934feb9380075d4aa2/pk/syscall.h) and [this (`x86_64`)](https://chromium.googlesource.com/chromiumos/docs/+/a2622281357e45f2b2c74cdc4b428b0d1294488d/constants/syscalls.md). Also pay attention to a few quirks listed below:
     - The address hint in the first argument of `mmap` is always set to 0.
-    - `mprotect` is ignored and always return 0, because it fails even for legal input in RISC-V.
+    - `mprotect` is ignored and always return 0, because it fails even for legal input in `riscv64gc`.
     - `getmainvars` returns -1 directly, because there is no enough information for this system call.
-    - The layout of the `stat` structure is automatically converted between [RISC-V](https://github.com/riscv-collab/riscv-gnu-toolchain/blob/baefbdd8bcedfabf0cf89dce679a8bd1a9f27b39/linux-headers/include/asm-generic/stat.h) and [x86_64](https://github.com/torvalds/linux/blob/6f52b16c5b29b89d92c0e7236f4655dc8491ad70/arch/x86/include/uapi/asm/stat.h).
+    - The layout of the `stat` structure is automatically converted between [`riscv64gc`](https://github.com/riscv-collab/riscv-gnu-toolchain/blob/baefbdd8bcedfabf0cf89dce679a8bd1a9f27b39/linux-headers/include/asm-generic/stat.h) and [`x86_64`](https://github.com/torvalds/linux/blob/6f52b16c5b29b89d92c0e7236f4655dc8491ad70/arch/x86/include/uapi/asm/stat.h).
+6. System calls for `riscv64gc` seem to work just fine for `aarch64`.
 
 ## C Source Code for Supporting Functions
 
