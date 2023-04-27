@@ -90,6 +90,18 @@ pub fn run(mut prog: Prog) -> Prog {
                     };
                     block.insts.splice(0..3, vec![inst]);
                 }
+                rv::Inst::Addi {
+                    rs1: rv::Reg::Gp,
+                    imm: rv::Imm(imm),
+                    ..
+                } => {
+                    let Inst::Store { ty, ptr, .. } = block.insts[2] else { unreachable!(); };
+                    block.insts = vec![Inst::Store {
+                        ty,
+                        val: Value::Imm(rv::Imm(gp + imm)),
+                        ptr,
+                    }];
+                }
                 _ => continue,
             }
         }
