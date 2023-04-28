@@ -52,6 +52,12 @@ fn trans_code_block(code_block: rv::CodeBlock) -> Func {
         stack_vars: Vec::new(),
         used_regs: Vec::new(),
         used_fregs: Vec::new(),
+        func_prol_regs: Vec::new(),
+        func_prol_fregs: Vec::new(),
+        call_prol_regs: Vec::new(),
+        call_prol_fregs: Vec::new(),
+        epil_regs: Vec::new(),
+        epil_fregs: Vec::new(),
     }
 }
 
