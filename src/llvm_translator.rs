@@ -906,23 +906,17 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
         }
         FminS { frd, frs1, frs2 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Fcmp { rslt: _4, fcond: { FCond::Olt }, op1: _1, op2: _3 },
-            Select { rslt: _5, cond: _4, ty: f, op1: _1, op2: _3 },
-            Fpext { rslt: _6, ty1: f, val: _5, ty2: d },
-            Store { ty: d, val: _6, ptr: frd },
+            Load { rslt: _1, ty: d, ptr: frs2 },
+            Fcmp { rslt: _2, fcond: { FCond::Olt }, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, ty: d, op1: _0, op2: _1 },
+            Store { ty: d, val: _3, ptr: frd },
         }
         FmaxS { frd, frs1, frs2 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Fcmp { rslt: _4, fcond: { FCond::Olt }, op1: _1, op2: _3 },
-            Select { rslt: _5, cond: _4, ty: f, op1: _3, op2: _1 },
-            Fpext { rslt: _6, ty1: f, val: _5, ty2: d },
-            Store { ty: d, val: _6, ptr: frd },
+            Load { rslt: _1, ty: d, ptr: frs2 },
+            Fcmp { rslt: _2, fcond: { FCond::Olt }, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, ty: d, op1: _1, op2: _0 },
+            Store { ty: d, val: _3, ptr: frd },
         }
         FcvtWS { rd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
