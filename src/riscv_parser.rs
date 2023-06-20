@@ -29,10 +29,10 @@ pub fn run(mut src: String, tdata: Option<String>) -> Prog {
     expand_data_blocks(&mut data_blocks, &sections, &symbols);
     split_load_gp(&mut code_blocks, &mut symbols);
     let tdata = tdata.map(|tdata| {
-        let (tdata_addr, tdata_block) = parse_tdata(tdata);
+        let (tdata_addr, tdata_len, tdata_block) = parse_tdata(tdata);
         data_blocks.push(tdata_block);
         data_blocks.sort_unstable_by_key(|b| b.address);
-        tdata_addr
+        (tdata_addr, tdata_len)
     });
     let func_syms = symbols
         .into_iter()
@@ -219,7 +219,7 @@ fn split_load_gp(
     }
 }
 
-fn parse_tdata(tdata: String) -> (Addr, DataBlock) {
+fn parse_tdata(tdata: String) -> (Addr, usize, DataBlock) {
     let lines = tdata.lines().skip(3);
     let mut address = None;
     let mut bytes = Vec::new();
@@ -238,6 +238,7 @@ fn parse_tdata(tdata: String) -> (Addr, DataBlock) {
     if let Some(address) = address {
         (
             address,
+            bytes.len(),
             DataBlock {
                 section: String::from(".tdata"),
                 symbol: String::from(".tdata"),

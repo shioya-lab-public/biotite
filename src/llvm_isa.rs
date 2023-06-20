@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Prog {
     pub entry: Value,
-    pub tdata: Option<Value>,
+    pub tdata: Option<(Value, usize)>,
     pub mem: Vec<u8>,
     pub sp: Value,
     pub phdr: Value,
@@ -98,7 +98,7 @@ impl Prog {
   %envp_addr = add i64 %argv_addr, %argv_offset",
             sp = self.sp,
         );
-        if let Some(tdata) = self.tdata {
+        if let Some((tdata_addr, tdata_len)) = self.tdata {
             init += &format!(
                 "
 
@@ -107,7 +107,7 @@ impl Prog {
   %auxv_b = call i8* @.get_mem_ptr(i64 %auxv_addr)
   %auxv = bitcast i8* %auxv_b to i64*
   %phdr = call i8* @.get_mem_ptr(i64 {phdr})
-  call void @.init_auxv(i64* %auxv, i8* %phdr, i64 {phdr}, i64 {tdata})",
+  call void @.init_auxv(i64* %auxv, i8* %phdr, i64 {phdr}, i64 {tdata_addr}, i64 {tdata_len})",
                 phdr = self.phdr,
             );
         }

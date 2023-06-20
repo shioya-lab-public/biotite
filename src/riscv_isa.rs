@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Prog {
     pub entry: Addr,
-    pub tdata: Option<Addr>,
+    pub tdata: Option<(Addr, usize)>,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
     pub func_syms: HashSet<(String, Addr)>,

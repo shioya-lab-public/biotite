@@ -42,21 +42,18 @@ clang --static example.ll -lm
 #include <stdint.h>
 #include <sys/auxv.h>
 
-void init_auxv(int64_t* auxv, int8_t* phdr, int64_t phdr_addr, int64_t tdata) {
+void init_auxv(int64_t* auxv, int8_t* phdr, int64_t phdr_addr, int64_t tdata, int64_t tdata_len) {
     // Initialize `AT_PHDR`
     Elf64_Phdr* host_phdr = (Elf64_Phdr*) getauxval(AT_PHDR);
     int64_t host_phnum = getauxval(AT_PHNUM);
     if (host_phdr && host_phnum) {
         Elf64_Phdr* guest_phdr = (Elf64_Phdr*) phdr;
         for (int64_t i = 0; i < host_phnum; ++i) {
-            if (host_phdr->p_type == PT_TLS) {
+            if (host_phdr->p_type == PT_TLS || host_phdr->p_type == PT_GNU_RELRO) {
                 *guest_phdr = *host_phdr++;
                 guest_phdr->p_vaddr = tdata;
-                ++guest_phdr;
-            } else if (host_phdr->p_type == PT_GNU_RELRO) {
-                *guest_phdr = *host_phdr++;
-                guest_phdr->p_vaddr = tdata;
-                guest_phdr->p_memsz = 0xac8;
+                guest_phdr->p_filesz = tdata_len;
+                guest_phdr->p_memsz = tdata_len;
                 ++guest_phdr;
             } else {
                 *guest_phdr++ = *host_phdr++;

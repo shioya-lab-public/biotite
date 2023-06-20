@@ -17,7 +17,7 @@ pub fn run(rv_prog: rv::Prog, sys_call: Option<String>, src_funcs: Vec<String>) 
         .collect();
     Prog {
         entry: Value::Addr(rv_prog.entry),
-        tdata: rv_prog.tdata.map(Value::Addr),
+        tdata: rv_prog.tdata.map(|(addr, len)| (Value::Addr(addr), len)),
         mem,
         sp,
         phdr,
