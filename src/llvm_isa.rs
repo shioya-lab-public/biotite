@@ -255,14 +255,10 @@ pub struct Func {
     pub inst_blocks: Vec<InstBlock>,
     pub is_opaque: bool,
     pub stack_vars: Vec<Value>,
+    pub synced_regs: Vec<rv::Reg>,
+    pub synced_fregs: Vec<rv::FReg>,
     pub used_regs: Vec<rv::Reg>,
     pub used_fregs: Vec<rv::FReg>,
-    pub func_prol_regs: Vec<rv::Reg>,
-    pub func_prol_fregs: Vec<rv::FReg>,
-    pub call_prol_regs: Vec<rv::Reg>,
-    pub call_prol_fregs: Vec<rv::FReg>,
-    pub epil_regs: Vec<rv::Reg>,
-    pub epil_fregs: Vec<rv::FReg>,
 }
 
 impl Display for Func {
@@ -308,9 +304,9 @@ define i64 @.{addr}(i64 %entry) {{
                 .join("\n");
             func += &format!("\n{stack_fregs}\n");
         }
-        if !self.func_prol_regs.is_empty() || !self.func_prol_fregs.is_empty() {
+        if !self.synced_regs.is_empty() || !self.synced_fregs.is_empty() {
             let stack_loading =
-                Self::build_stack_loading(&self.func_prol_regs, &self.func_prol_fregs, "entry");
+                Self::build_stack_loading(&self.synced_regs, &self.synced_fregs, "entry");
             func += &format!("\n  {stack_loading}\n");
         }
         if self.is_opaque {
@@ -321,29 +317,25 @@ define i64 @.{addr}(i64 %entry) {{
             }
             dispatcher.pop();
             dispatcher += "]";
-            let func_dispatcher =
-                if !self.call_prol_regs.is_empty() || !self.call_prol_fregs.is_empty() {
-                    let stack_storing = Self::build_stack_storing(
-                        &self.call_prol_regs,
-                        &self.call_prol_fregs,
-                        "disp_s",
-                    );
-                    let mut func_dispatcher = format!(
-                        "{stack_storing}
+            let func_dispatcher = if !self.used_regs.is_empty() || !self.used_fregs.is_empty() {
+                let stack_storing =
+                    Self::build_stack_storing(&self.used_regs, &self.used_fregs, "disp_s");
+                let mut func_dispatcher = format!(
+                    "{stack_storing}
   %ra_val = call i64 @.dispatch_func(i64 %addr)"
-                    );
-                    if !self.epil_regs.is_empty() || !self.epil_fregs.is_empty() {
-                        let stack_loading =
-                            Self::build_stack_loading(&self.epil_regs, &self.epil_fregs, "disp_l");
-                        func_dispatcher += &format!(
-                            "
+                );
+                if !self.used_regs.is_empty() || !self.used_fregs.is_empty() {
+                    let stack_loading =
+                        Self::build_stack_loading(&self.used_regs, &self.used_fregs, "disp_l");
+                    func_dispatcher += &format!(
+                        "
   {stack_loading}"
-                        )
-                    }
-                    func_dispatcher
-                } else {
-                    "%ra_val = call i64 @.dispatch_func(i64 %addr)".to_string()
-                };
+                    )
+                }
+                func_dispatcher
+            } else {
+                "%ra_val = call i64 @.dispatch_func(i64 %addr)".to_string()
+            };
             func += &format!(
                 "
   br label %dispatcher
@@ -392,8 +384,8 @@ cont:
   br label %ret
 "
         );
-        if !self.epil_regs.is_empty() || !self.epil_fregs.is_empty() {
-            let stack_storing = Self::build_stack_storing(&self.epil_regs, &self.epil_fregs, "ret");
+        if !self.used_regs.is_empty() || !self.used_fregs.is_empty() {
+            let stack_storing = Self::build_stack_storing(&self.used_regs, &self.used_fregs, "ret");
             func += &format!(
                 "
 ret:
@@ -786,10 +778,8 @@ pub enum Inst {
     Call {
         rslt: Value,
         target: Value,
-        prol_regs: Vec<rv::Reg>,
-        prol_fregs: Vec<rv::FReg>,
-        epil_regs: Vec<rv::Reg>,
-        epil_fregs: Vec<rv::FReg>,
+        used_regs: Vec<rv::Reg>,
+        used_fregs: Vec<rv::FReg>,
     },
 
     // Standard C/C++ Library Intrinsics
@@ -845,10 +835,8 @@ pub enum Inst {
     Dispfunc {
         addr: Value,
         target: Value,
-        prol_regs: Vec<rv::Reg>,
-        prol_fregs: Vec<rv::FReg>,
-        epil_regs: Vec<rv::Reg>,
-        epil_fregs: Vec<rv::FReg>,
+        used_regs: Vec<rv::Reg>,
+        used_fregs: Vec<rv::FReg>,
     },
     Dispret {
         addr: Value,
@@ -948,16 +936,12 @@ impl Display for Inst {
             Icmp { rslt, cond, op1, op2 } => write!(f, "{rslt} = icmp {cond} i64 {op1}, {op2}"),
             Fcmp {rslt,fcond,op1,op2} => write!(f, "{rslt} = fcmp {fcond} double {op1}, {op2}"),
             Select {rslt,cond, ty, op1,op2} => write!(f, "{rslt} = select i1 {cond}, {ty} {op1}, {ty} {op2}"),
-            Call { rslt, target, prol_regs, prol_fregs, epil_regs, epil_fregs } => if !prol_regs.is_empty() || !prol_fregs.is_empty() {
-                let stack_storing = Func::build_stack_storing(prol_regs, prol_fregs, &format!("{}_s", &rslt.to_string()[1..]));
-                let mut s = format!("{stack_storing}
-  {rslt} = call i64 @.{target}(i64 {target})");
-                if !epil_regs.is_empty() || !epil_fregs.is_empty() {
-                    let stack_loading = Func::build_stack_loading(epil_regs, epil_fregs, &format!("{}_l", &rslt.to_string()[1..]));
-                    s += &format!("
-  {stack_loading}");
-                }
-                write!(f, "{s}")
+            Call { rslt, target, used_regs, used_fregs } => if !used_regs.is_empty() || !used_fregs.is_empty() {
+                let stack_storing = Func::build_stack_storing(used_regs, used_fregs, &format!("{}_s", &rslt.to_string()[1..]));
+                let stack_loading = Func::build_stack_loading(used_regs, used_fregs, &format!("{}_l", &rslt.to_string()[1..]));
+                write!(f, "{stack_storing}
+  {rslt} = call i64 @.{target}(i64 {target})
+  {stack_loading}")
             } else {
                 write!(f, "{rslt} = call i64 @.{target}(i64 {target})")
             }
@@ -991,17 +975,13 @@ impl Display for Inst {
   br label %ret",
     ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)},
 ),
-            Dispfunc { addr, target , prol_regs, prol_fregs, epil_regs, epil_fregs} => {
-                let call = if !prol_regs.is_empty() || !prol_fregs.is_empty() {
-                    let stack_storing = Func::build_stack_storing(prol_regs, prol_fregs, &format!("{addr}_s"));
-                    let mut call = format!("{stack_storing}
-  %{addr}_ra = call i64 @.dispatch_func(i64 {target})");
-                    if !epil_regs.is_empty() || !epil_fregs.is_empty() {
-                        let stack_loading = Func::build_stack_loading(epil_regs, epil_fregs, &format!("{addr}_l"));
-                        call += &format!("
-  {stack_loading}");
-                    }
-                    call
+            Dispfunc { addr, target , used_regs, used_fregs} => {
+                let call = if !used_regs.is_empty() || !used_fregs.is_empty() {
+                    let stack_storing = Func::build_stack_storing(used_regs, used_fregs, &format!("{addr}_s"));
+                    let stack_loading = Func::build_stack_loading(used_regs, used_fregs, &format!("{addr}_l"));
+                    format!("{stack_storing}
+  %{addr}_ra = call i64 @.dispatch_func(i64 {target})
+  {stack_loading}")
                 } else {
                     format!("%{addr}_ra = call i64 @.dispatch_func(i64 {target})")
                 };

@@ -39,10 +39,8 @@ pub fn run(mut prog: Prog) -> Prog {
                                 Inst::Call {
                                     rslt: Value::Temp(address, 0),
                                     target: Value::Addr(addr),
-                                    prol_regs: Vec::new(),
-                                    prol_fregs: Vec::new(),
-                                    epil_regs: Vec::new(),
-                                    epil_fregs: Vec::new(),
+                                    used_regs: Vec::new(),
+                                    used_fregs: Vec::new(),
                                 },
                                 Inst::Load {
                                     rslt: Value::Temp(address, 1),
@@ -83,10 +81,8 @@ pub fn run(mut prog: Prog) -> Prog {
                             Inst::Call {
                                 rslt: Value::Temp(address, 0),
                                 target: Value::Addr(addr),
-                                prol_regs: Vec::new(),
-                                prol_fregs: Vec::new(),
-                                epil_regs: Vec::new(),
-                                epil_fregs: Vec::new(),
+                                used_regs: Vec::new(),
+                                used_fregs: Vec::new(),
                             },
                             Inst::Contret {
                                 addr: Value::Addr(address),
@@ -111,10 +107,8 @@ pub fn run(mut prog: Prog) -> Prog {
                         block.insts[3] = Inst::Dispfunc {
                             addr: Value::Addr(address),
                             target: Value::Temp(address, 1),
-                            prol_regs: Vec::new(),
-                            prol_fregs: Vec::new(),
-                            epil_regs: Vec::new(),
-                            epil_fregs: Vec::new(),
+                            used_regs: Vec::new(),
+                            used_fregs: Vec::new(),
                         }
                     }
                     rv::Inst::Jr { address, .. } => {
@@ -136,10 +130,8 @@ pub fn run(mut prog: Prog) -> Prog {
                         block.insts[2] = Inst::Dispfunc {
                             addr: Value::Addr(address),
                             target: Value::Temp(address, 0),
-                            prol_regs: Vec::new(),
-                            prol_fregs: Vec::new(),
-                            epil_regs: Vec::new(),
-                            epil_fregs: Vec::new(),
+                            used_regs: Vec::new(),
+                            used_fregs: Vec::new(),
                         }
                     }
                     rv::Inst::Ret { address, .. } => {

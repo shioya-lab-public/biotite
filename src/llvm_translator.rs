@@ -50,14 +50,10 @@ fn trans_code_block(code_block: rv::CodeBlock) -> Func {
         inst_blocks: code_block.insts.into_iter().map(trans_inst).collect(),
         is_opaque: true,
         stack_vars: Vec::new(),
+        synced_regs: Vec::new(),
+        synced_fregs: Vec::new(),
         used_regs: Vec::new(),
         used_fregs: Vec::new(),
-        func_prol_regs: Vec::new(),
-        func_prol_fregs: Vec::new(),
-        call_prol_regs: Vec::new(),
-        call_prol_fregs: Vec::new(),
-        epil_regs: Vec::new(),
-        epil_fregs: Vec::new(),
     }
 }
 

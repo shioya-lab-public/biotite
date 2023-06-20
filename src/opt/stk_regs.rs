@@ -5,44 +5,55 @@ use std::collections::HashSet;
 
 pub fn run(mut prog: Prog) -> Prog {
     prog.funcs.par_iter_mut().for_each(|func| {
-        if func.is_opaque {
-            return;
-        }
-
-        let mut waiting = vec![(
-            0,
-            HashSet::new(),
-            HashSet::new(),
-            HashSet::new(),
-            HashSet::new(),
-        )];
-        let mut checked = waiting.clone();
-        let mut completed = Vec::new();
-        while let Some((index, mut used_regs, mut used_fregs, mut synced_regs, mut synced_fregs)) =
-            waiting.pop()
-        {
-            let block = &func.inst_blocks[index];
-            let (dest_regs, dest_fregs, src_regs, src_fregs) = get_regs(&block.rv_inst);
-            for src_reg in src_regs {
-                if !used_regs.contains(&src_reg) {
-                    used_regs.insert(src_reg);
-                    synced_regs.insert(src_reg);
-                }
+        let mut used_regs = HashSet::new();
+        let mut used_fregs = HashSet::new();
+        let mut overwritten_regs = HashSet::new();
+        let mut overwritten_fregs = HashSet::new();
+        let mut branch = false;
+        for block in &func.inst_blocks {
+            if let rv::Inst::Jalr { .. }
+            | rv::Inst::Beq { .. }
+            | rv::Inst::Bne { .. }
+            | rv::Inst::Blt { .. }
+            | rv::Inst::Bge { .. }
+            | rv::Inst::Bltu { .. }
+            | rv::Inst::Bgeu { .. }
+            | rv::Inst::Beqz { .. }
+            | rv::Inst::Bnez { .. }
+            | rv::Inst::Blez { .. }
+            | rv::Inst::Bgez { .. }
+            | rv::Inst::Bltz { .. }
+            | rv::Inst::Bgtz { .. }
+            | rv::Inst::J { .. }
+            | rv::Inst::Jr { .. }
+            | rv::Inst::PseudoJalr { .. }
+            | rv::Inst::OffsetJalr { .. }
+            | rv::Inst::OffsetJr { .. } = block.rv_inst
+            {
+                branch = true;
             }
-            for src_freg in src_fregs {
-                if !used_fregs.contains(&src_freg) {
-                    used_fregs.insert(src_freg);
-                    synced_fregs.insert(src_freg);
+            let (dest_regs, dest_fregs, src_regs, src_fregs) = get_regs(&block.rv_inst);
+
+            used_regs.extend(src_regs);
+            used_fregs.extend(src_fregs);
+            if !branch {
+                for dest_reg in &dest_regs {
+                    if !used_regs.contains(dest_reg) {
+                        overwritten_regs.insert(*dest_reg);
+                    }
+                }
+                for dest_freg in &dest_fregs {
+                    if !used_fregs.contains(dest_freg) {
+                        overwritten_fregs.insert(*dest_freg);
+                    }
                 }
             }
             used_regs.extend(dest_regs);
             used_fregs.extend(dest_fregs);
+
             if let rv::Inst::J { .. } = &block.rv_inst {
                 if let Inst::Call { .. } = &block.insts[0] {
-                    if !used_regs.contains(&rv::Reg::Ra) {
-                        used_regs.insert(rv::Reg::Ra);
-                        synced_regs.insert(rv::Reg::Ra);
-                    }
+                    used_regs.insert(rv::Reg::Ra);
                 }
             }
             if let rv::Inst::Jal { .. } | rv::Inst::PseudoJal { .. } = &block.rv_inst {
@@ -51,177 +62,37 @@ pub fn run(mut prog: Prog) -> Prog {
                 | Inst::Memset { .. }
                 | Inst::Memcmp { .. } = &block.insts[1]
                 {
-                    for reg in [rv::Reg::A0, rv::Reg::A1, rv::Reg::A2] {
-                        if !used_regs.contains(&reg) {
-                            used_regs.insert(reg);
-                            synced_regs.insert(reg);
-                        }
-                    }
-                }
-            }
-            match &block.rv_inst {
-                rv::Inst::Beq { addr, .. }
-                | rv::Inst::Bne { addr, .. }
-                | rv::Inst::Blt { addr, .. }
-                | rv::Inst::Bge { addr, .. }
-                | rv::Inst::Bltu { addr, .. }
-                | rv::Inst::Bgeu { addr, .. }
-                | rv::Inst::Beqz { addr, .. }
-                | rv::Inst::Bnez { addr, .. }
-                | rv::Inst::Blez { addr, .. }
-                | rv::Inst::Bgez { addr, .. }
-                | rv::Inst::Bltz { addr, .. }
-                | rv::Inst::Bgtz { addr, .. }
-                | rv::Inst::J { addr, .. } => {
-                    if let Some(jump_index) = func
-                        .inst_blocks
-                        .iter()
-                        .position(|blk| &blk.rv_inst.address() == addr)
-                    {
-                        let path = (
-                            jump_index,
-                            used_regs.clone(),
-                            used_fregs.clone(),
-                            synced_regs.clone(),
-                            synced_fregs.clone(),
-                        );
-                        if !checked.iter().any(|p| p == &path) {
-                            waiting.push(path.clone());
-                            checked.push(path);
-                        }
-                    }
-                    if let rv::Inst::J { .. } = &block.rv_inst {
-                        completed.push((used_regs, used_fregs, synced_regs, synced_fregs));
-                    } else if index + 1 < func.inst_blocks.len() {
-                        let path = (
-                            index + 1,
-                            used_regs.clone(),
-                            used_fregs.clone(),
-                            synced_regs.clone(),
-                            synced_fregs.clone(),
-                        );
-                        if !checked.iter().any(|p| p == &path) {
-                            waiting.push(path);
-                        } else {
-                            completed.push((used_regs, used_fregs, synced_regs, synced_fregs));
-                        }
-                    }
-                }
-                rv::Inst::Ret { .. } => {
-                    completed.push((used_regs, used_fregs, synced_regs, synced_fregs))
-                }
-                _ => {
-                    if index + 1 < func.inst_blocks.len() {
-                        let path = (
-                            index + 1,
-                            used_regs.clone(),
-                            used_fregs.clone(),
-                            synced_regs.clone(),
-                            synced_fregs.clone(),
-                        );
-                        if !checked.iter().any(|p| p == &path) {
-                            waiting.push(path);
-                        } else {
-                            completed.push((used_regs, used_fregs, synced_regs, synced_fregs));
-                        }
-                    } else {
-                        completed.push((used_regs, used_fregs, synced_regs, synced_fregs));
-                    }
+                    used_regs.extend(vec![rv::Reg::A0, rv::Reg::A1, rv::Reg::A2]);
                 }
             }
         }
-        let (used_regs, used_fregs, synced_regs, synced_fregs) = completed.into_iter().fold(
-            (
-                HashSet::new(),
-                HashSet::new(),
-                HashSet::new(),
-                HashSet::new(),
-            ),
-            |acc, e| (&acc.0 | &e.0, &acc.1 | &e.1, &acc.2 | &e.2, &acc.3 | &e.3),
-        );
 
-        let mut args = HashSet::new();
-        args.extend(vec![
-            rv::Reg::Ra,
-            rv::Reg::Sp,
-            rv::Reg::Gp,
-            rv::Reg::Tp,
-            rv::Reg::A0,
-            rv::Reg::A1,
-            rv::Reg::A2,
-            rv::Reg::A3,
-            rv::Reg::A4,
-            rv::Reg::A5,
-            rv::Reg::A6,
-            rv::Reg::A7,
-        ]);
-        let mut fargs = HashSet::new();
-        fargs.extend(vec![
-            rv::FReg::Fa0,
-            rv::FReg::Fa1,
-            rv::FReg::Fa2,
-            rv::FReg::Fa3,
-            rv::FReg::Fa4,
-            rv::FReg::Fa5,
-            rv::FReg::Fa6,
-            rv::FReg::Fa7,
-        ]);
-        let mut rets = HashSet::new();
-        rets.extend(vec![
-            rv::Reg::Ra,
-            rv::Reg::Sp,
-            rv::Reg::Gp,
-            rv::Reg::Tp,
-            rv::Reg::A0,
-            rv::Reg::A1,
-        ]);
-        let mut frets = HashSet::new();
-        frets.extend(vec![rv::FReg::Fa0, rv::FReg::Fa1]);
-        let func_prol_regs = &args & &synced_regs;
-        let func_prol_fregs = &fargs & &synced_fregs;
-        let call_prol_regs = &args & &used_regs;
-        let call_prol_fregs = &fargs & &used_fregs;
-        let epil_regs = &rets & &used_regs;
-        let epil_fregs = &frets & &used_fregs;
-
+        let synced_regs = &used_regs ^ &overwritten_regs;
+        let synced_fregs = &used_fregs ^ &overwritten_fregs;
+        func.synced_regs = synced_regs.into_iter().collect();
+        func.synced_fregs = synced_fregs.into_iter().collect();
         func.used_regs = used_regs.into_iter().collect();
         func.used_fregs = used_fregs.into_iter().collect();
-        func.func_prol_regs = func_prol_regs.into_iter().collect();
-        func.func_prol_fregs = func_prol_fregs.into_iter().collect();
-        func.call_prol_regs = call_prol_regs.into_iter().collect();
-        func.call_prol_fregs = call_prol_fregs.into_iter().collect();
-        func.epil_regs = epil_regs.into_iter().collect();
-        func.epil_fregs = epil_fregs.into_iter().collect();
         func.used_regs.sort_unstable();
         func.used_fregs.sort_unstable();
-        func.func_prol_regs.sort_unstable();
-        func.func_prol_fregs.sort_unstable();
-        func.call_prol_regs.sort_unstable();
-        func.call_prol_fregs.sort_unstable();
-        func.epil_regs.sort_unstable();
-        func.epil_fregs.sort_unstable();
+        func.synced_regs.sort_unstable();
+        func.synced_fregs.sort_unstable();
 
         for block in &mut func.inst_blocks {
             for inst in &mut block.insts {
                 match inst {
                     Inst::Call {
-                        prol_regs,
-                        prol_fregs,
-                        epil_regs,
-                        epil_fregs,
+                        used_regs,
+                        used_fregs,
                         ..
                     }
                     | Inst::Dispfunc {
-                        prol_regs,
-                        prol_fregs,
-                        epil_regs,
-                        epil_fregs,
+                        used_regs,
+                        used_fregs,
                         ..
                     } => {
-                        *prol_regs = func.call_prol_regs.clone();
-                        *prol_fregs = func.call_prol_fregs.clone();
-                        *epil_regs = func.epil_regs.clone();
-                        *epil_fregs = func.epil_fregs.clone();
+                        *used_regs = func.used_regs.clone();
+                        *used_fregs = func.used_fregs.clone();
                     }
                     Inst::Load { ptr, .. } | Inst::Store { ptr, .. } => {
                         if let Value::Reg(reg) = ptr {
