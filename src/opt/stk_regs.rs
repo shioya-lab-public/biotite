@@ -11,7 +11,8 @@ pub fn run(mut prog: Prog) -> Prog {
         let mut overwritten_fregs = HashSet::new();
         let mut branch = false;
         for block in &func.inst_blocks {
-            if let rv::Inst::Jalr { .. }
+            if let rv::Inst::Jal { .. }
+            | rv::Inst::Jalr { .. }
             | rv::Inst::Beq { .. }
             | rv::Inst::Bne { .. }
             | rv::Inst::Blt { .. }
@@ -25,6 +26,7 @@ pub fn run(mut prog: Prog) -> Prog {
             | rv::Inst::Bltz { .. }
             | rv::Inst::Bgtz { .. }
             | rv::Inst::J { .. }
+            | rv::Inst::PseudoJal { .. }
             | rv::Inst::Jr { .. }
             | rv::Inst::PseudoJalr { .. }
             | rv::Inst::OffsetJalr { .. }
