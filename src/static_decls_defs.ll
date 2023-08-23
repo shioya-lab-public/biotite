@@ -107,78 +107,84 @@ define void @.init_auxv(i64* %0, i8* %1, i64 %2, i64 %3, i64 %4) {
   %10 = select i1 %8, i1 %9, i1 false
   br i1 %10, label %13, label %11
 
-11:                                               ; preds = %17, %5
-  %12 = phi i64* [ %0, %5 ], [ %19, %17 ]
-  br label %36
+11:                                               ; preds = %18, %5
+  %12 = phi i64* [ %0, %5 ], [ %20, %18 ]
+  br label %42
 
 13:                                               ; preds = %5
   %14 = icmp sgt i64 %7, 0
-  br i1 %14, label %15, label %17
+  br i1 %14, label %15, label %18
 
 15:                                               ; preds = %13
-  %16 = inttoptr i64 %6 to %struct.Elf64_Phdr*
-  br label %20
+  %16 = bitcast i8* %1 to %struct.Elf64_Phdr*
+  %17 = inttoptr i64 %6 to %struct.Elf64_Phdr*
+  br label %21
 
-17:                                               ; preds = %30, %13
-  %18 = getelementptr i64, i64* %0, i64 1
+18:                                               ; preds = %36, %13
+  %19 = getelementptr i64, i64* %0, i64 1
   store i64 3, i64* %0
-  %19 = getelementptr i64, i64* %0, i64 2
-  store i64 %2, i64* %18
+  %20 = getelementptr i64, i64* %0, i64 2
+  store i64 %2, i64* %19
   br label %11
 
-20:                                               ; preds = %15, %30
-  %21 = phi %struct.Elf64_Phdr* [ %32, %30 ], [ %16, %15 ]
-  %22 = phi i64 [ %33, %30 ], [ 0, %15 ]
-  %23 = phi %struct.Elf64_Phdr* [ %31, %30 ], [ %1, %15 ]
-  %24 = load i32, i32* %21
-  switch i32 %24, label %29 [
-    i32 7, label %25
-    i32 1685382482, label %25
+21:                                               ; preds = %15, %36
+  %22 = phi %struct.Elf64_Phdr* [ %38, %36 ], [ %17, %15 ]
+  %23 = phi i64 [ %39, %36 ], [ 0, %15 ]
+  %24 = phi %struct.Elf64_Phdr* [ %37, %36 ], [ %16, %15 ]
+  %25 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %22, i64 0, i32 0
+  %26 = load i32, i32* %25
+  switch i32 %26, label %33 [
+    i32 7, label %27
+    i32 1685382482, label %27
   ]
 
-25:                                               ; preds = %20, %20
-  call void @.mem_copy(i8* %23, i8* %21, i64 56)
-  %26 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %23, i64 0, i32 3
-  store i64 %3, i64* %26
-  %27 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %23, i64 0, i32 5
-  store i64 %4, i64* %27
-  %28 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %23, i64 0, i32 6
-  store i64 %4, i64* %28
-  br label %30
+27:                                               ; preds = %21, %21
+  %28 = bitcast %struct.Elf64_Phdr* %24 to i8*
+  %29 = bitcast %struct.Elf64_Phdr* %22 to i8*
+  call void @.mem_copy(i8* %28, i8* %29, i64 56)
+  %30 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %24, i64 0, i32 3
+  store i64 %3, i64* %30
+  %31 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %24, i64 0, i32 5
+  store i64 %4, i64* %31
+  %32 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %24, i64 0, i32 6
+  store i64 %4, i64* %32
+  br label %36
 
-29:                                               ; preds = %20
-  call void @.mem_copy(i8* %23, i8* %21, i64 56)
-  br label %30
+33:                                               ; preds = %21
+  %34 = bitcast %struct.Elf64_Phdr* %24 to i8*
+  %35 = bitcast %struct.Elf64_Phdr* %22 to i8*
+  call void @.mem_copy(i8* %34, i8* %35, i64 56)
+  br label %36
 
-30:                                               ; preds = %25, %29
-  %31 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %23, i64 1
-  %32 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %21, i64 1
-  %33 = add i64 %22, 1
-  %34 = icmp eq i64 %33, %7
-  br i1 %34, label %17, label %20
+36:                                               ; preds = %27, %33
+  %37 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %24, i64 1
+  %38 = getelementptr %struct.Elf64_Phdr, %struct.Elf64_Phdr* %22, i64 1
+  %39 = add i64 %23, 1
+  %40 = icmp eq i64 %39, %7
+  br i1 %40, label %18, label %21
 
-35:                                               ; preds = %46
+41:                                               ; preds = %52
   ret void
 
-36:                                               ; preds = %11, %46
-  %37 = phi i64* [ %47, %46 ], [ %12, %11 ]
-  %38 = phi i64 [ %48, %46 ], [ 0, %11 ]
-  %39 = getelementptr [23 x i64], [23 x i64]* @.entries, i64 0, i64 %38
-  %40 = load i64, i64* %39
-  %41 = call i64 @getauxval(i64 %40)
-  %42 = icmp eq i64 %41, 0
-  br i1 %42, label %46, label %43
+42:                                               ; preds = %11, %52
+  %43 = phi i64* [ %53, %52 ], [ %12, %11 ]
+  %44 = phi i64 [ %54, %52 ], [ 0, %11 ]
+  %45 = getelementptr [23 x i64], [23 x i64]* @.entries, i64 0, i64 %44
+  %46 = load i64, i64* %45
+  %47 = call i64 @getauxval(i64 %46)
+  %48 = icmp eq i64 %47, 0
+  br i1 %48, label %52, label %49
 
-43:                                               ; preds = %36
-  %44 = getelementptr i64, i64* %37, i64 1
-  store i64 %40, i64* %37
-  %45 = getelementptr i64, i64* %37, i64 2
-  store i64 %41, i64* %44
-  br label %46
+49:                                               ; preds = %42
+  %50 = getelementptr i64, i64* %43, i64 1
+  store i64 %46, i64* %43
+  %51 = getelementptr i64, i64* %43, i64 2
+  store i64 %47, i64* %50
+  br label %52
 
-46:                                               ; preds = %43, %36
-  %47 = phi i64* [ %45, %43 ], [ %37, %36 ]
-  %48 = add i64 %38, 1
-  %49 = icmp eq i64 %48, 23
-  br i1 %49, label %35, label %36
+52:                                               ; preds = %49, %42
+  %53 = phi i64* [ %51, %49 ], [ %43, %42 ]
+  %54 = add i64 %44, 1
+  %55 = icmp eq i64 %54, 23
+  br i1 %55, label %41, label %42
 }
