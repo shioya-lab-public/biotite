@@ -439,5 +439,83 @@ call:
   %newname = call i8* @.sys_get_mem_ptr(i64 %arg4)
   %rslt = call i64 (i64, ...) @syscall(i64 276, i64 %arg1, i8* %oldname, i64 %arg3, i8* %newname, i64 %arg5)"
         ),
+        (
+            "clone",
+            220,
+            "  %parent_tidptr = call i8* @.sys_get_mem_ptr(i64 %arg3)
+  %child_tidptr = call i8* @.sys_get_mem_ptr(i64 %arg4)
+  %rslt = call i64 (i64, ...) @syscall(i64 220, i64 %arg1, i64 %arg2, i8* %parent_tidptr, i8* %child_tidptr, i64 %arg5)"
+        ),
+        (
+            "getrandom",
+            278,
+            "  %buf = call i8* @.sys_get_mem_ptr(i64 %arg1)
+  %rslt = call i64 (i64, ...) @syscall(i64 278, i8* %buf, i64 %arg2, i64 %arg3)"
+        ),
+        (
+            "pipe2",
+            59,
+            "  %fildes = call i8* @.sys_get_mem_ptr(i64 %arg1)
+  %rslt = call i64 (i64, ...) @syscall(i64 59, i8* %fildes, i64 %arg2)"
+        ),
+        (
+            "wait4",
+            260,
+            "  %stat_addr = call i8* @.sys_get_mem_ptr(i64 %arg2)
+  %ru = call i8* @.sys_get_mem_ptr(i64 %arg4)
+  %rslt = call i64 (i64, ...) @syscall(i64 260, i64 %arg1, i8* %stat_addr, i64 %arg3, i8* %ru)"
+        ),
+        (
+            "execve",
+            221,
+            "  %filename = call i8* @.sys_get_mem_ptr(i64 %arg1)
+  %argv = call i8** @.trans_mem_ptr_vec(i64 %arg2)
+  %envp = call i8** @.trans_mem_ptr_vec(i64 %arg3)
+  %rslt = call i64 (i64, ...) @syscall(i64 221, i8* %filename, i8** %argv, i8** %envp)"
+        ),
+        (
+            "ppoll",
+            73,
+            "  %ufds = call i8* @.sys_get_mem_ptr(i64 %arg1)
+  %tsp = call i8* @.sys_get_mem_ptr(i64 %arg3)
+  %sigmask = call i8* @.sys_get_mem_ptr(i64 %arg4)
+  %rslt = call i64 (i64, ...) @syscall(i64 73, i8* %ufds, i64 %arg2, i8* %tsp, i8* %sigmask, i64 %arg5)"
+        ),
+        (
+            "clock_nanosleep",
+            115,
+            "  %rqtp = call i8* @.sys_get_mem_ptr(i64 %arg3)
+  %rmtp = call i8* @.sys_get_mem_ptr(i64 %arg4)
+  %rslt = call i64 (i64, ...) @syscall(i64 115, i64 %arg1, i64 %arg2, i8* %rqtp, i8* %rmtp)"
+        ),
+        (
+            "truncate",
+            45,
+            "  %path = call i8* @.sys_get_mem_ptr(i64 %arg1)
+  %rslt = call i64 (i64, ...) @syscall(i64 45, i8* %path, i64 %arg2)"
+        ),
+        (
+            "fchmodat",
+            53,
+            "  %filename = call i8* @.sys_get_mem_ptr(i64 %arg2)
+  %rslt = call i64 (i64, ...) @syscall(i64 53, i64 %arg1, i8* %filename, i64 %arg3)"
+        ),
+        (
+            "nanosleep",
+            101,
+            "  %rqtp = call i8* @.sys_get_mem_ptr(i64 %arg1)
+  %rmtp = call i8* @.sys_get_mem_ptr(i64 %arg2)
+  %rslt = call i64 (i64, ...) @syscall(i64 101, i8* %rqtp, i8* %rmtp)"
+        ),
+        (
+            "pselect6",
+            72,
+            "  %readfds = call i8* @.sys_get_mem_ptr(i64 %arg2)
+  %writefds = call i8* @.sys_get_mem_ptr(i64 %arg3)
+  %exceptfds = call i8* @.sys_get_mem_ptr(i64 %arg4)
+  %timeout = call i8* @.sys_get_mem_ptr(i64 %arg5)
+  %sigmask = call i8* @.sys_get_mem_ptr(i64 %arg6)
+  %rslt = call i64 (i64, ...) @syscall(i64 72, i64 %arg1, i8* %readfds, i8* %writefds, i8* %exceptfds, i8* %timeout, i8* %sigmask)"
+        ),
     ]
 });

@@ -45,6 +45,28 @@ dynamic:
   ret i8* %dynamic_ptr
 }}
 
+define i8** @.trans_mem_ptr_vec(i64 %0) {{
+  %2 = call i8* @.sys_get_mem_ptr(i64 %0)
+  %3 = bitcast i8* %2 to i8**
+  %4 = load i8*, i8** %3
+  %5 = icmp eq i8* %4, null
+  br i1 %5, label %14, label %6
+
+6:                                                ; preds = %1, %6
+  %7 = phi i8* [ %12, %6 ], [ %4, %1 ]
+  %8 = phi i8** [ %11, %6 ], [ %3, %1 ]
+  %9 = ptrtoint i8* %7 to i64
+  %10 = call i8* @.sys_get_mem_ptr(i64 %9)
+  store i8* %10, i8** %8
+  %11 = getelementptr i8*, i8** %8, i64 1
+  %12 = load i8*, i8** %11
+  %13 = icmp eq i8* %12, null
+  br i1 %13, label %14, label %6
+
+14:                                               ; preds = %6, %1
+  ret i8** %3
+}}
+
 {aux}
 
 define i64 @.sys_call(i64 %nr, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6) {{
