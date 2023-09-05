@@ -356,7 +356,8 @@ call:
         (
             "ioctl",
             29,
-            "  %rslt = call i64 (i64, ...) @syscall(i64 16, i64 %arg1, i64 %arg2, i64 %arg3)"
+            "  %arg = call i8* @.sys_get_mem_ptr(i64 %arg3)
+  %rslt = call i64 (i64, ...) @syscall(i64 16, i64 %arg1, i64 %arg2, i8* %arg)"
         ),
         (
             "getrlimit",
