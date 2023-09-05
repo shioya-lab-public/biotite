@@ -71,8 +71,13 @@ pub fn run(mut prog: Prog) -> Prog {
 
         let synced_regs = &used_regs ^ &overwritten_regs;
         let synced_fregs = &used_fregs ^ &overwritten_fregs;
-        func.synced_regs = synced_regs.into_iter().collect();
-        func.synced_fregs = synced_fregs.into_iter().collect();
+        if func.is_opaque {
+            func.synced_regs = used_regs.clone().into_iter().collect();
+            func.synced_fregs = used_fregs.clone().into_iter().collect();
+        } else {
+            func.synced_regs = synced_regs.into_iter().collect();
+            func.synced_fregs = synced_fregs.into_iter().collect();
+        }
         func.used_regs = used_regs.into_iter().collect();
         func.used_fregs = used_fregs.into_iter().collect();
         func.used_regs.sort_unstable();
