@@ -95,6 +95,29 @@ define void @.mem_copy(i8* %0, i8* %1, i64 %2) {
   br i1 %14, label %5, label %6
 }
 
+define i8* @.copy_envp(i8** %0, i8** %1) {
+  %3 = load i8*, i8** %0
+  %4 = icmp eq i8* %3, null
+  br i1 %4, label %13, label %5
+
+5:                                                ; preds = %2, %5
+  %6 = phi i8* [ %11, %5 ], [ %3, %2 ]
+  %7 = phi i8** [ %10, %5 ], [ %1, %2 ]
+  %8 = phi i8** [ %9, %5 ], [ %0, %2 ]
+  %9 = getelementptr i8*, i8** %8, i64 1
+  %10 = getelementptr i8*, i8** %7, i64 1
+  store i8* %6, i8** %7
+  %11 = load i8*, i8** %9
+  %12 = icmp eq i8* %11, null
+  br i1 %12, label %13, label %5
+
+13:                                               ; preds = %5, %2
+  %14 = phi i8** [ %1, %2 ], [ %10, %5 ]
+  %15 = getelementptr i8*, i8** %14, i64 1
+  %16 = bitcast i8** %15 to i8*
+  ret i8* %16
+}
+
 declare i64 @getauxval(i64)
 %struct.Elf64_Phdr = type { i32, i32, i64, i64, i64, i64, i64, i64 }
 @.entries = constant [23 x i64] [i64 0, i64 1, i64 2, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9, i64 10, i64 11, i64 12, i64 13, i64 14, i64 15, i64 16, i64 17, i64 23, i64 24, i64 25, i64 26, i64 31, i64 51]

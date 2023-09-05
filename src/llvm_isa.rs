@@ -32,7 +32,7 @@ impl Display for Prog {
             .collect::<Vec<_>>()
             .join("\n\n");
         let (dispatcher_len, dispatchers) = self.build_dispatchers();
-        let mut prog = format!("define i32 @main(i32 %argc, i8** %argv) {{
+        let mut prog = format!("define i32 @main(i32 %argc, i8** %argv, i8** %envp) {{
 {init}
 
 loop:
@@ -93,9 +93,12 @@ impl Prog {
   %argv_byte_cnt = mul i64 %argc_i64, 8
   call void @.mem_copy(i8* %argv_dest, i8* %argv_src, i64 %argv_byte_cnt)
 
-  ; Create empty `envp`
+  ; Initialize `envp`
   %argv_offset = add i64 %argv_byte_cnt, 8
-  %envp_addr = add i64 %argv_addr, %argv_offset",
+  %envp_addr = add i64 %argv_addr, %argv_offset
+  %envp_dest_b = call i8* @.get_mem_ptr(i64 %envp_addr)
+  %envp_dest = bitcast i8* %envp_dest_b to i8**
+  %auxv_b = call i8* @.copy_envp(i8** %envp, i8** %envp_dest)",
             sp = self.sp,
         );
         if let Some((tdata_addr, tdata_len)) = self.tdata {
@@ -103,8 +106,6 @@ impl Prog {
                 "
 
   ; Initialize `auxv`
-  %auxv_addr = add i64 %envp_addr, 8
-  %auxv_b = call i8* @.get_mem_ptr(i64 %auxv_addr)
   %auxv = bitcast i8* %auxv_b to i64*
   %phdr = call i8* @.get_mem_ptr(i64 {phdr})
   call void @.init_auxv(i64* %auxv, i8* %phdr, i64 {phdr}, i64 {tdata_addr}, i64 {tdata_len})",

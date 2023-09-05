@@ -38,6 +38,17 @@ clang --static example.ll -lm
 ## C Source Code for Supporting Functions
 
 ``` c
+#include <stdint.h>
+
+int8_t* copy_envp(int8_t* host_envp[], int8_t* guest_envp[]) {
+    while (*host_envp) {
+        *guest_envp++ = *host_envp++;
+    }
+    return (int8_t*)++guest_envp;
+}
+```
+
+``` c
 #include <elf.h>
 #include <stdint.h>
 #include <sys/auxv.h>
