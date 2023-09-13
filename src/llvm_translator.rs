@@ -3,7 +3,7 @@ use crate::llvm_macro::*;
 use crate::riscv_isa as rv;
 use rayon::prelude::*;
 
-pub fn run(rv_prog: rv::Prog, sys_call: Option<String>, src_funcs: Vec<String>) -> Prog {
+pub fn run(rv_prog: rv::Prog, sys_call: Option<String>, ir_funcs: Vec<String>) -> Prog {
     let (mem, sp, phdr) = build_mem(&rv_prog.data_blocks);
     let funcs = rv_prog
         .code_blocks
@@ -23,7 +23,7 @@ pub fn run(rv_prog: rv::Prog, sys_call: Option<String>, src_funcs: Vec<String>) 
         phdr,
         funcs,
         sys_call,
-        src_funcs: src_funcs.into_iter().collect(),
+        ir_funcs: ir_funcs.into_iter().collect(),
         func_syms,
         native_mem_utils: false,
     }

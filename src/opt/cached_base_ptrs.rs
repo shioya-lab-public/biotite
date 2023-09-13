@@ -6,7 +6,9 @@ use std::collections::{HashMap, HashSet};
 macro_rules! use_cache {
     ( $rs1:ident, $func:ident, $block:ident, $cache:ident, $imm:ident ) => {
         if $rs1 != &rv::Reg::Gp && ($func.stack_vars.is_empty() || $rs1 != &rv::Reg::Sp) {
-            let Inst::Getmemptr { rslt, .. } = $block.insts[2] else { unreachable!(); };
+            let Inst::Getmemptr { rslt, .. } = $block.insts[2] else {
+                unreachable!();
+            };
             if let Some((ptr, offset)) = $cache.get($rs1) {
                 let inst = Inst::Getelementptr {
                     rslt,

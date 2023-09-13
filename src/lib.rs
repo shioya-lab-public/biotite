@@ -1,3 +1,4 @@
+mod ir_translator;
 mod llvm_isa;
 mod llvm_macro;
 mod llvm_translator;
@@ -16,11 +17,13 @@ pub fn run(
     disable_all_opts: bool,
     enable_opts: Vec<String>,
     disable_opts: Vec<String>,
-    src_funcs: Vec<String>,
-) -> String {
-    let rv_prog = riscv_parser::run(rv_src, tdata_src);
+    ir_funcs: Vec<String>,
+    ir_files: Vec<String>,
+) -> (String, Vec<String>) {
+    let (rv_prog, symbols) = riscv_parser::run(rv_src, tdata_src);
+    let transed_ir_files = ir_translator::run(&ir_funcs, ir_files, &symbols);
     let sys_call = sys_call::build(arch);
-    let ll_prog = llvm_translator::run(rv_prog, sys_call, src_funcs);
+    let ll_prog = llvm_translator::run(rv_prog, sys_call, ir_funcs);
     let opted_prog = opt::optimize(
         ll_prog,
         enable_all_opts,
@@ -28,5 +31,5 @@ pub fn run(
         enable_opts,
         disable_opts,
     );
-    opted_prog.to_string()
+    (opted_prog.to_string(), transed_ir_files)
 }

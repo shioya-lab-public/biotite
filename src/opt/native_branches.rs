@@ -26,7 +26,9 @@ pub fn run(mut prog: Prog) -> Prog {
             {
                 if addrs.contains(&addr) {
                     block.insts.pop();
-                    let Inst::Select{ cond, op1, op2, ..} = block.insts.pop().unwrap() else { unreachable!(); };
+                    let Inst::Select { cond, op1, op2, .. } = block.insts.pop().unwrap() else {
+                        unreachable!();
+                    };
                     block.insts.push(Inst::Conbr {
                         cond,
                         iftrue: op1,

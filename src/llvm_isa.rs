@@ -12,7 +12,7 @@ pub struct Prog {
     pub phdr: Value,
     pub funcs: Vec<Func>,
     pub sys_call: Option<String>,
-    pub src_funcs: HashSet<String>,
+    pub ir_funcs: HashSet<String>,
     pub func_syms: HashSet<(String, Value)>,
     pub native_mem_utils: bool,
 }
@@ -23,7 +23,7 @@ impl Display for Prog {
             .funcs
             .iter()
             .map(|func| {
-                if self.src_funcs.contains(&func.symbol) {
+                if self.ir_funcs.contains(&func.symbol) {
                     format!("declare i64 @.{}(i64)", func.address)
                 } else {
                     func.to_string()
@@ -280,7 +280,9 @@ define i64 @.{addr}(i64 %entry) {{
                 .stack_vars
                 .iter()
                 .map(|var| {
-                    let Value::Stack(_, width) = var else { unreachable!(); };
+                    let Value::Stack(_, width) = var else {
+                        unreachable!();
+                    };
                     format!("  {var} = alloca i{width}")
                 })
                 .collect::<Vec<_>>()

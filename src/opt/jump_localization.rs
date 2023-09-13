@@ -9,7 +9,9 @@ pub fn run(mut prog: Prog) -> Prog {
         .funcs
         .iter()
         .map(|func| {
-            let Value::Addr(addr) = func.address else {unreachable!();};
+            let Value::Addr(addr) = func.address else {
+                unreachable!();
+            };
             addr
         })
         .collect();

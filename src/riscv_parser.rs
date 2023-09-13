@@ -17,7 +17,7 @@ static BYTES: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"[[:xdigit:]]+:\s+(([[:xdigit:]][[:xdigit:]] )+)").unwrap());
 static TDATA: Lazy<Regex> = Lazy::new(|| Regex::new(r"([[:xdigit:]]+)\s+(.{35})").unwrap());
 
-pub fn run(mut src: String, tdata: Option<String>) -> Prog {
+pub fn run(mut src: String, tdata: Option<String>) -> (Prog, HashMap<String, Addr>) {
     // Make sure the last block is properly processed
     src.push('\n');
 
@@ -35,17 +35,24 @@ pub fn run(mut src: String, tdata: Option<String>) -> Prog {
         (tdata_addr, tdata_len)
     });
     let func_syms = symbols
+        .clone()
         .into_iter()
         .filter_map(|((name, addr), (_, is_func))| if is_func { Some((name, addr)) } else { None })
         .collect();
 
-    Prog {
-        entry,
-        tdata,
-        data_blocks,
-        code_blocks,
-        func_syms,
-    }
+    (
+        Prog {
+            entry,
+            tdata,
+            data_blocks,
+            code_blocks,
+            func_syms,
+        },
+        symbols
+            .into_iter()
+            .map(|((name, addr), (_, _))| (name, addr))
+            .collect(),
+    )
 }
 
 fn parse_entry<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Addr {
