@@ -255,7 +255,6 @@ pub struct Func {
     pub address: Value,
     pub inst_blocks: Vec<InstBlock>,
     pub is_opaque: bool,
-    pub stack_vars: Vec<Value>,
     pub synced_regs: Vec<rv::Reg>,
     pub synced_fregs: Vec<rv::FReg>,
     pub used_regs: Vec<rv::Reg>,
@@ -275,20 +274,6 @@ define i64 @.{addr}(i64 %entry) {{
             sec = self.section,
             sym = self.symbol,
         );
-        if !self.stack_vars.is_empty() {
-            let stack_vars = self
-                .stack_vars
-                .iter()
-                .map(|var| {
-                    let Value::Stack(_, width) = var else {
-                        unreachable!();
-                    };
-                    format!("  {var} = alloca i{width}")
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            func += &format!("\n{stack_vars}\n");
-        }
         if !self.used_regs.is_empty() {
             let stack_regs = self
                 .used_regs
@@ -1091,7 +1076,6 @@ pub enum Value {
     Addr(rv::Addr),
     Temp(rv::Addr, usize),
     RS,
-    Stack(usize, usize),
     StkReg(rv::Reg),
     StkFReg(rv::FReg),
     EntryPtr,
@@ -1115,7 +1099,6 @@ impl Display for Value {
             Addr(addr) => write!(f, "u{addr}"),
             Temp(addr, i) => write!(f, "%u{addr}_{i}"),
             RS => write!(f, "@.rs"),
-            Stack(offset, width) => write!(f, "%stk_{offset}_i{width}"),
             StkReg(reg) => write!(f, "%{reg}"),
             StkFReg(freg) => write!(f, "%{freg}"),
             EntryPtr => write!(f, "%entry_ptr"),
