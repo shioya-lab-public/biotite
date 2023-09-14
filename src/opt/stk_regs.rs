@@ -5,6 +5,9 @@ use std::collections::HashSet;
 
 pub fn run(mut prog: Prog) -> Prog {
     prog.funcs.par_iter_mut().for_each(|func| {
+        if func.is_opaque {
+            return;
+        }
         let mut used_regs = HashSet::new();
         let mut used_fregs = HashSet::new();
         let mut overwritten_regs = HashSet::new();
