@@ -3,21 +3,21 @@ macro_rules! define_insts {
         use once_cell::sync::Lazy;
         use regex::{Regex, RegexSet};
 
-        const RD: &str = r"(?P<rd>[[:alpha:]][[:alnum:]]+)";
-        const RS1: &str = r"(?P<rs1>[[:alpha:]][[:alnum:]]+)";
-        const RS2: &str = r"(?P<rs2>[[:alpha:]][[:alnum:]]+)";
-        const FRD: &str = r"(?P<frd>[[:alpha:]][[:alnum:]]+)";
-        const FRS1: &str = r"(?P<frs1>[[:alpha:]][[:alnum:]]+)";
-        const FRS2: &str = r"(?P<frs2>[[:alpha:]][[:alnum:]]+)";
-        const FRS3: &str = r"(?P<frs3>[[:alpha:]][[:alnum:]]+)";
-        const IMM: &str = r"(?P<imm>-?[[:digit:]]+)";
-        const ADDR: &str = r"0x(?P<addr>[[:xdigit:]]+)";
-        const CSR: &str = r"(?P<csr>[[:alpha:]]+)";
-        const MO: &str = r"(\.(?P<mo>[[:alpha:]]+))?";
-        const RM: &str = r"(,\s+(?P<rm>[[:alpha:]]+))?";
-        const INST_ADDR: &str = r"(?P<inst_addr>[[:xdigit:]]+)";
-        const INST_BYTE: &str = r"(?P<inst_byte>([[:xdigit:]]{2} )+)";
-        const SYM: &str = r"(?P<sym>.*)";
+        const RD: &str = r"(?<rd>[[:alpha:]][[:alnum:]]+)";
+        const RS1: &str = r"(?<rs1>[[:alpha:]][[:alnum:]]+)";
+        const RS2: &str = r"(?<rs2>[[:alpha:]][[:alnum:]]+)";
+        const FRD: &str = r"(?<frd>[[:alpha:]][[:alnum:]]+)";
+        const FRS1: &str = r"(?<frs1>[[:alpha:]][[:alnum:]]+)";
+        const FRS2: &str = r"(?<frs2>[[:alpha:]][[:alnum:]]+)";
+        const FRS3: &str = r"(?<frs3>[[:alpha:]][[:alnum:]]+)";
+        const IMM: &str = r"(?<imm>-?[[:digit:]]+)";
+        const ADDR: &str = r"0x(?<addr>[[:xdigit:]]+)";
+        const CSR: &str = r"(?<csr>[[:alpha:]]+)";
+        const MO: &str = r"(\.(?<mo>[[:alpha:]]+))?";
+        const RM: &str = r"(,\s+(?<rm>[[:alpha:]]+))?";
+        const INST_ADDR: &str = r"(?<inst_addr>[[:xdigit:]]+)";
+        const INST_BYTE: &str = r"(?<inst_byte>([[:xdigit:]]{2} )+)";
+        const SYM: &str = r"(?<sym>.*)";
 
         static REGEXES: Lazy<Vec<(&str, Regex)>> = Lazy::new(|| {
             vec![

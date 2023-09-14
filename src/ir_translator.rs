@@ -14,28 +14,28 @@ static TYPE: Lazy<Regex> = Lazy::new(|| {
 static VAR: Lazy<Regex> = Lazy::new(|| Regex::new(r"(%|@)[[:word:]]+").unwrap());
 static FUNC_PROTO: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
-        r"define (dso_local )?(?P<ret_ty>.+) (?P<func>{var})\((?P<args_str>.*)\)",
+        r"define (dso_local )?(?<ret_ty>.+) (?<func>{var})\((?<args_str>.*)\)",
         var = VAR.as_str()
     ))
     .unwrap()
 });
 static CALL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
-        r"(?P<ret_var>{var}) = (tail )?call (?P<ret_ty>.+) (?P<func>{var})\((?P<args_str>.*)\)",
+        r"(?<ret_var>{var}) = (tail )?call (?<ret_ty>.+) (?<func>{var})\((?<args_str>.*)\)",
         var = VAR.as_str()
     ))
     .unwrap()
 });
 static LOAD: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
-        r"(?P<dest_arg>{var}) = load (?P<dest_ty>.+), (?P<src_ty>.+) (?P<src_arg>{var})",
+        r"(?<dest_arg>{var}) = load (?<dest_ty>.+), (?<src_ty>.+) (?<src_arg>{var})",
         var = VAR.as_str()
     ))
     .unwrap()
 });
 static STORE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
-        r"store (?P<src_ty>.+) (?P<src_arg>{var}), (?P<dest_ty>.+) (?P<dest_arg>{var})",
+        r"store (?<src_ty>.+) (?<src_arg>{var}), (?<dest_ty>.+) (?<dest_arg>{var})",
         var = VAR.as_str()
     ))
     .unwrap()
