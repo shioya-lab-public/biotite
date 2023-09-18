@@ -1,39 +1,51 @@
 # riscv2llvm
 
-`riscv2llvm` is a binary translator that lifts RISC-V to LLVM IR. Currently it can translate little-endian statically-linked Linux executable files compiled with RV64GC ISA and LP64D ABI. It is implemented based on RISC-V Unprivileged Specification (version 20191213) and tested with Rust 1.67.1 and LLVM 15.0.7.
+`riscv2llvm` is a binary translator that lifts RISC-V to LLVM IR. Currently it can translate little-endian statically-linked Linux executable files compiled in RV64GC. The system call module supports x86_64, RV64GC and arm64 as target ISAs.
 
 ## Quick Start
 
 ``` shell
-# Disassemble the target binary
+# Disassemble the target binary.
 llvm-objdump -fhtDz --mattr=a,c,d,f,m example > example.dump
 
-# For binaries compiled with glibc, we also need the contents of the `.tdata` section
+# For binaries compiled with glibc, we also need the contents of the `.tdata` section.
 llvm-objdump -sj.tdata example > example.tdata
 
-# Perform the translation
+# Perform the translation.
 riscv2llvm --arch=x86_64 example.dump example.tdata
 
-# Compile the translated LLVM IR to a native binary
-# Static linking is necessary if `.tdata` is provided as input
+# Compile the translated LLVM IR to a native binary.
+# Static linking is necessary if `.tdata` is provided as input.
 clang --static example.ll -lm
+```
+
+## Source Code Substitution
+
+Suppose you are translating the `mcf_s` benchmark in SPEC CPU 2017, and you have had `mcf_s.dump`, `mcf_s.tdata`, and `spec_qsort.c` in the current directory, then the following commands will substitute the `spec_qsort` function.
+
+``` shell
+clang -Xclang -no-opaque-pointers -O1 -S -emit-llvm spec_qsort.c
+
+riscv2llvm --arch=x86_64 mcf_s.dump mcf_s.tdata --ir-funcs spec_qsort --ir-files spec_qsort.ll
+
+clang --static mcf_s.ll spec_qsort.transed.ll -lm
 ```
 
 ## Notes
 
-1. Convert LLVM IR to LLVM bitcode by using `llvm-as` can significantly reduce the file size.
-2. Try to turn off optimization if the translated binary does not function properly.
-3. Currently unsupported features are listed below:
+1. `riscv2llvm` is implemented based on RISC-V unprivileged ISA specification (version 20191213) and tested with Rust 1.72.0 and LLVM 15.0.7.
+2. System call support for x86_64 is maturer than RV64GC, and binaries compiled for RV64GC can work on arm64 directly.
+3. Convert LLVM IR to LLVM bitcode by using `llvm-as` can significantly reduce the file size.
+4. Try to turn off optimization if the translated binary does not function properly.
+5. Currently unsupported features are listed below:
     - All CSR are ignored. Instructions reading them always return 0, and instructions writting to them are ignored.
-    - All rounding modes are ignored, except RDN and RUP for 8 FP-to-Int conversion instructions.
+    - All rounding modes are ignored, except RDN and RUP for FP-to-Int conversion instructions.
     - `fclass` always returns 0.
-4. [These entries](https://github.com/torvalds/linux/blob/7cd60e43a6def40ecb75deb8decc677995970d0b/include/uapi/linux/auxvec.h) in the auxiliary vector are properly initialized.
-5. System calls are implemented based on [this (`riscv64gc`)](https://github.com/riscv-software-src/riscv-pk/blob/7e9b671c0415dfd7b562ac934feb9380075d4aa2/pk/syscall.h) and [this (`x86_64`)](https://chromium.googlesource.com/chromiumos/docs/+/a2622281357e45f2b2c74cdc4b428b0d1294488d/constants/syscalls.md). Also pay attention to a few quirks listed below:
+6. [These entries](https://github.com/torvalds/linux/blob/7cd60e43a6def40ecb75deb8decc677995970d0b/include/uapi/linux/auxvec.h) in the auxiliary vector are properly initialized.
+7. System calls are implemented based on [this](https://github.com/riscv-software-src/riscv-pk/blob/7e9b671c0415dfd7b562ac934feb9380075d4aa2/pk/syscall.h) and [this](https://chromium.googlesource.com/chromiumos/docs/+/a2622281357e45f2b2c74cdc4b428b0d1294488d/constants/syscalls.md). Also pay attention to a few quirks listed below:
     - The address hint in the first argument of `mmap` is always set to 0.
-    - `mprotect` is ignored and always return 0, because it fails even for legal input in `riscv64gc`.
-    - `getmainvars` returns -1 directly, because there is no enough information for this system call.
-    - The layout of the `stat` structure is automatically converted between [`riscv64gc`](https://github.com/riscv-collab/riscv-gnu-toolchain/blob/baefbdd8bcedfabf0cf89dce679a8bd1a9f27b39/linux-headers/include/asm-generic/stat.h) and [`x86_64`](https://github.com/torvalds/linux/blob/6f52b16c5b29b89d92c0e7236f4655dc8491ad70/arch/x86/include/uapi/asm/stat.h).
-6. System calls for `riscv64gc` seem to work just fine for `aarch64`.
+    - `mprotect` is ignored and always return 0, because it fails even for legal input in RV64GC.
+    - The layout of the `stat` structure is automatically converted between [RV64GC](https://github.com/riscv-collab/riscv-gnu-toolchain/blob/baefbdd8bcedfabf0cf89dce679a8bd1a9f27b39/linux-headers/include/asm-generic/stat.h) and [x86_64](https://github.com/torvalds/linux/blob/6f52b16c5b29b89d92c0e7236f4655dc8491ad70/arch/x86/include/uapi/asm/stat.h).
 
 ## C Source Code for Supporting Functions
 
@@ -54,7 +66,7 @@ int8_t* copy_envp(int8_t* host_envp[], int8_t* guest_envp[]) {
 #include <sys/auxv.h>
 
 void init_auxv(int64_t* auxv, int8_t* phdr, int64_t phdr_addr, int64_t tdata, int64_t tdata_len) {
-    // Initialize `AT_PHDR`
+    // Initialize `AT_PHDR`.
     Elf64_Phdr* host_phdr = (Elf64_Phdr*) getauxval(AT_PHDR);
     int64_t host_phnum = getauxval(AT_PHNUM);
     if (host_phdr && host_phnum) {
@@ -74,7 +86,7 @@ void init_auxv(int64_t* auxv, int8_t* phdr, int64_t phdr_addr, int64_t tdata, in
         *auxv++ = phdr_addr;
     }
 
-    // Initialize other entries
+    // Initialize other entries.
     #define CNT 23
     int64_t entries[CNT] = {
         0, 1, 2,

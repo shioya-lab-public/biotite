@@ -110,7 +110,7 @@ pub static DEFS: Lazy<Vec<(&str, i32, &str)>> = Lazy::new(|| {
   %rslt = call i64 (i64, ...) @syscall(i64 80, i64 %arg1, i8* %statbuf)"
         ),
         (
-            "fstatat",
+            "newfstatat",
             79,
             "  %filename = call i8* @.sys_get_mem_ptr(i64 %arg2)
   %statbuf = call i8* @.sys_get_mem_ptr(i64 %arg3)
@@ -123,13 +123,13 @@ pub static DEFS: Lazy<Vec<(&str, i32, &str)>> = Lazy::new(|| {
   %rslt = call i64 (i64, ...) @syscall(i64 48, i64 %arg1, i8* %filename, i64 %arg3)"
         ),
         (
-            "pread",
+            "pread64",
             67,
             "  %buf = call i8* @.sys_get_mem_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 67, i64 %arg1, i8* %buf, i64 %arg3, i64 %arg4)"
         ),
         (
-            "pwrite",
+            "pwrite64",
             68,
             "  %buf = call i8* @.sys_get_mem_ptr(i64 %arg2)
   %rslt = call i64 (i64, ...) @syscall(i64 68, i64 %arg1, i8* %buf, i64 %arg3, i64 %arg4)"
@@ -204,12 +204,6 @@ pub static DEFS: Lazy<Vec<(&str, i32, &str)>> = Lazy::new(|| {
   %rslt = call i64 (i64, ...) @syscall(i64 261, i64 %arg1, i64 %arg2, i8* %new_rlim, i8* %old_rlim)"
         ),
         (
-            "getmainvars",
-            2011,
-            "  ; There is no enough information for this system call
-  %rslt = add i64 0, -1"
-        ),
-        (
             "rt_sigaction",
             134,
             "  %act_ptr_b = call i8* @.sys_get_mem_ptr(i64 %arg2)
@@ -281,7 +275,7 @@ call:
             "  %rslt = call i64 (i64, ...) @syscall(i64 46, i64 %arg1, i64 %arg2)"
         ),
         (
-            "getdents",
+            "getdents64",
             61,
             "  %dirent_ptr_b = call i8* @.sys_get_mem_ptr(i64 %arg2)
   %dirent_ptr = bitcast i8* %dirent_ptr_b to %.sys_dirent*
