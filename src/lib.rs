@@ -8,6 +8,8 @@ mod riscv_macro;
 mod riscv_parser;
 mod sys_call;
 
+use std::path::PathBuf;
+
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     rv_src: String,
@@ -17,12 +19,12 @@ pub fn run(
     disable_all_opts: bool,
     enable_opts: Vec<String>,
     disable_opts: Vec<String>,
-    ir_funcs: Vec<String>,
-    ir_files: Vec<String>,
-) -> (String, Vec<String>) {
-    let (rv_prog, symbols) = riscv_parser::run(rv_src, tdata_src);
-    let transed_ir_files = ir_translator::run(&ir_funcs, ir_files, &symbols);
+    srcs: Vec<PathBuf>,
+    ir_dir: PathBuf,
+) -> String {
+    let (rv_prog, syms) = riscv_parser::run(rv_src, tdata_src);
     let sys_call = sys_call::build(arch);
+    let ir_funcs = ir_translator::run(srcs, &syms, ir_dir);
     let ll_prog = llvm_translator::run(rv_prog, sys_call, ir_funcs);
     let opted_prog = opt::optimize(
         ll_prog,
@@ -31,5 +33,5 @@ pub fn run(
         enable_opts,
         disable_opts,
     );
-    (opted_prog.to_string(), transed_ir_files)
+    opted_prog.to_string()
 }

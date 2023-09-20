@@ -21,6 +21,9 @@ clang --static example.ll -lm
 
 ## Source Code Substitution
 
+no literal struct as args/rets
+no var args
+
 Suppose you are translating the `mcf_s` benchmark in SPEC CPU 2017, and you have had `mcf_s.dump`, `mcf_s.tdata`, and `spec_qsort.c` in the current directory, then the following commands will substitute the `spec_qsort` function.
 
 ``` shell

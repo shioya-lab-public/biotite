@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 #[derive(Parser)]
 #[command(version)]
@@ -20,7 +21,7 @@ struct Args {
 
     /// At most one of the following four arguments should be set.
     /// Omit them will enable all optimization.
-    /// See `src/opt` for a list of supported optimization.
+    /// See `src/opt` for a list of supported optimization passes.
     #[arg(long)]
     enable_all_opts: bool,
 
@@ -33,13 +34,9 @@ struct Args {
     #[arg(long, num_args = 1..)]
     disable_opts: Vec<String>,
 
-    /// Specify names of functions that will be substituted by LLVM IR.
+    /// Specify directories containing source code.
     #[arg(long, num_args = 1..)]
-    ir_funcs: Vec<String>,
-
-    /// Specify paths to LLVM IR files for substitution.
-    #[arg(long, num_args = 1..)]
-    ir_files: Vec<PathBuf>,
+    srcs: Vec<PathBuf>,
 }
 
 fn main() {
@@ -48,12 +45,12 @@ fn main() {
     let tdata_src = args
         .tdata
         .map(|path| fs::read_to_string(path).expect("Unable to read the tdata file"));
-    let ir_files = args
-        .ir_files
-        .iter()
-        .map(|path| fs::read_to_string(path).expect("Unable to read IR files"))
-        .collect();
-    let (ll_src, transed_ir_files) = riscv2llvm::run(
+    let ir_dir = args.output.unwrap_or(args.input).with_extension("ir");
+    if !args.srcs.is_empty() {
+        let _ = Command::new("rm").arg("-rf").arg(&ir_dir).status();
+        fs::create_dir(&ir_dir).expect("Unable to create the IR directory");
+    }
+    let ll_src = riscv2llvm::run(
         rv_src,
         tdata_src,
         args.arch,
@@ -61,16 +58,9 @@ fn main() {
         args.disable_all_opts,
         args.enable_opts,
         args.disable_opts,
-        args.ir_funcs,
-        ir_files,
+        args.srcs,
+        ir_dir.clone(),
     );
-    let output = args.output.unwrap_or(args.input).with_extension("ll");
+    let output = ir_dir.with_extension("ll");
     fs::write(output, ll_src).expect("Unable to write the translated file");
-    args.ir_files
-        .iter()
-        .map(|path| path.with_extension("transed.ll"))
-        .zip(transed_ir_files.iter())
-        .for_each(|(path, transed_ir_file)| {
-            fs::write(path, transed_ir_file).expect("Unable to write IR files")
-        });
 }
