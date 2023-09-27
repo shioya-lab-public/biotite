@@ -97,19 +97,23 @@ impl Display for Type {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Proto {
     rslt_ty: Type,
+    zeroext: bool,
     func: Ident,
-    params: Vec<(Ident, Type)>,
+    params: Vec<(Value, Type)>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Call {
     rslt: Option<Ident>,
     rslt_ty: Type,
     func: Ident,
-    args: Vec<(Ident, Type)>,
+    args: Vec<(Value, Type)>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Load {
     dest: Ident,
     dest_ty: Type,
@@ -117,6 +121,7 @@ struct Load {
     src_ty: Type,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Store {
     dest: Mem,
     dest_ty: Type,
@@ -124,11 +129,13 @@ struct Store {
     src_ty: Type,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Mem {
     Ident(Ident),
     Gep(Gep),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Gep {
     ptr: Ident,
     ty: Type,
@@ -148,7 +155,27 @@ impl<'a> LineParser<'a> {
     pub fn parse_proto(&mut self) -> Result<Proto, ()> {
         self.assert_word("define")?;
         let _ = self.assert_word("dso_local");
-        let rslt_ty = self.parse_type()?;
+        let mut zeroext = false;
+        let rslt_ty = loop {
+            if let Ok(ty) = self.parse_type() {
+                break ty;
+            } else {
+                if self.assert_word("zeroext").is_ok() {
+                    zeroext = true;
+                } else if self.assert_word("align").is_ok() && self.assert_word("(").is_err() {
+                    self.parse_value()?;
+                } else {
+                    self.index += self.line[self.index..]
+                        .chars()
+                        .position(|c| c == ' ')
+                        .unwrap();
+                    self.skip_whitespace();
+                }
+                if self.assert_word("asm").is_ok() || self.assert_word("@").is_ok() {
+                    return Err(());
+                }
+            }
+        };
         if self.assert_word("asm").is_ok() {
             return Err(());
         }
@@ -157,12 +184,25 @@ impl<'a> LineParser<'a> {
         let mut params = Vec::new();
         while self.assert_word(")").is_err() {
             let param_ty = self.parse_type()?;
-            let param = self.parse_ident()?;
+            let param = loop {
+                if let Ok(val) = self.parse_value() {
+                    break val;
+                } else if self.assert_word("align").is_ok() && self.assert_word("(").is_err() {
+                    self.parse_value()?;
+                } else {
+                    self.index += self.line[self.index..]
+                        .chars()
+                        .position(|c| c == ' ')
+                        .unwrap();
+                    self.skip_whitespace();
+                }
+            };
             params.push((param, param_ty));
             let _ = self.assert_word(",");
         }
         Ok(Proto {
             rslt_ty,
+            zeroext,
             func,
             params,
         })
@@ -191,6 +231,7 @@ impl<'a> LineParser<'a> {
     }
 
     pub fn parse_load(&mut self) -> Result<Load, ()> {
+        self.skip_whitespace();
         let dest = self.parse_ident()?;
         self.assert_word("= load")?;
         let dest_ty = self.parse_type()?;
@@ -256,7 +297,9 @@ impl<'a> LineParser<'a> {
     }
 
     fn assert_word(&mut self, word: &str) -> Result<(), ()> {
-        if &self.line[self.index..self.index + word.len()] == word {
+        if self.index + word.len() <= self.line.len()
+            && &self.line[self.index..self.index + word.len()] == word
+        {
             self.index += word.len();
             self.skip_whitespace();
             Ok(())
@@ -275,24 +318,22 @@ impl<'a> LineParser<'a> {
     }
 
     fn parse_const(&mut self) -> Result<Value, ()> {
-        let caps = regex!(r"^(-?\d+)|^(\d+\.\d+e\+\d+)|^(0x[[:xdigit:]]+)|^(null)")
-            .captures(&self.line[self.index..])
-            .ok_or(())?;
+        let caps =
+            regex!(r"^(-?\d+)|^(\d+\.\d+e\+\d+)|^(0x[[:xdigit:]]+)|^(null)|^(true)|^(false)")
+                .captures(&self.line[self.index..])
+                .ok_or(())?;
         let cnst = &caps[0];
         self.index += cnst.len();
         self.skip_whitespace();
         Ok(Value::Const(cnst.to_string()))
     }
 
-    /// `parse_ident` will skip other words until an ident is found,
-    /// so use it only when you are sure there is an identifier.
     fn parse_ident(&mut self) -> Result<Ident, ()> {
-        let caps = regex!(r"[%@][-a-zA-Z$._0-9]+")
+        let caps = regex!(r"^[@%][-a-zA-Z$._0-9]+")
             .captures(&self.line[self.index..])
             .ok_or(())?;
-        let m = caps.get(0).unwrap();
-        let ident = m.as_str();
-        self.index += m.end();
+        let ident = &caps[0];
+        self.index += ident.len();
         self.skip_whitespace();
         match &ident[0..1] {
             "@" => Ok(Ident::Global(ident[1..].to_string())),
@@ -354,8 +395,10 @@ pub fn run(srcs: Vec<PathBuf>, symbols: &HashMap<String, Addr>, ir_dir: PathBuf)
     for src in srcs {
         let mut ir_dir = ir_dir.clone();
         if src.is_dir() {
-            ir_dir.push(src.file_name().unwrap());
-            fs::create_dir(&ir_dir).expect("Unable to create the IR directory");
+            if let Some(file_name) = src.file_name() {
+                ir_dir.push(file_name);
+                fs::create_dir(&ir_dir).expect("Unable to create the IR directory");
+            }
             if let Ok(dir) = fs::read_dir(&src) {
                 let paths = dir
                     .into_iter()
@@ -364,8 +407,13 @@ pub fn run(srcs: Vec<PathBuf>, symbols: &HashMap<String, Addr>, ir_dir: PathBuf)
                     .collect();
                 ir_funcs.extend(run(paths, symbols, ir_dir.clone()));
             }
-        } else if let Some("c") = src.extension().and_then(|ext| ext.to_str()) {
-            ir_dir.push(src.with_extension("ll").file_name().unwrap());
+        } else {
+            let ext = src.extension().and_then(|ext| ext.to_str());
+            match ext {
+                Some("c") => ir_dir.push(src.with_extension("ll").file_name().unwrap()),
+                Some("ll") => ir_dir.push(src.file_name().unwrap()),
+                _ => continue,
+            }
             ir_funcs.extend(
                 trans_file(&src, symbols, &ir_dir)
                     .iter()
@@ -377,21 +425,31 @@ pub fn run(srcs: Vec<PathBuf>, symbols: &HashMap<String, Addr>, ir_dir: PathBuf)
 }
 
 fn trans_file(path: &PathBuf, symbols: &HashMap<String, Addr>, output: &PathBuf) -> Vec<Ident> {
-    let clang = env::var("CLANG").expect("The environment variable `CLANG` is not set");
-    if Command::new(&clang)
-        .args([
-            "-Xclang",
-            "-no-opaque-pointers",
-            "-O1",
-            "-S",
-            "-emit-llvm",
-            "-o",
-        ])
-        .args([output, path])
-        .status()
-        .is_err()
-    {
-        return Vec::new();
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some("c") => {
+            let clang = env::var("CLANG").expect("The environment variable `CLANG` is not set");
+            if Command::new(&clang)
+                .args([
+                    "-Xclang",
+                    "-no-opaque-pointers",
+                    "-O1",
+                    "-S",
+                    "-emit-llvm",
+                    "-o",
+                ])
+                .args([output, path])
+                .status()
+                .is_err()
+            {
+                return Vec::new();
+            }
+        }
+        Some("ll") => {
+            if Command::new("cp").args([path, output]).status().is_err() {
+                return Vec::new();
+            }
+        }
+        _ => return Vec::new(),
     }
     let mut ir_funcs = Vec::new();
     let mut lines = Vec::new();
@@ -454,14 +512,16 @@ declare i64 @.dispatch_func(i64)
 @.fa7 = external global double"
             .to_string(),
     );
+    let ir_funcs_set = ir_funcs.iter().map(|func| symbols[func.name()]).collect();
+    let mut extern_func_addrs: Vec<_> = extern_func_addrs.difference(&ir_funcs_set).collect();
     if !extern_func_addrs.is_empty() {
-        lines.push(String::new());
-        let mut extern_func_addrs: Vec<_> = extern_func_addrs
-            .into_iter()
-            .map(|addr| format!("declare i64 @.u{addr}(i64)"))
-            .collect();
         extern_func_addrs.sort_unstable();
-        lines.extend(extern_func_addrs);
+        lines.push(String::new());
+        lines.extend(
+            extern_func_addrs
+                .into_iter()
+                .map(|addr| format!("declare i64 @.u{addr}(i64)")),
+        );
     }
     if ir_funcs.is_empty() {
         fs::remove_file(output).unwrap();
@@ -503,7 +563,6 @@ fn trans_func(
         .collect::<Result<Vec<_>, ()>>()?;
     adaptor.push(String::new());
     adaptor.extend(lines.into_iter().flatten());
-    extern_func_addrs.remove(addr);
     Ok((proto.func, adaptor, extern_func_addrs.into_iter().collect()))
 }
 
@@ -577,7 +636,10 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
                 proto.func,
                 args.join(", ")
             ),
-            format!("  %rslt = sext i{sz} %rslt_val to i64"),
+            format!(
+                "  %rslt = {} i{sz} %rslt_val to i64",
+                if proto.zeroext { "zext" } else { "sext" }
+            ),
             format!("  store i64 %rslt, i64* @.a0"),
         ]),
         Type::Float => lines.extend(vec![
@@ -634,7 +696,7 @@ fn trans_call(
                         format!("  %arg_{no}_{line_no} = bitcast i8* %arg_{no}_b_{line_no} to {ty}*"),
                     ]);
                 }
-                args.push(format!("{ty} %arg_{no}_{line_no}"));
+                args.push(format!("{ty}* %arg_{no}_{line_no}"));
             } else {
                 args.push(format!("{ty} {arg}"));
             }
