@@ -1,3 +1,4 @@
+use crate::llvm_isa::Prog;
 use crate::riscv_isa::{Addr, FReg, Reg};
 use once_cell::sync::OnceCell;
 use regex::Regex;
@@ -397,7 +398,12 @@ impl<'a> LineParser<'a> {
     }
 }
 
-pub fn run(srcs: Vec<PathBuf>, symbols: &HashMap<String, Addr>, ir_dir: PathBuf) -> Vec<String> {
+pub fn run(
+    srcs: Vec<PathBuf>,
+    symbols: &HashMap<String, Addr>,
+    ir_dir: PathBuf,
+    prog: &Prog,
+) -> Vec<String> {
     let mut ir_funcs = Vec::new();
     for src in srcs {
         let mut ir_dir = ir_dir.clone();
@@ -412,7 +418,7 @@ pub fn run(srcs: Vec<PathBuf>, symbols: &HashMap<String, Addr>, ir_dir: PathBuf)
                     .flatten()
                     .map(|entry| entry.path())
                     .collect();
-                ir_funcs.extend(run(paths, symbols, ir_dir.clone()));
+                ir_funcs.extend(run(paths, symbols, ir_dir.clone(), prog));
             }
         } else {
             let ext = src.extension().and_then(|ext| ext.to_str());
@@ -422,7 +428,7 @@ pub fn run(srcs: Vec<PathBuf>, symbols: &HashMap<String, Addr>, ir_dir: PathBuf)
                 _ => continue,
             }
             ir_funcs.extend(
-                trans_file(&src, symbols, &ir_dir)
+                trans_file(&src, symbols, &ir_dir, prog)
                     .iter()
                     .map(|ident| ident.name().to_string()),
             );
@@ -431,7 +437,12 @@ pub fn run(srcs: Vec<PathBuf>, symbols: &HashMap<String, Addr>, ir_dir: PathBuf)
     ir_funcs
 }
 
-fn trans_file(path: &PathBuf, symbols: &HashMap<String, Addr>, output: &PathBuf) -> Vec<Ident> {
+fn trans_file(
+    path: &PathBuf,
+    symbols: &HashMap<String, Addr>,
+    output: &PathBuf,
+    prog: &Prog,
+) -> Vec<Ident> {
     match path.extension().and_then(|ext| ext.to_str()) {
         Some("c") => {
             let clang = env::var("CLANG").expect("The environment variable `CLANG` is not set");
@@ -496,9 +507,6 @@ fn trans_file(path: &PathBuf, symbols: &HashMap<String, Addr>, output: &PathBuf)
     lines.extend(cache);
     lines.push(
         "
-declare i8* @.get_mem_ptr(i64)
-declare i64 @.dispatch_func(i64)
-
 @.ra = external global i64
 @.a0 = external global i64
 @.a1 = external global i64
@@ -530,6 +538,12 @@ declare i64 @.dispatch_func(i64)
                 .map(|addr| format!("declare i64 @.u{addr}(i64)")),
         );
     }
+    lines.extend([
+        String::new(),
+        prog.build_mem(true),
+        String::new(),
+        prog.build_dispatchers(true).1,
+    ]);
     if ir_funcs.is_empty() {
         fs::remove_file(output).unwrap();
     } else {

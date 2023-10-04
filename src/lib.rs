@@ -24,8 +24,9 @@ pub fn run(
 ) -> String {
     let (rv_prog, syms) = riscv_parser::run(rv_src, tdata_src);
     let sys_call = sys_call::build(arch);
-    let ir_funcs = ir_translator::run(srcs, &syms, ir_dir);
-    let ll_prog = llvm_translator::run(rv_prog, sys_call, ir_funcs);
+    let mut ll_prog = llvm_translator::run(rv_prog, sys_call);
+    let ir_funcs = ir_translator::run(srcs, &syms, ir_dir, &ll_prog);
+    ll_prog.ir_funcs = ir_funcs.into_iter().collect();
     let opted_prog = opt::optimize(
         ll_prog,
         enable_all_opts,

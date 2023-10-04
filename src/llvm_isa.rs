@@ -31,7 +31,7 @@ impl Display for Prog {
             })
             .collect::<Vec<_>>()
             .join("\n\n");
-        let (dispatcher_len, dispatchers) = self.build_dispatchers();
+        let (dispatcher_len, dispatchers) = self.build_dispatchers(false);
         let mut prog = format!("define i32 @main(i32 %argc, i8** %argv, i8** %envp) {{
 {init}
 
@@ -55,7 +55,7 @@ loop:
 
 {static_decls_defs}",
             init = self.build_init(),
-            mem = self.build_mem(),
+            mem = self.build_mem(false),
             rounding_funcs = Self::build_rounding_funcs(),
             static_decls_defs = include_str!("static_decls_defs.ll"),
         );
@@ -124,7 +124,7 @@ impl Prog {
         init
     }
 
-    fn build_mem(&self) -> String {
+    pub fn build_mem(&self, external: bool) -> String {
         let mem = format!(
             "@.mem = global [{len} x i8] [{mem}]",
             len = self.mem.len(),
@@ -135,10 +135,8 @@ impl Prog {
                 .collect::<Vec<_>>()
                 .join(", "),
         );
-        format!(
-            "{mem}
-
-define i8* @.get_mem_ptr(i64 %addr) {{
+        let get_mem_ptr = format!(
+            "define internal i8* @.get_mem_ptr(i64 %addr) alwaysinline {{
   %is_static = icmp ugt i64 {len}, %addr
   br i1 %is_static, label %static, label %dynamic
 static:
@@ -148,11 +146,25 @@ dynamic:
   %dynamic_ptr = inttoptr i64 %addr to i8*
   ret i8* %dynamic_ptr
 }}",
-            len = self.mem.len(),
-        )
+            len = self.mem.len()
+        );
+        if external {
+            format!(
+                "@.mem = external global [{len} x i8]
+
+{get_mem_ptr}",
+                len = self.mem.len()
+            )
+        } else {
+            format!(
+                "{mem}
+
+{get_mem_ptr}"
+            )
+        }
     }
 
-    fn build_dispatchers(&self) -> (usize, String) {
+    pub fn build_dispatchers(&self, external: bool) -> (usize, String) {
         let mut dispatcher = Vec::new();
         let mut func_dispatcher = Vec::new();
         for func in &self.funcs {
@@ -179,11 +191,7 @@ dynamic:
             "@.func_dispatcher = global [{dispatcher_len} x i64] [{disp}]",
             disp = func_dispatcher.join(", ")
         );
-        (dispatcher_len, format!("{dispatcher}
-
-{func_dispatcher}
-
-define i64 @.dispatch_func(i64 %func) {{
+        let dispatch_func = format!("define internal i64 @.dispatch_func(i64 %func) alwaysinline {{
   %func_addr_ptr = getelementptr [{func_dispatcher_len} x i64], [{func_dispatcher_len} x i64]* @.func_dispatcher, i64 0, i64 %func
   %func_addr = load i64, i64* %func_addr_ptr
   %is_func = icmp ne i64 %func_addr, 0
@@ -195,7 +203,28 @@ call:
   ret i64 %ra 
 ret:
   ret i64 0
-}}"))
+}}");
+        if external {
+            (
+                dispatcher_len,
+                format!(
+                    "@.dispatcher = external global [{dispatcher_len} x i64]
+@.func_dispatcher = external global [{func_dispatcher_len} x i64] 
+
+{dispatch_func}"
+                ),
+            )
+        } else {
+            (
+                dispatcher_len,
+                format!(
+                    "{dispatcher}
+{func_dispatcher}
+
+{dispatch_func}"
+                ),
+            )
+        }
     }
 
     fn build_rounding_funcs() -> String {
@@ -212,7 +241,7 @@ ret:
         let mut rounding_funcs = String::new();
         for (fp, int, fp_int, int_fp) in variants {
             rounding_funcs += &format!(
-                "define {int} @.rounding_{fp}_{int}_{fp_int}_{int_fp}({fp} %0, i1 %1) {{
+                "define {int} @.rounding_{fp}_{int}_{fp_int}_{int_fp}({fp} %0, i1 %1) alwaysinline {{
   %3 = {fp_int} {fp} %0 to {int}
   %4 = {int_fp} {int} %3 to {fp}
   %5 = fcmp une {fp} %4, %0

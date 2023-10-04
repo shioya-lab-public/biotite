@@ -75,7 +75,7 @@ declare double @llvm.fabs.double(double %arg)
 declare float @llvm.copysign.float(float %mag, float %sgn)
 declare double @llvm.copysign.double(double %mag, double %sgn)
 
-define void @.mem_copy(i8* %0, i8* %1, i64 %2) {
+define void @.mem_copy(i8* %0, i8* %1, i64 %2) alwaysinline {
   %4 = icmp sgt i64 %2, 0
   br i1 %4, label %6, label %5
 

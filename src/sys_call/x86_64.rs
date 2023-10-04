@@ -7,7 +7,7 @@ pub const AUX: &str = "%.sys_dirent = type { i64, i64, i16, i8, i8* }
 %.sys_stat_x86_64 = type { i64, i64, i64, i32, i32, i32, i32, i64 }
 %.sys_stat_riscv64gc = type { i64, i64, i32, i32, i32, i32, i64 }
 
-define void @.sys_conv_stat(i8* %statbuf_b_x86_64) {
+define void @.sys_conv_stat(i8* %statbuf_b_x86_64) alwaysinline {
   %statbuf_x86_64 = bitcast i8* %statbuf_b_x86_64 to %.sys_stat_x86_64*
   %stat_x86_64 = load %.sys_stat_x86_64, %.sys_stat_x86_64* %statbuf_x86_64
   %st_nlink_i64 = extractvalue %.sys_stat_x86_64 %stat_x86_64, 2

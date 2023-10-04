@@ -2,8 +2,9 @@ use crate::llvm_isa::*;
 use crate::llvm_macro::*;
 use crate::riscv_isa as rv;
 use rayon::prelude::*;
+use std::collections::HashSet;
 
-pub fn run(rv_prog: rv::Prog, sys_call: Option<String>, ir_funcs: Vec<String>) -> Prog {
+pub fn run(rv_prog: rv::Prog, sys_call: Option<String>) -> Prog {
     let (mem, sp, phdr) = build_mem(&rv_prog.data_blocks);
     let funcs = rv_prog
         .code_blocks
@@ -23,7 +24,7 @@ pub fn run(rv_prog: rv::Prog, sys_call: Option<String>, ir_funcs: Vec<String>) -
         phdr,
         funcs,
         sys_call,
-        ir_funcs: ir_funcs.into_iter().collect(),
+        ir_funcs: HashSet::new(),
         func_syms,
         native_mem_utils: false,
     }

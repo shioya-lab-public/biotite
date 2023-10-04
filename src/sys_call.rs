@@ -34,7 +34,7 @@ pub fn build(arch: Option<String>) -> Option<String> {
         "declare i64 @syscall(i64, ...)
 declare i32* @__errno_location()
 
-define i8* @.sys_get_mem_ptr(i64 %addr) {{
+define i8* @.sys_get_mem_ptr(i64 %addr) alwaysinline {{
   %is_zero = icmp eq i64 0, %addr
   br i1 %is_zero, label %dynamic, label %test_static
 test_static:
@@ -45,7 +45,7 @@ dynamic:
   ret i8* %dynamic_ptr
 }}
 
-define i8** @.trans_mem_ptr_vec(i64 %0) {{
+define i8** @.trans_mem_ptr_vec(i64 %0) alwaysinline {{
   %2 = call i8* @.sys_get_mem_ptr(i64 %0)
   %3 = bitcast i8* %2 to i8**
   %4 = load i8*, i8** %3
