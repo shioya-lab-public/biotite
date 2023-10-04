@@ -64,7 +64,7 @@ impl Display for Ident {
 enum Type {
     Void,
     Func(Box<Type>, Vec<Type>),
-    Int(usize),
+    Int(usize, bool),
     Float,
     Double,
     Ptr(Box<Type>),
@@ -87,7 +87,7 @@ impl Display for Type {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            Int(sz) => write!(f, "i{sz}"),
+            Int(sz, _) => write!(f, "i{sz}"),
             Float => write!(f, "float"),
             Double => write!(f, "double"),
             Ptr(ty) => write!(f, "{ty}*"),
@@ -100,7 +100,6 @@ impl Display for Type {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Proto {
     rslt_ty: Type,
-    zeroext: bool,
     func: Ident,
     params: Vec<(Value, Type)>,
 }
@@ -158,7 +157,11 @@ impl<'a> LineParser<'a> {
         let mut zeroext = false;
         let rslt_ty = loop {
             if let Ok(ty) = self.parse_type() {
-                break ty;
+                if let Type::Int(sz, _) = ty {
+                    break Type::Int(sz, mem::take(&mut zeroext));
+                } else {
+                    break ty;
+                }
             } else {
                 if self.assert_word("zeroext").is_ok() {
                     zeroext = true;
@@ -183,10 +186,12 @@ impl<'a> LineParser<'a> {
         self.assert_word("(")?;
         let mut params = Vec::new();
         while self.assert_word(")").is_err() {
-            let param_ty = self.parse_type()?;
+            let mut param_ty = self.parse_type()?;
             let param = loop {
                 if let Ok(val) = self.parse_value() {
                     break val;
+                } else if self.assert_word("zeroext").is_ok() {
+                    zeroext = true;
                 } else if self.assert_word("align").is_ok() && self.assert_word("(").is_err() {
                     self.parse_value()?;
                 } else {
@@ -197,12 +202,14 @@ impl<'a> LineParser<'a> {
                     self.skip_whitespace();
                 }
             };
+            if let Type::Int(sz, _) = param_ty {
+                param_ty = Type::Int(sz, mem::take(&mut zeroext));
+            }
             params.push((param, param_ty));
             let _ = self.assert_word(",");
         }
         Ok(Proto {
             rslt_ty,
-            zeroext,
             func,
             params,
         })
@@ -349,7 +356,7 @@ impl<'a> LineParser<'a> {
             let sz = &caps[1];
             self.index += sz.len() + 1;
             self.skip_whitespace();
-            Type::Int(sz.parse().unwrap())
+            Type::Int(sz.parse().unwrap(), false)
         } else if self.assert_word("float").is_ok() {
             Type::Float
         } else if self.assert_word("double").is_ok() {
@@ -591,11 +598,11 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
     let mut args = Vec::new();
     for (no, (_, ty)) in proto.params.iter().enumerate() {
         match ty {
-            Type::Int(64) => lines.push(format!(
+            Type::Int(64, _) => lines.push(format!(
                 "  %arg_{no} = load i64, i64* @.{}",
                 regs.pop().ok_or(())?,
             )),
-            Type::Int(sz) => lines.extend(vec![
+            Type::Int(sz, _) => lines.extend(vec![
                 format!(
                     "  %arg_{no}_val = load i64, i64* @.{}",
                     regs.pop().ok_or(())?,
@@ -626,11 +633,11 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
     }
     match &proto.rslt_ty {
         Type::Void => lines.push(format!("  call void {}({})", proto.func, args.join(", "))),
-        Type::Int(64) => lines.extend(vec![
+        Type::Int(64, _) => lines.extend(vec![
             format!("  %rslt = call i64 {}({})", proto.func, args.join(", ")),
             format!("  store i64 %rslt, i64* @.a0"),
         ]),
-        Type::Int(sz) => lines.extend(vec![
+        Type::Int(sz, zeroext) => lines.extend(vec![
             format!(
                 "  %rslt_val = call i{sz} {}({})",
                 proto.func,
@@ -638,7 +645,7 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
             ),
             format!(
                 "  %rslt = {} i{sz} %rslt_val to i64",
-                if proto.zeroext { "zext" } else { "sext" }
+                if *zeroext { "zext" } else { "sext" }
             ),
             format!("  store i64 %rslt, i64* @.a0"),
         ]),
@@ -688,7 +695,7 @@ fn trans_call(
                 lines.push(format!(
                     "  %arg_{no}_val_{line_no} = ptrtoint {ty}* {arg} to i64"
                 ));
-                if let Type::Int(8) = **ty {
+                if let Type::Int(8, _) = **ty {
                     lines.push(format!("  %arg_{no}_{line_no} = call i8* @.get_mem_ptr(i64 %arg_{no}_val_{line_no})"));
                 } else {
                     lines.extend(vec![
@@ -740,12 +747,15 @@ fn trans_call(
         let mut params = Vec::new();
         for (no, (arg, ty)) in call.args.iter().enumerate() {
             match ty {
-                Type::Int(64) => lines.push(format!(
+                Type::Int(64, _) => lines.push(format!(
                     "  store i64 {arg}, i64* @.{}",
                     regs.pop().ok_or(())?,
                 )),
-                Type::Int(sz) => lines.extend(vec![
-                    format!("  %arg_{no}_{line_no} = sext i{sz} {arg} to i64"),
+                Type::Int(sz, zeroext) => lines.extend(vec![
+                    format!(
+                        "  %arg_{no}_{line_no} = {} i{sz} {arg} to i64",
+                        if *zeroext { "zext" } else { "sext" }
+                    ),
                     format!(
                         "  store i64 %arg_{no}_{line_no}, i64* @.{}",
                         regs.pop().ok_or(())?,
@@ -790,11 +800,11 @@ fn trans_call(
         }
         match &call.rslt_ty {
             Type::Void => (),
-            Type::Int(64) => lines.push(format!(
+            Type::Int(64, _) => lines.push(format!(
                 "  {} = load i64, i64* @.a0",
                 call.rslt.as_ref().unwrap()
             )),
-            Type::Int(sz) => lines.extend(vec![
+            Type::Int(sz, _) => lines.extend(vec![
                 format!("  %rslt_{line_no} = load i64, i64* @.a0"),
                 format!(
                     "  {} = trunc i64 %rslt_{line_no} to i{sz}",
@@ -853,7 +863,7 @@ fn trans_load(
         }
     }
     match (&load.dest_ty, &load.src) {
-        (Type::Int(8), Mem::Ident(_)) => {
+        (Type::Int(8, _), Mem::Ident(_)) => {
             lines.push(format!("  {} = load i8, i8* %src_b_{line_no}", load.dest))
         }
         (_, Mem::Ident(_)) => lines.extend(vec![
@@ -916,7 +926,7 @@ fn trans_store(
         }
     }
     match (&store.src_ty, &store.dest) {
-        (Type::Int(8), Mem::Ident(_)) => {
+        (Type::Int(8, _), Mem::Ident(_)) => {
             lines.push(format!("  store i8 {}, i8* %dest_b_{line_no}", store.src))
         }
         (_, Mem::Ident(_)) => lines.extend(vec![
