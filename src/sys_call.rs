@@ -1,14 +1,13 @@
 mod riscv64gc;
 mod x86_64;
 
-pub fn build(arch: Option<String>) -> Option<String> {
+pub fn build(arch: &Option<String>) -> Option<String> {
     let (aux, defs) = match arch.as_deref() {
         Some("riscv64gc") => (riscv64gc::AUX, &riscv64gc::DEFS),
         Some("x86_64") => (x86_64::AUX, &x86_64::DEFS),
+        Some(arch) => panic!("Unknown architecture `{arch}`"),
         None => return None,
-        _ => panic!("Unknown architecture `{arch:?}`"),
     };
-
     let dispatcher = defs
         .iter()
         .map(|(name, nr, _)| format!("    i64 {nr}, label %sys_{name}"))

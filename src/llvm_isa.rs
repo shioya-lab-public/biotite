@@ -8,6 +8,8 @@ pub struct Prog {
     pub entry: Value,
     pub tdata: Option<(Value, usize)>,
     pub mem: Vec<u8>,
+    pub mem_s: Option<String>,
+    pub mem_ld: Option<String>,
     pub sp: Value,
     pub phdr: Value,
     pub funcs: Vec<Func>,
@@ -125,18 +127,26 @@ impl Prog {
     }
 
     pub fn build_mem(&self, external: bool) -> String {
-        let mem = format!(
-            "@.mem = global [{len} x i8] [{mem}]",
-            len = self.mem.len(),
-            mem = self
-                .mem
-                .iter()
-                .map(|byte| format!("i8 {byte}"))
-                .collect::<Vec<_>>()
-                .join(", "),
-        );
-        let get_mem_ptr = format!(
-            "define internal i8* @.get_mem_ptr(i64 %addr) alwaysinline {{
+        if self.mem_s.is_some() {
+            String::from(
+                "define internal i8* @.get_mem_ptr(i64 %addr) alwaysinline {
+  %ptr = inttoptr i64 %addr to i8*
+  ret i8* %ptr
+}",
+            )
+        } else {
+            let mem = format!(
+                "@.mem = global [{len} x i8] [{mem}]",
+                len = self.mem.len(),
+                mem = self
+                    .mem
+                    .iter()
+                    .map(|byte| format!("i8 {byte}"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+            let get_mem_ptr = format!(
+                "define internal i8* @.get_mem_ptr(i64 %addr) alwaysinline {{
   %is_static = icmp ugt i64 {len}, %addr
   br i1 %is_static, label %static, label %dynamic
 static:
@@ -146,21 +156,22 @@ dynamic:
   %dynamic_ptr = inttoptr i64 %addr to i8*
   ret i8* %dynamic_ptr
 }}",
-            len = self.mem.len()
-        );
-        if external {
-            format!(
-                "@.mem = external global [{len} x i8]
+                len = self.mem.len()
+            );
+            if external {
+                format!(
+                    "@.mem = external global [{len} x i8]
 
 {get_mem_ptr}",
-                len = self.mem.len()
-            )
-        } else {
-            format!(
-                "{mem}
+                    len = self.mem.len()
+                )
+            } else {
+                format!(
+                    "{mem}
 
 {get_mem_ptr}"
-            )
+                )
+            }
         }
     }
 

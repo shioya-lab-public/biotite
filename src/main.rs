@@ -17,7 +17,13 @@ struct Args {
     /// Omit it to avoid generating system-call-related functions.
     /// See `src/sys_call` for a list of supported architectures.
     #[arg(long)]
-    arch: Option<String>,
+    sys_call: Option<String>,
+
+    /// Specify the target architecture for direct memory access.
+    /// Omit it to use slower but ISA-agnostic indirect memory access.
+    /// See `src/mem` for a list of supported architectures.
+    #[arg(long)]
+    mem: Option<String>,
 
     /// At most one of the following four arguments should be set.
     /// Omit them will enable all optimization.
@@ -50,10 +56,11 @@ fn main() {
         let _ = Command::new("rm").arg("-rf").arg(&ir_dir).status();
         fs::create_dir(&ir_dir).expect("Unable to create the IR directory");
     }
-    let ll_src = riscv2llvm::run(
+    let ll_prog = riscv2llvm::run(
         rv_src,
         tdata_src,
-        args.arch,
+        args.sys_call,
+        args.mem,
         args.enable_all_opts,
         args.disable_all_opts,
         args.enable_opts,
@@ -61,6 +68,13 @@ fn main() {
         args.srcs,
         ir_dir.clone(),
     );
-    let output = ir_dir.with_extension("ll");
-    fs::write(output, ll_src).expect("Unable to write the translated file");
+    fs::write(ir_dir.with_extension("ll"), ll_prog.to_string())
+        .expect("Unable to write the translated file");
+    if let Some(mem_s) = ll_prog.mem_s {
+        fs::write(ir_dir.with_extension("s"), mem_s).expect("Unable to write the translated file");
+    }
+    if let Some(mem_ld) = ll_prog.mem_ld {
+        fs::write(ir_dir.with_extension("ld"), mem_ld)
+            .expect("Unable to write the translated file");
+    }
 }

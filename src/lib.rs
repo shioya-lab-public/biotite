@@ -2,37 +2,42 @@ mod ir_translator;
 mod llvm_isa;
 mod llvm_macro;
 mod llvm_translator;
+mod mem;
 mod opt;
 mod riscv_isa;
 mod riscv_macro;
 mod riscv_parser;
 mod sys_call;
 
+use crate::llvm_isa::Prog;
 use std::path::PathBuf;
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     rv_src: String,
     tdata_src: Option<String>,
-    arch: Option<String>,
+    sys_call: Option<String>,
+    mem: Option<String>,
     enable_all_opts: bool,
     disable_all_opts: bool,
     enable_opts: Vec<String>,
     disable_opts: Vec<String>,
     srcs: Vec<PathBuf>,
     ir_dir: PathBuf,
-) -> String {
+) -> Prog {
     let (rv_prog, syms) = riscv_parser::run(rv_src, tdata_src);
-    let sys_call = sys_call::build(arch);
+    let sys_call = sys_call::build(&sys_call);
     let mut ll_prog = llvm_translator::run(rv_prog, sys_call);
+    let (mem_s, mem_ld) = mem::build(&mem, &ll_prog);
+    ll_prog.mem_s = mem_s;
+    ll_prog.mem_ld = mem_ld;
     let ir_funcs = ir_translator::run(srcs, &syms, ir_dir, &ll_prog);
     ll_prog.ir_funcs = ir_funcs.into_iter().collect();
-    let opted_prog = opt::optimize(
+    opt::optimize(
         ll_prog,
         enable_all_opts,
         disable_all_opts,
         enable_opts,
         disable_opts,
-    );
-    opted_prog.to_string()
+    )
 }

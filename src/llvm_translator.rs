@@ -20,6 +20,8 @@ pub fn run(rv_prog: rv::Prog, sys_call: Option<String>) -> Prog {
         entry: Value::Addr(rv_prog.entry),
         tdata: rv_prog.tdata.map(|(addr, len)| (Value::Addr(addr), len)),
         mem,
+        mem_s: None,
+        mem_ld: None,
         sp,
         phdr,
         funcs,
