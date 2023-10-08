@@ -327,7 +327,7 @@ impl<'a> LineParser<'a> {
 
     fn parse_const(&mut self) -> Result<Value, ()> {
         let caps =
-            regex!(r"^(-?\d+)|^(\d+\.\d+e\+\d+)|^(0x[[:xdigit:]]+)|^(null)|^(true)|^(false)")
+            regex!(r"^(-?\d+)|^(\d+\.\d+e\+\d+)|^(0x[[:xdigit:]]+)|^(null)|^(true)|^(false)|^(poison)")
                 .captures(&self.line[self.index..])
                 .ok_or(())?;
         let cnst = &caps[0];
@@ -423,8 +423,8 @@ pub fn run(
         } else {
             let ext = src.extension().and_then(|ext| ext.to_str());
             match ext {
-                Some("c") => ir_dir.push(src.with_extension("ll").file_name().unwrap()),
                 Some("ll") => ir_dir.push(src.file_name().unwrap()),
+                Some("c") | Some("cpp") | Some("cxx") | Some("cc") => ir_dir.push(src.with_extension("ll").file_name().unwrap()),
                 _ => continue,
             }
             ir_funcs.extend(
@@ -444,8 +444,15 @@ fn trans_file(
     prog: &Prog,
 ) -> Vec<Ident> {
     match path.extension().and_then(|ext| ext.to_str()) {
-        Some("c") => {
-            let clang = env::var("CLANG").expect("The environment variable `CLANG` is not set");
+        Some("ll") => if Command::new("cp").args([path, output]).status().is_err() {
+            return Vec::new();
+        }
+        Some(ext) => {
+            let clang = if ext == "c" {
+                env::var("CLANG").expect("The environment variable `CLANG` is not set")
+            } else {
+                env::var("CLANGXX").expect("The environment variable `CLANGXX` is not set")
+            };
             if Command::new(&clang)
                 .args([
                     "-Xclang",
@@ -462,12 +469,7 @@ fn trans_file(
                 return Vec::new();
             }
         }
-        Some("ll") => {
-            if Command::new("cp").args([path, output]).status().is_err() {
-                return Vec::new();
-            }
-        }
-        _ => return Vec::new(),
+        _ => unreachable!(),
     }
     let mut ir_funcs = Vec::new();
     let mut lines = Vec::new();
