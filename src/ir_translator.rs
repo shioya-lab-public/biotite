@@ -915,7 +915,7 @@ fn trans_arg(
                             format!("  %_arg_{no}_{line_no} = bitcast i8* %_arg_{no}_b_{line_no} to {to_ty}*"),
                         ]);
                         }
-                        Value::Ident(Ident::Local(format!("%_arg_{no}_{line_no}")))
+                        Value::Ident(Ident::Local(format!("_arg_{no}_{line_no}")))
                     } else {
                         Value::ConstExp(arg.clone())
                     }
@@ -938,11 +938,13 @@ fn trans_load(
     let mut lines = Vec::new();
     let src = match &load.src {
         Value::Ident(ident) => ident,
-        Value::ConstExp(ConstExp::Getelementptr { ptr, .. }) => if let Value::Ident(ident) = &**ptr {
+        Value::ConstExp(ConstExp::Getelementptr { ptr, .. }) => {
+            if let Value::Ident(ident) = &**ptr {
                 ident
             } else {
                 return Err(());
             }
+        }
         _ => return Err(()),
     };
     match src {
@@ -963,10 +965,18 @@ fn trans_load(
         }
     }
     match (&load.dest_ty, &load.src) {
-        (Type::Int(8, _), Value::Ident(_)) => lines.push(format!("  {} = load i8, i8* %src_b_{line_no}", load.dest)),
+        (Type::Int(8, _), Value::Ident(_)) => {
+            lines.push(format!("  {} = load i8, i8* %src_b_{line_no}", load.dest))
+        }
         (_, Value::Ident(_)) => lines.extend([
-            format!("  %src_{line_no} = bitcast i8* %src_b_{line_no} to {}",load.src_ty),
-            format!("  {} = load {}, {} %src_{line_no}",load.dest, load.dest_ty, load.src_ty),
+            format!(
+                "  %src_{line_no} = bitcast i8* %src_b_{line_no} to {}",
+                load.src_ty
+            ),
+            format!(
+                "  {} = load {}, {} %src_{line_no}",
+                load.dest, load.dest_ty, load.src_ty
+            ),
         ]),
         (_, Value::ConstExp(ConstExp::Getelementptr { ty, idxes, .. })) => {
             let idxes = idxes
@@ -977,7 +987,10 @@ fn trans_load(
             lines.extend([
                 format!("  %src_{line_no} = bitcast i8* %src_b_{line_no} to {ty}*"),
                 format!("  %gep_{line_no} = getelementptr {ty}, {ty}* %src_{line_no}, {idxes}"),
-                format!("  {} = load {}, {} %gep_{line_no}",load.dest, load.dest_ty, load.src_ty),
+                format!(
+                    "  {} = load {}, {} %gep_{line_no}",
+                    load.dest, load.dest_ty, load.src_ty
+                ),
             ]);
         }
         _ => unreachable!(),
@@ -993,11 +1006,13 @@ fn trans_store(
     let mut lines = Vec::new();
     let dest = match &store.dest {
         Value::Ident(ident) => ident,
-        Value::ConstExp(ConstExp::Getelementptr { ptr, .. }) => if let Value::Ident(ident) = &**ptr {
+        Value::ConstExp(ConstExp::Getelementptr { ptr, .. }) => {
+            if let Value::Ident(ident) = &**ptr {
                 ident
             } else {
                 return Err(());
             }
+        }
         _ => return Err(()),
     };
     match dest {
@@ -1018,10 +1033,18 @@ fn trans_store(
         }
     }
     match (&store.src_ty, &store.dest) {
-        (Type::Int(8, _), Value::Ident(_)) => lines.push(format!("  store i8 {}, i8* %dest_b_{line_no}", store.src)),
+        (Type::Int(8, _), Value::Ident(_)) => {
+            lines.push(format!("  store i8 {}, i8* %dest_b_{line_no}", store.src))
+        }
         (_, Value::Ident(_)) => lines.extend([
-            format!("  %dest_{line_no} = bitcast i8* %dest_b_{line_no} to {}",store.dest_ty),
-            format!("  store {} {}, {} %dest_{line_no}",store.src_ty, store.src, store.dest_ty),
+            format!(
+                "  %dest_{line_no} = bitcast i8* %dest_b_{line_no} to {}",
+                store.dest_ty
+            ),
+            format!(
+                "  store {} {}, {} %dest_{line_no}",
+                store.src_ty, store.src, store.dest_ty
+            ),
         ]),
         (_, Value::ConstExp(ConstExp::Getelementptr { ty, idxes, .. })) => {
             let idxes = idxes
@@ -1032,7 +1055,10 @@ fn trans_store(
             lines.extend([
                 format!("  %dest_{line_no} = bitcast i8* %dest_b_{line_no} to {ty}*"),
                 format!("  %gep_{line_no} = getelementptr {ty}, {ty}* %dest_{line_no}, {idxes}"),
-                format!("  store {} {}, {} %gep_{line_no}", store.src_ty, store.src, store.dest_ty),
+                format!(
+                    "  store {} {}, {} %gep_{line_no}",
+                    store.src_ty, store.src, store.dest_ty
+                ),
             ]);
         }
         _ => unreachable!(),
