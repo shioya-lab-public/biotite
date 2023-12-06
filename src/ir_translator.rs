@@ -489,7 +489,7 @@ fn trans_file(
             } else {
                 env::var("CLANGXX").expect("The environment variable `CLANGXX` is not set")
             };
-            if Command::new(&clang)
+            if Command::new(clang)
                 .args([
                     "-Xclang",
                     "-no-opaque-pointers",

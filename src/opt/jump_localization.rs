@@ -15,7 +15,9 @@ pub fn run(mut prog: Prog) -> Prog {
             addr
         })
         .collect();
-    prog.funcs.par_iter_mut().for_each(|func| {
+
+    let mut fallback_funcs = Vec::new();
+    for func in &mut prog.funcs {
         func.is_opaque = func.inst_blocks.iter().any(|block| {
             matches!(
                 block.rv_inst,
@@ -26,7 +28,16 @@ pub fn run(mut prog: Prog) -> Prog {
                     | rv::Inst::OffsetJr { .. }
             )
         });
+        if !func.is_opaque {
+            let mut fallback_func = func.clone();
+            fallback_func.is_opaque = true;
+            fallback_func.is_fallback = true;
+            fallback_funcs.push(fallback_func);
+        }
+    }
+    prog.funcs.extend(fallback_funcs);
 
+    prog.funcs.par_iter_mut().for_each(|func| {
         let addrs: HashSet<_> = func
             .inst_blocks
             .iter()

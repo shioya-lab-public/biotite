@@ -25,7 +25,7 @@ impl Display for Prog {
             .funcs
             .iter()
             .map(|func| {
-                if self.ir_funcs.contains(&func.symbol) {
+                if self.ir_funcs.contains(&func.symbol) && !func.is_fallback {
                     format!("declare i64 @.{}(i64)", func.address)
                 } else {
                     func.to_string()
@@ -179,12 +179,19 @@ dynamic:
         let mut dispatcher = Vec::new();
         let mut func_dispatcher = Vec::new();
         for func in &self.funcs {
+            if func.is_fallback {
+                continue;
+            }
             let last_rv_inst = &func.inst_blocks.last().unwrap().rv_inst;
             let rv::Addr(mut end) = last_rv_inst.address();
             end += if last_rv_inst.is_compressed() { 2 } else { 4 };
             dispatcher.resize(end as usize, String::from("i64 0"));
             func_dispatcher.resize(end as usize, String::from("i64 0"));
-            let ptr = format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
+            let ptr = format!(
+                "i64 ptrtoint (i64 (i64)* @.{}{} to i64)",
+                func.address,
+                if !func.is_opaque { "_fallback" } else { "" }
+            );
             for inst_block in &func.inst_blocks {
                 let rv::Addr(addr) = inst_block.rv_inst.address();
                 dispatcher[addr as usize] = ptr.clone();
@@ -210,8 +217,7 @@ dynamic:
 call:
   %func_ptr = inttoptr i64 %func_addr to i64 (i64)*
   %rslt = call i64 %func_ptr(i64 %func)
-  %ra = load i64, i64* @.ra
-  ret i64 %ra 
+  ret i64 %rslt
 ret:
   ret i64 0
 }}");
@@ -295,6 +301,7 @@ pub struct Func {
     pub address: Value,
     pub inst_blocks: Vec<InstBlock>,
     pub is_opaque: bool,
+    pub is_fallback: bool,
     pub synced_regs: Vec<rv::Reg>,
     pub synced_fregs: Vec<rv::FReg>,
     pub used_regs: Vec<rv::Reg>,
@@ -305,7 +312,7 @@ impl Display for Func {
     fn fmt(&self, f: &mut Formatter) -> Result {
         let mut func = format!(
             "; {addr} {sec} <{sym}>
-define i64 @.{addr}(i64 %entry) {{
+define i64 @.{addr}{ver}(i64 %entry) {{
   %entry_ptr = alloca i64
   store i64 %entry, i64* %entry_ptr
   %local_jalr_ptr = alloca i1, i1 0
@@ -313,6 +320,7 @@ define i64 @.{addr}(i64 %entry) {{
             addr = self.address,
             sec = self.section,
             sym = self.symbol,
+            ver = if self.is_fallback { "_fallback" } else { "" },
         );
         if !self.used_regs.is_empty() {
             let stack_regs = self
@@ -374,11 +382,7 @@ dispatcher:
 func_dispatcher:
   {func_dispatcher}
   %fail = icmp eq i64 %ra_val, 0
-  br i1 %fail, label %native_ret, label %cont
-native_ret:
-  %local_ra_val = load i64, i64* @.ra
-  store i64 %local_ra_val, i64* %entry_ptr
-  br label %ret
+  br i1 %fail, label %ret, label %cont
 cont:
   store i64 %ra_val, i64* %entry_ptr
   br label %dispatcher
@@ -420,6 +424,7 @@ ret:
   {stack_storing}
 
   %target = load i64, i64* %entry_ptr
+  store i64 %target, i64* @.ra
   ret i64 %target
 }}"
             );
@@ -427,6 +432,7 @@ ret:
             func += "
 ret:
   %target = load i64, i64* %entry_ptr
+  store i64 %target, i64* @.ra
   ret i64 %target
 }";
         }

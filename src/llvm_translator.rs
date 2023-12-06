@@ -52,6 +52,7 @@ fn trans_code_block(code_block: rv::CodeBlock) -> Func {
         address: Value::Addr(code_block.address),
         inst_blocks: code_block.insts.into_iter().map(trans_inst).collect(),
         is_opaque: true,
+        is_fallback: false,
         synced_regs: Vec::new(),
         synced_fregs: Vec::new(),
         used_regs: Vec::new(),
