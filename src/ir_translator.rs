@@ -168,6 +168,14 @@ struct Store {
     src_ty: Type,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct Gep {
+    rslt: Ident,
+    ty: Type,
+    ptr: Ident,
+    idxes: Vec<(Value, Type)>,
+}
+
 struct LineParser<'a> {
     line: &'a str,
     index: usize,
@@ -294,6 +302,35 @@ impl<'a> LineParser<'a> {
             src,
             src_ty,
         })
+    }
+
+    pub fn parse_gep(&mut self) -> Result<Gep, ()> {
+        self.skip_whitespace();
+        let rslt = self.parse_ident()?;
+        self.assert_word("= getelementptr")?;
+        let _ = self.assert_word("inbounds");
+        let ty = self.parse_type()?;
+        self.assert_word(",")?;
+        self.parse_type()?;
+        let ptr = self.parse_ident()?;
+        self.assert_word(",")?;
+        let mut idxes = Vec::new();
+        while !self.is_end() {
+            let idx_ty = self.parse_type()?;
+            let idx = self.parse_value()?;
+            idxes.push((idx, idx_ty));
+            let _ = self.assert_word(",");
+        }
+        Ok(Gep {
+            rslt,
+            ty,
+            ptr,
+            idxes,
+        })
+    }
+
+    fn is_end(&self) -> bool {
+        self.index >= self.line.len()
     }
 
     fn assert_word(&mut self, word: &str) -> Result<(), ()> {
@@ -615,6 +652,9 @@ fn trans_func(
             } else if line.starts_with("  store") {
                 let store = LineParser::new(&line).parse_store()?;
                 trans_store(line_no, &store, symbols)
+            } else if line.contains("= getelementptr") {
+                let gep = LineParser::new(&line).parse_gep()?;
+                trans_gep(line_no, &gep, symbols)
             } else {
                 Ok(vec![line])
             }
@@ -1062,6 +1102,48 @@ fn trans_store(
             ]);
         }
         _ => unreachable!(),
+    }
+    Ok(lines)
+}
+
+fn trans_gep(
+    line_no: usize,
+    gep: &Gep,
+    symbols: &HashMap<String, Addr>,
+) -> Result<Vec<String>, ()> {
+    let mut lines = Vec::new();
+    let idxes = gep
+        .idxes
+        .iter()
+        .map(|(idx, ty)| format!("{ty} {idx}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let Ident::Global(ptr) = &gep.ptr else {
+        return Ok(vec![format!(
+            "  {} = getelementptr {}, {}* {}, {}",
+            gep.rslt, gep.ty, gep.ty, gep.ptr, idxes
+        )]);
+    };
+    let addr = symbols.get(ptr).ok_or(())?;
+    lines.push(format!(
+        "  %ptr_b_{line_no} = call i8* @.get_mem_ptr(i64 u{addr})"
+    ));
+    if let Type::Int(8, _) = gep.ty {
+        lines.push(format!(
+            "  {} = getelementptr i8, i8* %ptr_b_{line_no}, {idxes}",
+            gep.rslt
+        ))
+    } else {
+        lines.extend([
+            format!(
+                "  %ptr_{line_no} = bitcast i8* %ptr_b_{line_no} to {}*",
+                gep.ty
+            ),
+            format!(
+                "  {} = getelementptr {}, {}* %ptr_{line_no}, {idxes}",
+                gep.rslt, gep.ty, gep.ty
+            ),
+        ])
     }
     Ok(lines)
 }
