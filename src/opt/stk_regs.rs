@@ -112,8 +112,6 @@ pub fn run(mut prog: Prog) -> Prog {
                         }
                     }
                     Inst::Checkret { stk, .. }
-                    | Inst::Contret { stk, .. }
-                    | Inst::Dispret { stk, .. }
                     | Inst::Memcpy { stk, .. }
                     | Inst::Memmove { stk, .. }
                     | Inst::Memset { stk, .. }

@@ -314,14 +314,17 @@ impl Display for Func {
             "; {addr} {sec} <{sym}>
 define i64 @.{addr}{ver}(i64 %entry) {{
   %entry_ptr = alloca i64
-  store i64 %entry, i64* %entry_ptr
-  %local_jalr_ptr = alloca i1, i1 0
 ",
             addr = self.address,
             sec = self.section,
             sym = self.symbol,
             ver = if self.is_fallback { "_fallback" } else { "" },
         );
+        if self.is_opaque || self.is_fallback {
+            func += "  store i64 %entry, i64* %entry_ptr
+  %local_jalr_ptr = alloca i1, i1 0
+";
+        }
         if !self.used_regs.is_empty() {
             let stack_regs = self
                 .used_regs
@@ -424,7 +427,6 @@ ret:
   {stack_storing}
 
   %target = load i64, i64* %entry_ptr
-  store i64 %target, i64* @.ra
   ret i64 %target
 }}"
             );
@@ -432,7 +434,6 @@ ret:
             func += "
 ret:
   %target = load i64, i64* %entry_ptr
-  store i64 %target, i64* @.ra
   ret i64 %target
 }";
         }
@@ -864,7 +865,6 @@ pub enum Inst {
     Contret {
         addr: Value,
         next_pc: Value,
-        stk: bool,
     },
     Dispfunc {
         addr: Value,
@@ -875,7 +875,6 @@ pub enum Inst {
     Dispret {
         addr: Value,
         next_pc: Value,
-        stk: bool,
     },
 
     Memcpy {
@@ -1001,13 +1000,11 @@ impl Display for Inst {
   br label %dispatcher",
     ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)},
 ),
-            Contret { addr, next_pc , stk} => write!(f, "%{addr}_ra = load i64, i64* {ra}
-  %{addr}_is_next_pc = icmp eq i64 %{addr}_ra, {next_pc}
+            Contret { addr, next_pc } => write!(f, "%{addr}_is_next_pc = icmp eq i64 %{addr}_0, {next_pc}
   br i1 %{addr}_is_next_pc, label %{next_pc}, label %{addr}_cont
 {addr}_cont:
-  store i64 %{addr}_ra, i64* %entry_ptr
+  store i64 %{addr}_0, i64* %entry_ptr
   br label %ret",
-    ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)},
 ),
             Dispfunc { addr, target , used_regs, used_fregs} => {
                 let call = if !used_regs.is_empty() || !used_fregs.is_empty() {
@@ -1030,13 +1027,11 @@ impl Display for Inst {
   store i64 %{addr}_ra, i64* %entry_ptr
   br label %dispatcher")
             }
-            Dispret { addr, next_pc, stk } => write!(f, "%{addr}_ra = load i64, i64* {ra}
-  %{addr}_is_next_pc = icmp eq i64 %{addr}_ra, {next_pc}
+            Dispret { addr, next_pc } => write!(f, "%{addr}_is_next_pc = icmp eq i64 %{addr}_0, {next_pc}
   br i1 %{addr}_is_next_pc, label %{next_pc}, label %{addr}_disp
 {addr}_disp:
-  store i64 %{addr}_ra, i64* %entry_ptr
-  br label %dispatcher",
-    ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)}
+  store i64 %{addr}_0, i64* %entry_ptr
+  br label %dispatcher"
 ),
 
             Memcpy { addr ,stk} => write!(f, "%{addr}_0 = load i64, i64* {a0}
