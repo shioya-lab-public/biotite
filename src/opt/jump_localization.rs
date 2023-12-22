@@ -191,8 +191,7 @@ fn catch_non_local_jumps(mut prog: Prog) -> Prog {
             func.is_opaque = true;
             for block in &mut func.inst_blocks {
                 if let rv::Inst::Jal { .. } | rv::Inst::PseudoJal { .. } = block.rv_inst {
-                    if let Some(Inst::Contret { addr, next_pc }) = block.insts.get(2).cloned()
-                    {
+                    if let Some(Inst::Contret { addr, next_pc }) = block.insts.get(2).cloned() {
                         block.insts[2] = Inst::Dispret { addr, next_pc };
                     }
                 }

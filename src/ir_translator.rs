@@ -108,6 +108,7 @@ enum Type {
     Float,
     Double,
     Ptr(Box<Type>),
+    Vector(usize, Box<Type>),
     Array(usize, Box<Type>),
     Struct(String),
 }
@@ -131,6 +132,7 @@ impl Display for Type {
             Float => write!(f, "float"),
             Double => write!(f, "double"),
             Ptr(ty) => write!(f, "{ty}*"),
+            Vector(sz, ty) => write!(f, "<{sz} x {ty}>"),
             Array(sz, ty) => write!(f, "[{sz} x {ty}]"),
             Struct(name) => write!(f, "%struct.{name}"),
         }
@@ -158,6 +160,7 @@ struct Load {
     dest_ty: Type,
     src: Value,
     src_ty: Type,
+    align: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -166,6 +169,7 @@ struct Store {
     dest_ty: Type,
     src: Value,
     src_ty: Type,
+    align: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -280,11 +284,16 @@ impl<'a> LineParser<'a> {
         self.assert_word(",")?;
         let src_ty = self.parse_type()?;
         let src = self.parse_value()?;
+        let align = match self.assert_word(", align ") {
+            Ok(_) => Some(self.parse_value()?),
+            Err(_) => None,
+        };
         Ok(Load {
             dest,
             dest_ty,
             src,
             src_ty,
+            align,
         })
     }
 
@@ -296,11 +305,16 @@ impl<'a> LineParser<'a> {
         self.assert_word(",")?;
         let dest_ty = self.parse_type()?;
         let dest = self.parse_value()?;
+        let align = match self.assert_word(", align ") {
+            Ok(_) => Some(self.parse_value()?),
+            Err(_) => None,
+        };
         Ok(Store {
             dest,
             dest_ty,
             src,
             src_ty,
+            align,
         })
     }
 
@@ -357,7 +371,7 @@ impl<'a> LineParser<'a> {
 
     fn parse_const(&mut self) -> Result<Value, ()> {
         let caps = regex!(
-            r"^(-?\d+)|^(\d+\.\d+e\+\d+)|^(0x[[:xdigit:]]+)|^(null)|^(true)|^(false)|^(poison)"
+            r"^(-?\d+)|^(\d+\.\d+e\+\d+)|^(0x[[:xdigit:]]+)|^(null)|^(true)|^(false)|^(poison)|^(<.+?>)"
         )
         .captures(&self.line[self.index..])
         .ok_or(())?;
@@ -431,7 +445,7 @@ impl<'a> LineParser<'a> {
             Type::Float
         } else if self.assert_word("double").is_ok() {
             Type::Double
-        } else if self.assert_word("[").is_ok() {
+        } else if self.assert_word("<").is_ok() || self.assert_word("[").is_ok() {
             let caps = regex!(r"\d+")
                 .captures(&self.line[self.index..])
                 .ok_or(())?;
@@ -440,8 +454,13 @@ impl<'a> LineParser<'a> {
             self.skip_whitespace();
             self.assert_word("x")?;
             let ty = self.parse_type()?;
-            self.assert_word("]")?;
-            Type::Array(sz.parse().unwrap(), Box::new(ty))
+            if self.assert_word(">").is_ok() {
+                Type::Vector(sz.parse().unwrap(), Box::new(ty))
+            } else if self.assert_word("]").is_ok() {
+                Type::Array(sz.parse().unwrap(), Box::new(ty))
+            } else {
+                return Err(());
+            }
         } else if let Ok(Ident::Local(ident)) = self.parse_ident() {
             Type::Struct(String::from(ident.strip_prefix("struct.").ok_or(())?))
         } else {
@@ -530,7 +549,7 @@ fn trans_file(
                 .args([
                     "-Xclang",
                     "-no-opaque-pointers",
-                    "-O1",
+                    "-O3",
                     "-S",
                     "-emit-llvm",
                     "-o",
@@ -1004,17 +1023,23 @@ fn trans_load(
             ]);
         }
     }
+    let align = load
+        .align
+        .as_ref()
+        .map(|v| format!(", align {v}"))
+        .unwrap_or_default();
     match (&load.dest_ty, &load.src) {
-        (Type::Int(8, _), Value::Ident(_)) => {
-            lines.push(format!("  {} = load i8, i8* %src_b_{line_no}", load.dest))
-        }
+        (Type::Int(8, _), Value::Ident(_)) => lines.push(format!(
+            "  {} = load i8, i8* %src_b_{line_no}{align}",
+            load.dest
+        )),
         (_, Value::Ident(_)) => lines.extend([
             format!(
                 "  %src_{line_no} = bitcast i8* %src_b_{line_no} to {}",
                 load.src_ty
             ),
             format!(
-                "  {} = load {}, {} %src_{line_no}",
+                "  {} = load {}, {} %src_{line_no}{align}",
                 load.dest, load.dest_ty, load.src_ty
             ),
         ]),
@@ -1028,7 +1053,7 @@ fn trans_load(
                 format!("  %src_{line_no} = bitcast i8* %src_b_{line_no} to {ty}*"),
                 format!("  %gep_{line_no} = getelementptr {ty}, {ty}* %src_{line_no}, {idxes}"),
                 format!(
-                    "  {} = load {}, {} %gep_{line_no}",
+                    "  {} = load {}, {} %gep_{line_no}{align}",
                     load.dest, load.dest_ty, load.src_ty
                 ),
             ]);
@@ -1072,17 +1097,23 @@ fn trans_store(
             ]);
         }
     }
+    let align = store
+        .align
+        .as_ref()
+        .map(|v| format!(", align {v}"))
+        .unwrap_or_default();
     match (&store.src_ty, &store.dest) {
-        (Type::Int(8, _), Value::Ident(_)) => {
-            lines.push(format!("  store i8 {}, i8* %dest_b_{line_no}", store.src))
-        }
+        (Type::Int(8, _), Value::Ident(_)) => lines.push(format!(
+            "  store i8 {}, i8* %dest_b_{line_no}{align}",
+            store.src
+        )),
         (_, Value::Ident(_)) => lines.extend([
             format!(
                 "  %dest_{line_no} = bitcast i8* %dest_b_{line_no} to {}",
                 store.dest_ty
             ),
             format!(
-                "  store {} {}, {} %dest_{line_no}",
+                "  store {} {}, {} %dest_{line_no}{align}",
                 store.src_ty, store.src, store.dest_ty
             ),
         ]),
@@ -1096,7 +1127,7 @@ fn trans_store(
                 format!("  %dest_{line_no} = bitcast i8* %dest_b_{line_no} to {ty}*"),
                 format!("  %gep_{line_no} = getelementptr {ty}, {ty}* %dest_{line_no}, {idxes}"),
                 format!(
-                    "  store {} {}, {} %gep_{line_no}",
+                    "  store {} {}, {} %gep_{line_no}{align}",
                     store.src_ty, store.src, store.dest_ty
                 ),
             ]);
@@ -1118,32 +1149,33 @@ fn trans_gep(
         .map(|(idx, ty)| format!("{ty} {idx}"))
         .collect::<Vec<_>>()
         .join(", ");
-    let Ident::Global(ptr) = &gep.ptr else {
-        return Ok(vec![format!(
-            "  {} = getelementptr {}, {}* {}, {}",
-            gep.rslt, gep.ty, gep.ty, gep.ptr, idxes
-        )]);
-    };
-    let addr = symbols.get(ptr).ok_or(())?;
-    lines.push(format!(
-        "  %ptr_b_{line_no} = call i8* @.get_mem_ptr(i64 u{addr})"
-    ));
-    if let Type::Int(8, _) = gep.ty {
-        lines.push(format!(
-            "  {} = getelementptr i8, i8* %ptr_b_{line_no}, {idxes}",
-            gep.rslt
-        ))
-    } else {
-        lines.extend([
-            format!(
-                "  %ptr_{line_no} = bitcast i8* %ptr_b_{line_no} to {}*",
-                gep.ty
-            ),
-            format!(
-                "  {} = getelementptr {}, {}* %ptr_{line_no}, {idxes}",
-                gep.rslt, gep.ty, gep.ty
-            ),
-        ])
+    if let Ident::Global(ptr) = &gep.ptr {
+        if let Some(addr) = symbols.get(ptr) {
+            lines.push(format!(
+                "  %ptr_b_{line_no} = call i8* @.get_mem_ptr(i64 u{addr})"
+            ));
+            if let Type::Int(8, _) = gep.ty {
+                lines.push(format!(
+                    "  {} = getelementptr i8, i8* %ptr_b_{line_no}, {idxes}",
+                    gep.rslt
+                ));
+            } else {
+                lines.extend([
+                    format!(
+                        "  %ptr_{line_no} = bitcast i8* %ptr_b_{line_no} to {}*",
+                        gep.ty
+                    ),
+                    format!(
+                        "  {} = getelementptr {}, {}* %ptr_{line_no}, {idxes}",
+                        gep.rslt, gep.ty, gep.ty
+                    ),
+                ]);
+            }
+            return Ok(lines);
+        }
     }
-    Ok(lines)
+    Ok(vec![format!(
+        "  {} = getelementptr {}, {}* {}, {}",
+        gep.rslt, gep.ty, gep.ty, gep.ptr, idxes
+    )])
 }
