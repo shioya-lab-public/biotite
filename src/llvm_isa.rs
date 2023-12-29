@@ -187,14 +187,15 @@ dynamic:
             end += if last_rv_inst.is_compressed() { 2 } else { 4 };
             dispatcher.resize(end as usize, String::from("i64 0"));
             func_dispatcher.resize(end as usize, String::from("i64 0"));
-            let ptr = format!(
+            let ptr = format!("i64 ptrtoint (i64 (i64)* @.{} to i64)", func.address);
+            let fallback_ptr = format!(
                 "i64 ptrtoint (i64 (i64)* @.{}{} to i64)",
                 func.address,
                 if !func.is_opaque { "_fallback" } else { "" }
             );
             for inst_block in &func.inst_blocks {
                 let rv::Addr(addr) = inst_block.rv_inst.address();
-                dispatcher[addr as usize] = ptr.clone();
+                dispatcher[addr as usize] = fallback_ptr.clone();
             }
             let rv::Addr(addr) = func.inst_blocks[0].rv_inst.address();
             func_dispatcher[addr as usize] = ptr;
