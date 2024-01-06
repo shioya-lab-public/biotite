@@ -62,7 +62,7 @@ impl Display for ConstExp {
             } => write!(f, "bitcast ({from_ty} {from} to {to_ty})"),
             Getelementptr { ty, ptr, idxes } => write!(
                 f,
-                "getelementptr ({ty}, {ty}* {ptr}, {})",
+                "getelementptr ({ty}, ptr {ptr}, {})",
                 idxes
                     .iter()
                     .map(|(idx, ty)| format!("{ty} {idx}"))
@@ -103,11 +103,10 @@ impl Display for Ident {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Type {
     Void,
-    Func(Box<Type>, Vec<Type>),
     Int(usize, bool),
     Float,
     Double,
-    Ptr(Box<Type>),
+    Ptr,
     Vector(usize, Box<Type>),
     Array(usize, Box<Type>),
     Struct(String),
@@ -119,19 +118,10 @@ impl Display for Type {
 
         match self {
             Void => write!(f, "void"),
-            Func(rslt_ty, param_tys) => write!(
-                f,
-                "{rslt_ty} ({})",
-                param_tys
-                    .iter()
-                    .map(|ty| ty.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
             Int(sz, _) => write!(f, "i{sz}"),
             Float => write!(f, "float"),
             Double => write!(f, "double"),
-            Ptr(ty) => write!(f, "{ty}*"),
+            Ptr => write!(f, "ptr"),
             Vector(sz, ty) => write!(f, "<{sz} x {ty}>"),
             Array(sz, ty) => write!(f, "[{sz} x {ty}]"),
             Struct(name) => write!(f, "%struct.{name}"),
@@ -156,19 +146,17 @@ struct Call {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Load {
+    ty: Type,
     dest: Ident,
-    dest_ty: Type,
     src: Value,
-    src_ty: Type,
     align: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Store {
+    ty: Type,
     dest: Value,
-    dest_ty: Type,
     src: Value,
-    src_ty: Type,
     align: Option<Value>,
 }
 
@@ -280,19 +268,17 @@ impl<'a> LineParser<'a> {
         self.skip_whitespace();
         let dest = self.parse_ident()?;
         self.assert_word("= load")?;
-        let dest_ty = self.parse_type()?;
-        self.assert_word(",")?;
-        let src_ty = self.parse_type()?;
+        let ty = self.parse_type()?;
+        self.assert_word(", ptr")?;
         let src = self.parse_value()?;
         let align = match self.assert_word(", align ") {
             Ok(_) => Some(self.parse_value()?),
             Err(_) => None,
         };
         Ok(Load {
+            ty,
             dest,
-            dest_ty,
             src,
-            src_ty,
             align,
         })
     }
@@ -300,20 +286,18 @@ impl<'a> LineParser<'a> {
     pub fn parse_store(&mut self) -> Result<Store, ()> {
         self.skip_whitespace();
         self.assert_word("store")?;
-        let src_ty = self.parse_type()?;
+        let ty = self.parse_type()?;
         let src = self.parse_value()?;
-        self.assert_word(",")?;
-        let dest_ty = self.parse_type()?;
+        self.assert_word(", ptr")?;
         let dest = self.parse_value()?;
         let align = match self.assert_word(", align ") {
             Ok(_) => Some(self.parse_value()?),
             Err(_) => None,
         };
         Ok(Store {
+            ty,
             dest,
-            dest_ty,
             src,
-            src_ty,
             align,
         })
     }
@@ -324,8 +308,7 @@ impl<'a> LineParser<'a> {
         self.assert_word("= getelementptr")?;
         let _ = self.assert_word("inbounds");
         let ty = self.parse_type()?;
-        self.assert_word(",")?;
-        self.parse_type()?;
+        self.assert_word(", ptr")?;
         let ptr = self.parse_ident()?;
         self.assert_word(",")?;
         let mut idxes = Vec::new();
@@ -434,7 +417,7 @@ impl<'a> LineParser<'a> {
     }
 
     fn parse_type(&mut self) -> Result<Type, ()> {
-        let mut ty = if self.assert_word("void").is_ok() {
+        let ty = if self.assert_word("void").is_ok() {
             Type::Void
         } else if let Some(caps) = regex!(r"^i(\d+)").captures(&self.line[self.index..]) {
             let sz = &caps[1];
@@ -445,6 +428,8 @@ impl<'a> LineParser<'a> {
             Type::Float
         } else if self.assert_word("double").is_ok() {
             Type::Double
+        } else if self.assert_word("ptr").is_ok() {
+            Type::Ptr
         } else if self.assert_word("<").is_ok() || self.assert_word("[").is_ok() {
             let caps = regex!(r"\d+")
                 .captures(&self.line[self.index..])
@@ -466,22 +451,7 @@ impl<'a> LineParser<'a> {
         } else {
             return Err(());
         };
-        while self.assert_word("*").is_ok() {
-            ty = Type::Ptr(Box::new(ty));
-        }
         self.skip_whitespace();
-        while self.assert_word("(").is_ok() {
-            let mut param_tys = Vec::new();
-            while self.assert_word(")").is_err() {
-                param_tys.push(self.parse_type()?);
-                let _ = self.assert_word(",");
-            }
-            ty = Type::Func(Box::new(ty), param_tys);
-            while self.assert_word("*").is_ok() {
-                ty = Type::Ptr(Box::new(ty));
-            }
-            self.skip_whitespace();
-        }
         Ok(ty)
     }
 }
@@ -547,8 +517,6 @@ fn trans_file(
             };
             if Command::new(clang)
                 .args([
-                    "-Xclang",
-                    "-no-opaque-pointers",
                     "-O3",
                     "-S",
                     "-emit-llvm",
@@ -710,33 +678,33 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
     for (no, (_, ty)) in proto.params.iter().enumerate() {
         match ty {
             Type::Int(64, _) => lines.push(format!(
-                "  %arg_{no} = load i64, i64* @.{}",
+                "  %arg_{no} = load i64, ptr @.{}",
                 regs.pop().ok_or(())?,
             )),
             Type::Int(sz, _) => lines.extend([
                 format!(
-                    "  %arg_{no}_val = load i64, i64* @.{}",
+                    "  %arg_{no}_val = load i64, ptr @.{}",
                     regs.pop().ok_or(())?,
                 ),
                 format!("  %arg_{no} = trunc i64 %arg_{no}_val to i{sz}"),
             ]),
             Type::Float => lines.extend([
                 format!(
-                    "  %arg_{no}_val = load double, double* @.{}",
+                    "  %arg_{no}_val = load double, ptr @.{}",
                     fregs.pop().ok_or(())?,
                 ),
                 format!("  %arg_{no} = fptrunc double %arg_{no}_val to float"),
             ]),
             Type::Double => lines.push(format!(
-                "  %arg_{no} = load double, double* @.{}",
+                "  %arg_{no} = load double, ptr @.{}",
                 fregs.pop().ok_or(())?,
             )),
-            Type::Ptr(ty) => lines.extend([
+            Type::Ptr => lines.extend([
                 format!(
-                    "  %arg_{no}_val = load i64, i64* @.{}",
+                    "  %arg_{no}_val = load i64, ptr @.{}",
                     regs.pop().ok_or(())?,
                 ),
-                format!("  %arg_{no} = inttoptr i64 %arg_{no}_val to {ty}*"),
+                format!("  %arg_{no} = inttoptr i64 %arg_{no}_val to ptr"),
             ]),
             _ => Err(())?,
         }
@@ -746,7 +714,7 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
         Type::Void => lines.push(format!("  call void {}({})", proto.func, args.join(", "))),
         Type::Int(64, _) => lines.extend([
             format!("  %rslt = call i64 {}({})", proto.func, args.join(", ")),
-            "  store i64 %rslt, i64* @.a0".to_string(),
+            "  store i64 %rslt, ptr @.a0".to_string(),
         ]),
         Type::Int(sz, zeroext) => lines.extend([
             format!(
@@ -758,7 +726,7 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
                 "  %rslt = {} i{sz} %rslt_val to i64",
                 if *zeroext { "zext" } else { "sext" }
             ),
-            "  store i64 %rslt, i64* @.a0".to_string(),
+            "  store i64 %rslt, ptr @.a0".to_string(),
         ]),
         Type::Float => lines.extend([
             format!(
@@ -767,25 +735,25 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
                 args.join(", ")
             ),
             "  %rslt = fpext float %rslt_val to double".to_string(),
-            "  store double %rslt, double* @.fa0".to_string(),
+            "  store double %rslt, ptr @.fa0".to_string(),
         ]),
         Type::Double => lines.extend([
             format!("  %rslt = call double {}({})", proto.func, args.join(", ")),
-            "  store double %rslt, double* @.fa0".to_string(),
+            "  store double %rslt, ptr @.fa0".to_string(),
         ]),
-        Type::Ptr(ty) => lines.extend([
+        Type::Ptr => lines.extend([
             format!(
-                "  %rslt_val = call {ty}* {}({})",
+                "  %rslt_val = call ptr {}({})",
                 proto.func,
                 args.join(", ")
             ),
-            format!("  %rslt = ptrtoint {ty}* %rslt_val to i64"),
-            "  store i64 %rslt, i64* @.a0".to_string(),
+            format!("  %rslt = ptrtoint ptr %rslt_val to i64"),
+            "  store i64 %rslt, ptr @.a0".to_string(),
         ]),
         _ => Err(())?,
     }
     lines.push(String::from(
-        "  %ra = load i64, i64* @.ra
+        "  %ra = load i64, ptr @.ra
   ret i64 %ra
 }",
     ));
@@ -803,19 +771,12 @@ fn trans_call(
         let mut args = Vec::new();
         for (no, (arg, ty)) in call.args.iter().enumerate() {
             let arg = trans_arg(no, line_no, arg, &mut lines, symbols);
-            if let Type::Ptr(ty) = ty {
-                lines.push(format!(
-                    "  %arg_{no}_val_{line_no} = ptrtoint {ty}* {arg} to i64"
-                ));
-                if let Type::Int(8, _) = **ty {
-                    lines.push(format!("  %arg_{no}_{line_no} = call i8* @.get_mem_ptr(i64 %arg_{no}_val_{line_no})"));
-                } else {
-                    lines.extend([
-                        format!("  %arg_{no}_b_{line_no} = call i8* @.get_mem_ptr(i64 %arg_{no}_val_{line_no})"),
-                        format!("  %arg_{no}_{line_no} = bitcast i8* %arg_{no}_b_{line_no} to {ty}*"),
-                    ]);
-                }
-                args.push(format!("{ty}* %arg_{no}_{line_no}"));
+            if let Type::Ptr = ty {
+                lines.extend([format!(
+                    "  %arg_{no}_val_{line_no} = ptrtoint ptr {arg} to i64"
+                ),format!("  %arg_{no}_{line_no} = call ptr @.get_mem_ptr(i64 %arg_{no}_val_{line_no})"),
+                ]);
+                args.push(format!("ptr %arg_{no}_{line_no}"));
             } else {
                 args.push(format!("{ty} {arg}"));
             }
@@ -861,7 +822,7 @@ fn trans_call(
             let arg = trans_arg(no, line_no, arg, &mut lines, symbols);
             match ty {
                 Type::Int(64, _) => lines.push(format!(
-                    "  store i64 {arg}, i64* @.{}",
+                    "  store i64 {arg}, ptr @.{}",
                     regs.pop().ok_or(())?,
                 )),
                 Type::Int(sz, zeroext) => lines.extend([
@@ -870,7 +831,7 @@ fn trans_call(
                         if *zeroext { "zext" } else { "sext" }
                     ),
                     format!(
-                        "  store i64 %arg_{no}_{line_no}, i64* @.{}",
+                        "  store i64 %arg_{no}_{line_no}, ptr @.{}",
                         regs.pop().ok_or(())?,
                     ),
                 ]),
@@ -885,10 +846,10 @@ fn trans_call(
                     "  store double {arg}, double* @.{}",
                     fregs.pop().ok_or(())?
                 )),
-                Type::Ptr(ty) => lines.extend([
-                    format!("  %arg_{no}_{line_no} = ptrtoint {ty}* {arg} to i64"),
+                Type::Ptr => lines.extend([
+                    format!("  %arg_{no}_{line_no} = ptrtoint ptr {arg} to i64"),
                     format!(
-                        "  store i64 %arg_{no}_{line_no}, i64* @.{}",
+                        "  store i64 %arg_{no}_{line_no}, ptr @.{}",
                         regs.pop().ok_or(())?,
                     ),
                 ]),
@@ -903,9 +864,7 @@ fn trans_call(
         } else {
             lines.extend([
                 format!(
-                    "  %func_{line_no} = ptrtoint {} ({})* {} to i64",
-                    call.rslt_ty,
-                    params.join(", "),
+                    "  %func_{line_no} = ptrtoint ptr {} to i64",
                     call.func
                 ),
                 format!("  %ra_{line_no} = call i64 @.dispatch_func(i64 %func_{line_no})"),
@@ -914,11 +873,11 @@ fn trans_call(
         match &call.rslt_ty {
             Type::Void => (),
             Type::Int(64, _) => lines.push(format!(
-                "  {} = load i64, i64* @.a0",
+                "  {} = load i64, ptr @.a0",
                 call.rslt.as_ref().unwrap()
             )),
             Type::Int(sz, _) => lines.extend([
-                format!("  %rslt_{line_no} = load i64, i64* @.a0"),
+                format!("  %rslt_{line_no} = load i64, ptr @.a0"),
                 format!(
                     "  {} = trunc i64 %rslt_{line_no} to i{sz}",
                     call.rslt.as_ref().unwrap()
@@ -935,10 +894,10 @@ fn trans_call(
                 "  {} = load double, double* @.fa0",
                 call.rslt.as_ref().unwrap()
             )),
-            Type::Ptr(ty) => lines.extend([
-                format!("  %rslt_{line_no} = load i64, i64* @.a0"),
+            Type::Ptr => lines.extend([
+                format!("  %rslt_{line_no} = load i64, ptr @.a0"),
                 format!(
-                    "  {} = inttoptr i64 %rslt_{line_no} to {ty}*",
+                    "  {} = inttoptr i64 %rslt_{line_no} to ptr",
                     call.rslt.as_ref().unwrap()
                 ),
             ]),
@@ -959,21 +918,14 @@ fn trans_arg(
         match arg {
             ConstExp::Bitcast {
                 from,
-                to_ty: Type::Ptr(to_ty),
+                to_ty: Type::Ptr,
                 ..
             } => {
                 if let Value::Ident(Ident::Global(from)) = &**from {
                     if let Some(addr) = symbols.get(from) {
-                        if let Type::Int(8, _) = **to_ty {
-                            lines.push(format!(
-                                "  %_arg_{no}_{line_no} = call i8* @.get_mem_ptr(i64 u{addr})"
-                            ));
-                        } else {
-                            lines.extend([
-                            format!("  %_arg_{no}_b_{line_no} = call i8* @.get_mem_ptr(i64 u{addr}"),
-                            format!("  %_arg_{no}_{line_no} = bitcast i8* %_arg_{no}_b_{line_no} to {to_ty}*"),
-                        ]);
-                        }
+                        lines.push(format!(
+                            "  %_arg_{no}_{line_no} = call ptr @.get_mem_ptr(i64 u{addr})"
+                        ));
                         Value::Ident(Ident::Local(format!("_arg_{no}_{line_no}")))
                     } else {
                         Value::ConstExp(arg.clone())
@@ -1010,16 +962,15 @@ fn trans_load(
         Ident::Global(src) => {
             let addr = symbols.get(src).ok_or(())?;
             lines.push(format!(
-                "  %src_b_{line_no} = call i8* @.get_mem_ptr(i64 u{addr})"
+                "  %src_{line_no} = call ptr @.get_mem_ptr(i64 u{addr})"
             ));
         }
         Ident::Local(src) => {
             lines.extend([
                 format!(
-                    "  %src_val_{line_no} = ptrtoint {} %{src} to i64",
-                    load.src_ty
+                    "  %src_val_{line_no} = ptrtoint ptr %{src} to i64"
                 ),
-                format!("  %src_b_{line_no} = call i8* @.get_mem_ptr(i64 %src_val_{line_no})"),
+                format!("  %src_{line_no} = call ptr @.get_mem_ptr(i64 %src_val_{line_no})"),
             ]);
         }
     }
@@ -1028,33 +979,24 @@ fn trans_load(
         .as_ref()
         .map(|v| format!(", align {v}"))
         .unwrap_or_default();
-    match (&load.dest_ty, &load.src) {
-        (Type::Int(8, _), Value::Ident(_)) => lines.push(format!(
-            "  {} = load i8, i8* %src_b_{line_no}{align}",
-            load.dest
-        )),
-        (_, Value::Ident(_)) => lines.extend([
+    match &load.src {
+        Value::Ident(_) => lines.push(
             format!(
-                "  %src_{line_no} = bitcast i8* %src_b_{line_no} to {}",
-                load.src_ty
+                "  {} = load {}, ptr %src_{line_no}{align}",
+                load.dest, load.ty
             ),
-            format!(
-                "  {} = load {}, {} %src_{line_no}{align}",
-                load.dest, load.dest_ty, load.src_ty
-            ),
-        ]),
-        (_, Value::ConstExp(ConstExp::Getelementptr { ty, idxes, .. })) => {
+        ),
+        Value::ConstExp(ConstExp::Getelementptr { ty, idxes, .. }) => {
             let idxes = idxes
                 .iter()
                 .map(|(idx, ty)| format!("{ty} {idx}"))
                 .collect::<Vec<_>>()
                 .join(", ");
             lines.extend([
-                format!("  %src_{line_no} = bitcast i8* %src_b_{line_no} to {ty}*"),
-                format!("  %gep_{line_no} = getelementptr {ty}, {ty}* %src_{line_no}, {idxes}"),
+                format!("  %gep_{line_no} = getelementptr {ty}, ptr %src_{line_no}, {idxes}"),
                 format!(
-                    "  {} = load {}, {} %gep_{line_no}{align}",
-                    load.dest, load.dest_ty, load.src_ty
+                    "  {} = load {}, ptr %gep_{line_no}{align}",
+                    load.dest, load.ty
                 ),
             ]);
         }
@@ -1084,16 +1026,15 @@ fn trans_store(
         Ident::Global(dest) => {
             let addr = symbols.get(dest).ok_or(())?;
             lines.push(format!(
-                "  %dest_b_{line_no} = call i8* @.get_mem_ptr(i64 u{addr})"
+                "  %dest_{line_no} = call ptr @.get_mem_ptr(i64 u{addr})"
             ));
         }
         Ident::Local(dest) => {
             lines.extend([
                 format!(
-                    "  %dest_val_{line_no} = ptrtoint {} %{dest} to i64",
-                    store.dest_ty
+                    "  %dest_val_{line_no} = ptrtoint ptr %{dest} to i64"
                 ),
-                format!("  %dest_b_{line_no} = call i8* @.get_mem_ptr(i64 %dest_val_{line_no})"),
+                format!("  %dest_{line_no} = call ptr @.get_mem_ptr(i64 %dest_val_{line_no})"),
             ]);
         }
     }
@@ -1102,33 +1043,24 @@ fn trans_store(
         .as_ref()
         .map(|v| format!(", align {v}"))
         .unwrap_or_default();
-    match (&store.src_ty, &store.dest) {
-        (Type::Int(8, _), Value::Ident(_)) => lines.push(format!(
-            "  store i8 {}, i8* %dest_b_{line_no}{align}",
-            store.src
-        )),
-        (_, Value::Ident(_)) => lines.extend([
+    match &store.dest {
+        Value::Ident(_) => lines.push(
             format!(
-                "  %dest_{line_no} = bitcast i8* %dest_b_{line_no} to {}",
-                store.dest_ty
+                "  store {} {}, ptr %dest_{line_no}{align}",
+                store.ty, store.src
             ),
-            format!(
-                "  store {} {}, {} %dest_{line_no}{align}",
-                store.src_ty, store.src, store.dest_ty
-            ),
-        ]),
-        (_, Value::ConstExp(ConstExp::Getelementptr { ty, idxes, .. })) => {
+        ),
+        Value::ConstExp(ConstExp::Getelementptr { ty, idxes, .. }) => {
             let idxes = idxes
                 .iter()
                 .map(|(idx, ty)| format!("{ty} {idx}"))
                 .collect::<Vec<_>>()
                 .join(", ");
             lines.extend([
-                format!("  %dest_{line_no} = bitcast i8* %dest_b_{line_no} to {ty}*"),
-                format!("  %gep_{line_no} = getelementptr {ty}, {ty}* %dest_{line_no}, {idxes}"),
+                format!("  %gep_{line_no} = getelementptr {ty}, ptr %dest_{line_no}, {idxes}"),
                 format!(
-                    "  store {} {}, {} %gep_{line_no}{align}",
-                    store.src_ty, store.src, store.dest_ty
+                    "  store {} {}, ptr %gep_{line_no}{align}",
+                    store.ty, store.src
                 ),
             ]);
         }
@@ -1151,31 +1083,17 @@ fn trans_gep(
         .join(", ");
     if let Ident::Global(ptr) = &gep.ptr {
         if let Some(addr) = symbols.get(ptr) {
-            lines.push(format!(
-                "  %ptr_b_{line_no} = call i8* @.get_mem_ptr(i64 u{addr})"
-            ));
-            if let Type::Int(8, _) = gep.ty {
-                lines.push(format!(
-                    "  {} = getelementptr i8, i8* %ptr_b_{line_no}, {idxes}",
-                    gep.rslt
-                ));
-            } else {
-                lines.extend([
-                    format!(
-                        "  %ptr_{line_no} = bitcast i8* %ptr_b_{line_no} to {}*",
-                        gep.ty
-                    ),
-                    format!(
-                        "  {} = getelementptr {}, {}* %ptr_{line_no}, {idxes}",
-                        gep.rslt, gep.ty, gep.ty
-                    ),
-                ]);
-            }
+            lines.extend([format!(
+                "  %ptr_{line_no} = call ptr @.get_mem_ptr(i64 u{addr})"
+            ),format!(
+                "  {} = getelementptr {}, ptr %ptr_{line_no}, {idxes}",
+                gep.rslt, gep.ty
+            ),]);
             return Ok(lines);
         }
     }
     Ok(vec![format!(
-        "  {} = getelementptr {}, {}* {}, {}",
-        gep.rslt, gep.ty, gep.ty, gep.ptr, idxes
+        "  {} = getelementptr {}, ptr {}, {}",
+        gep.rslt, gep.ty, gep.ptr, idxes
     )])
 }

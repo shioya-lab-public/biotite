@@ -200,12 +200,6 @@ macro_rules! _9 {
     };
 }
 
-macro_rules! _10 {
-    ( $value:ident, $address:expr, $is_compressed:expr ) => {
-        Value::Temp($address, 10)
-    };
-}
-
 macro_rules! mo {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
         match $value {
@@ -246,5 +240,5 @@ macro_rules! next_pc {
 
 pub(crate) use {
     addr, d, expand_value, f, frd, frs1, frs2, frs3, i_1, i_128, i_16, i_32, i_64, i_8, imm, mo,
-    next_pc, pc, rd, rm, rs, rs1, rs2, trans_inst, _0, _1, _10, _2, _3, _4, _5, _6, _7, _8, _9,
+    next_pc, pc, rd, rm, rs, rs1, rs2, trans_inst, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9,
 };
