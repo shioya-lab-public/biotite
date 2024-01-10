@@ -4,45 +4,39 @@ use crate::riscv_isa as rv;
 use rayon::prelude::*;
 use std::collections::HashSet;
 
-pub fn run(rv_prog: rv::Prog, sys_call: Option<String>) -> Prog {
-    let (mem, sp, phdr) = build_mem(&rv_prog.data_blocks);
-    let funcs = rv_prog
-        .code_blocks
-        .into_par_iter()
-        .map(trans_code_block)
-        .collect();
-    let func_syms = rv_prog
-        .func_syms
-        .into_iter()
-        .map(|(name, addr)| (name, Value::Addr(addr)))
-        .collect();
+pub fn run(rv_prog: rv::Prog) -> Prog {
+    let (image, sp, phdr) = build_image(&rv_prog.data_blocks);
     Prog {
         entry: Value::Addr(rv_prog.entry),
-        tdata: rv_prog.tdata.map(|(addr, len)| (Value::Addr(addr), len)),
-        mem,
-        mem_s: None,
-        mem_ld: None,
+        image,
         sp,
+        tdata: rv_prog.tdata.map(|(addr, sz)| (Value::Addr(addr), sz)),
         phdr,
-        funcs,
-        sys_call,
+        mem: None,
+        funcs: rv_prog
+            .code_blocks
+            .into_par_iter()
+            .map(trans_code_block)
+            .collect(),
         ir_funcs: HashSet::new(),
-        func_syms,
+        func_syms: rv_prog.func_syms,
         native_mem_utils: false,
+        sys_call: None,
     }
 }
 
-fn build_mem(data_blocks: &Vec<rv::DataBlock>) -> (Vec<u8>, Value, Value) {
-    let mut mem = Vec::new();
+fn build_image(data_blocks: &Vec<rv::DataBlock>) -> (Vec<u8>, Value, Value) {
+    let mut image = Vec::new();
     for data_block in data_blocks {
         let rv::Addr(start) = data_block.address;
-        mem.resize(start as usize, 0);
-        mem.extend(&data_block.bytes);
+        image.resize(start as usize, 0);
+        image.extend(&data_block.bytes);
     }
-    let sp = Value::Addr(rv::Addr(mem.len() as u64 + 8188 * 1024));
-    let phdr = Value::Addr(rv::Addr(mem.len() as u64 + 8190 * 1024));
-    mem.extend(vec![0; 8192 * 1024]);
-    (mem, sp, phdr)
+    let stk_len = 8 * 1024 * 1024;
+    let sp = Value::Addr(rv::Addr(image.len() as u64 + stk_len - 4096));
+    let phdr = Value::Addr(rv::Addr(image.len() as u64 + stk_len - 2048));
+    image.extend(vec![0; stk_len as usize]);
+    (image, sp, phdr)
 }
 
 fn trans_code_block(code_block: rv::CodeBlock) -> Func {
@@ -1390,10 +1384,7 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
             Ret { val: _1 },
         }
-    );
-
-    let insts = insts
-        .into_iter()
+    ).into_iter()
         .filter_map(|inst| match inst {
             Inst::Load {
                 rslt,
@@ -1412,6 +1403,5 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             inst => Some(inst),
         })
         .collect();
-
     InstBlock { rv_inst, insts }
 }

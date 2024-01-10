@@ -4,14 +4,13 @@ use rayon::prelude::*;
 
 pub fn run(mut prog: Prog) -> Prog {
     prog.native_mem_utils = true;
-
     prog.funcs.par_iter_mut().for_each(|func| {
         for block in &mut func.inst_blocks {
             if let rv::Inst::Jal {
-                symbol, address, ..
+                address, symbol, ..
             }
             | rv::Inst::PseudoJal {
-                symbol, address, ..
+                address, symbol, ..
             } = &block.rv_inst
             {
                 match symbol.as_deref() {
@@ -44,6 +43,5 @@ pub fn run(mut prog: Prog) -> Prog {
             }
         }
     });
-
     prog
 }

@@ -1,8 +1,8 @@
-	.type	.mem,@object
-	.section	.mem_sec,"aw"
-	.globl	.mem
-mem:
+	.type	.image,@object
+	.section	.image_sec,"aw"
+	.globl	.image
+.image:
 	.byte	{bytes}
-	.size	.mem,{len}
+	.size	.image,{size}
 
 	.section	".note.GNU-stack","",@progbits

@@ -247,6 +247,6 @@ SECTIONS
   /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
 
   . = {mmap_min_addr};
-  .mem = .;
-  .mem_sec : { *(.mem_sec) }
+  .image = .;
+  .image_sec : { *(.image_sec) }
 }

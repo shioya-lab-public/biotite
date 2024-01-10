@@ -11,7 +11,7 @@ use crate::llvm_isa::Prog;
 
 macro_rules! opts {
     ( $( $opt:ident, )* ) => {
-        pub fn optimize(
+        pub fn run(
             mut prog: Prog,
             enable_all_opts: bool,
             disable_all_opts: bool,
@@ -26,12 +26,10 @@ macro_rules! opts {
                 enable_opts.iter().map(|opt| opt.as_str()).collect()
             } else {
                 [$( stringify!($opt) ),*]
-                    .iter()
+                    .into_iter()
                     .filter(|opt| !disable_opts.contains(&opt.to_string()))
-                    .copied()
                     .collect()
             };
-
             for opt in opts {
                 match opt {
                     $(
@@ -40,10 +38,8 @@ macro_rules! opts {
                     _ => panic!("Unknown optimization `{opt}`"),
                 }
             }
-
             prog
         }
-
     };
 }
 
@@ -51,9 +47,9 @@ opts! {
     immut_gp,
     native_mem_utils,
     block_cloning,
-    native_direct_jumps,
     native_branches,
+    native_direct_jumps,
     jump_localization,
-    stk_regs,
     cached_base_ptrs,
+    stk_regs,
 }

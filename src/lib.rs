@@ -15,9 +15,8 @@ use std::path::PathBuf;
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     rv_src: String,
-    tdata_src: Option<String>,
-    sys_call: Option<String>,
-    mem: Option<String>,
+    tdata_src: String,
+    arch: Option<String>,
     enable_all_opts: bool,
     disable_all_opts: bool,
     enable_opts: Vec<String>,
@@ -26,14 +25,13 @@ pub fn run(
     ir_dir: PathBuf,
 ) -> Prog {
     let (rv_prog, syms) = riscv_parser::run(rv_src, tdata_src);
-    let sys_call = sys_call::build(&sys_call);
-    let mut ll_prog = llvm_translator::run(rv_prog, sys_call);
-    let (mem_s, mem_ld) = mem::build(&mem, &ll_prog);
-    ll_prog.mem_s = mem_s;
-    ll_prog.mem_ld = mem_ld;
-    let ir_funcs = ir_translator::run(srcs, &syms, ir_dir, &ll_prog);
-    ll_prog.ir_funcs = ir_funcs.into_iter().collect();
-    opt::optimize(
+    let mut ll_prog = llvm_translator::run(rv_prog);
+    ll_prog.mem = arch.as_ref().map(|arch| mem::run(arch, &ll_prog));
+    ll_prog.ir_funcs = ir_translator::run(srcs, ir_dir, &syms, &ll_prog)
+        .into_iter()
+        .collect();
+    ll_prog.sys_call = arch.as_ref().map(|arch| sys_call::run(arch));
+    opt::run(
         ll_prog,
         enable_all_opts,
         disable_all_opts,

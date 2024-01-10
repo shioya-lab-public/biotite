@@ -18,7 +18,6 @@ macro_rules! define_insts {
         const INST_ADDR: &str = r"(?<inst_addr>[[:xdigit:]]+)";
         const INST_BYTE: &str = r"(?<inst_byte>([[:xdigit:]]{2} )+)";
         const SYM: &str = r"(?<sym>.*)";
-
         static REGEXES: Lazy<Vec<(&str, Regex)>> = Lazy::new(|| {
             vec![
                 $(
@@ -32,18 +31,19 @@ macro_rules! define_insts {
                 )*
             ]
         });
-
         static REGEX_SET: Lazy<RegexSet> = Lazy::new(|| {
             RegexSet::new(REGEXES.iter().map(|(_, re)| re.as_str())).unwrap()
         });
 
-        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
         pub enum Inst {
             $(
                 $inst {
                     address: Addr,
                     is_compressed: bool,
-                    $( $field: $field!("type"), )*
+                    $(
+                        $field: $field!("type"),
+                    )*
                     symbol: Option<String>,
                 },
             )*
@@ -94,16 +94,6 @@ macro_rules! define_insts {
                 match self {
                     $(
                         $inst { is_compressed, .. } => *is_compressed,
-                    )*
-                }
-            }
-
-            pub fn symbol(&self) -> Option<&str> {
-                use Inst::*;
-
-                match self {
-                    $(
-                        $inst { symbol, .. } => symbol.as_deref(),
                     )*
                 }
             }
@@ -206,7 +196,7 @@ macro_rules! mo {
         MO
     };
     ("type") => {
-        MO
+        Mo
     };
 }
 
@@ -215,8 +205,18 @@ macro_rules! rm {
         RM
     };
     ("type") => {
-        RM
+        Rm
     };
 }
 
-pub(crate) use {addr, csr, define_insts, frd, frs1, frs2, frs3, imm, mo, rd, rm, rs1, rs2};
+macro_rules! regex {
+    ( $re:literal ) => {{
+        use once_cell::sync::OnceCell;
+        use regex::Regex;
+
+        static RE: OnceCell<Regex> = OnceCell::new();
+        RE.get_or_init(|| Regex::new($re).unwrap())
+    }};
+}
+
+pub(crate) use {addr, csr, define_insts, frd, frs1, frs2, frs3, imm, mo, rd, regex, rm, rs1, rs2};

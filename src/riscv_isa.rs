@@ -2,16 +2,16 @@ use crate::riscv_macro::*;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result};
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Prog {
     pub entry: Addr,
-    pub tdata: Option<(Addr, usize)>,
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
-    pub func_syms: HashSet<(String, Addr)>,
+    pub tdata: Option<(Addr, usize)>,
+    pub func_syms: HashSet<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct DataBlock {
     pub address: Addr,
     pub section: String,
@@ -19,7 +19,7 @@ pub struct DataBlock {
     pub bytes: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct CodeBlock {
     pub address: Addr,
     pub section: String,
@@ -290,7 +290,7 @@ define_insts! {
     OffsetJr(r"jr\s+{}\({}\)", imm, rs1),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum Reg {
     Zero,
     Ra,
@@ -409,7 +409,7 @@ impl Display for Reg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum FReg {
     Ft0,
     Ft1,
@@ -528,12 +528,14 @@ impl Display for FReg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Default)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Imm(pub i64);
 
 impl Imm {
     pub fn new(s: &str) -> Self {
-        Imm(s.parse().expect("Invalid immediate `{s}`"))
+        Imm(s
+            .parse()
+            .unwrap_or_else(|_| panic!("Invalid immediate `{s}`")))
     }
 }
 
@@ -544,12 +546,12 @@ impl Display for Imm {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Default)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Addr(pub u64);
 
 impl Addr {
     pub fn new(s: &str) -> Self {
-        Addr(u64::from_str_radix(s, 16).expect("Invalid address `{s}`"))
+        Addr(u64::from_str_radix(s, 16).unwrap_or_else(|_| panic!("Invalid address `{s}`")))
     }
 }
 
@@ -560,7 +562,7 @@ impl Display for Addr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub enum Csr {
     Fflags,
     Frm,
@@ -589,30 +591,30 @@ impl Csr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
-pub enum MO {
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub enum Mo {
     Mono,
     Aq,
     Rl,
     AqRl,
 }
 
-impl MO {
+impl Mo {
     pub fn new(s: &str) -> Self {
-        use MO::*;
+        use Mo::*;
 
         match s {
             "" => Mono,
             "aq" => Aq,
             "rl" => Rl,
             "aqrl" => AqRl,
-            s => panic!("Unknown memory ordering `{s}`"),
+            s => panic!("Unknown MO `{s}`"),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
-pub enum RM {
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub enum Rm {
     Rne,
     Rtz,
     Rdn,
@@ -621,9 +623,9 @@ pub enum RM {
     Dyn,
 }
 
-impl RM {
+impl Rm {
     pub fn new(s: &str) -> Self {
-        use RM::*;
+        use Rm::*;
 
         match s {
             "rne" => Rne,
@@ -632,7 +634,7 @@ impl RM {
             "rup" => Rup,
             "rmm" => Rmm,
             "" => Dyn,
-            s => panic!("Unknown rounding mode `{s}`"),
+            s => panic!("Unknown RM `{s}`"),
         }
     }
 }

@@ -6,7 +6,6 @@ pub fn run(mut prog: Prog) -> Prog {
     let Some(gp) = compute_gp(&prog) else {
         return prog;
     };
-
     prog.funcs.par_iter_mut().for_each(|func| {
         for block in &mut func.inst_blocks {
             match block.rv_inst {
@@ -88,11 +87,13 @@ pub fn run(mut prog: Prog) -> Prog {
                     let Inst::Getmemptr { rslt, .. } = block.insts[2] else {
                         unreachable!();
                     };
-                    let inst = Inst::Getmemptr {
-                        rslt,
-                        addr: Value::Imm(rv::Imm(gp + imm)),
-                    };
-                    block.insts.splice(0..3, vec![inst]);
+                    block.insts.splice(
+                        0..3,
+                        vec![Inst::Getmemptr {
+                            rslt,
+                            addr: Value::Imm(rv::Imm(gp + imm)),
+                        }],
+                    );
                 }
                 rv::Inst::Addi {
                     rs1: rv::Reg::Gp,
@@ -112,7 +113,6 @@ pub fn run(mut prog: Prog) -> Prog {
             }
         }
     });
-
     prog
 }
 

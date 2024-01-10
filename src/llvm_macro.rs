@@ -2,7 +2,9 @@ macro_rules! trans_inst {
     ( $scrutinee: ident,
         $(
             $rv_inst:tt { $( $rv_field:ident ),* } => {
-                $( $inst:tt { $( $field:ident: $value:tt ),* }, )*
+                $(
+                    $inst:tt { $( $field:ident: $value:tt ),* },
+                )*
             }
         )*
     ) => {
@@ -13,8 +15,8 @@ macro_rules! trans_inst {
                         $(
                             Inst::$inst {
                                 $(
-                                    $field: expand_value!($value, address, is_compressed)
-                                ),*
+                                    $field: expand_value!($value, address, is_compressed),
+                                )*
                             },
                         )*
                     ]
@@ -25,10 +27,10 @@ macro_rules! trans_inst {
 }
 
 macro_rules! expand_value {
-    ($value:ident, $address:expr, $is_compressed:expr) => {
+    ( $value:ident, $address:expr, $is_compressed:expr ) => {
         $value!($value, $address, $is_compressed)
     };
-    ($value:block, $address:expr, $is_compressed:expr) => {
+    ( $value:block, $address:expr, $is_compressed:expr ) => {
         $value
     };
 }
@@ -203,10 +205,10 @@ macro_rules! _9 {
 macro_rules! mo {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
         match $value {
-            rv::MO::Mono => MO::Monotonic,
-            rv::MO::Aq => MO::Acquire,
-            rv::MO::Rl => MO::Release,
-            rv::MO::AqRl => MO::SeqCst,
+            rv::Mo::Mono => Mo::Monotonic,
+            rv::Mo::Aq => Mo::Acquire,
+            rv::Mo::Rl => Mo::Release,
+            rv::Mo::AqRl => Mo::SeqCst,
         }
     };
 }
@@ -214,12 +216,12 @@ macro_rules! mo {
 macro_rules! rm {
     ( $value:ident, $address:expr, $is_compressed:expr ) => {
         match $value {
-            rv::RM::Rne => RM::Tonearest,
-            rv::RM::Rtz => RM::Towardzero,
-            rv::RM::Rdn => RM::Downward,
-            rv::RM::Rup => RM::Upward,
-            rv::RM::Rmm => RM::Tonearestaway,
-            rv::RM::Dyn => RM::Dynamic,
+            rv::Rm::Rne => Rm::Tonearest,
+            rv::Rm::Rtz => Rm::Towardzero,
+            rv::Rm::Rdn => Rm::Downward,
+            rv::Rm::Rup => Rm::Upward,
+            rv::Rm::Rmm => Rm::Tonearestaway,
+            rv::Rm::Dyn => Rm::Dynamic,
         }
     };
 }

@@ -1,21 +1,23 @@
-use crate::llvm_isa::{Func, Inst, Prog, Value};
+use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 macro_rules! use_cache {
-    ( $rs1:ident, $func:ident, $block:ident, $cache:ident, $imm:ident ) => {
+    ( $rs1:ident, $imm:ident, $func:ident, $block:ident, $cache:ident ) => {
         if $rs1 != &rv::Reg::Gp {
             let Inst::Getmemptr { rslt, .. } = $block.insts[2] else {
                 unreachable!();
             };
             if let Some((ptr, offset)) = $cache.get($rs1) {
-                let inst = Inst::Getelementptr {
-                    rslt,
-                    ptr: *ptr,
-                    offset: Value::Imm(rv::Imm($imm - offset)),
-                };
-                $block.insts.splice(0..3, vec![inst]);
+                $block.insts.splice(
+                    0..3,
+                    vec![Inst::Getelementptr {
+                        rslt,
+                        ptr: *ptr,
+                        offset: Value::Imm(rv::Imm($imm - offset)),
+                    }],
+                );
             }
             $cache.insert($rs1, (rslt, *$imm));
         }
@@ -23,19 +25,35 @@ macro_rules! use_cache {
 }
 
 pub fn run(mut prog: Prog) -> Prog {
-    prog.funcs.par_iter_mut().for_each(|func| {
-        if func.is_opaque {
-            return;
-        }
-
-        let targets = find_jump_targets(func);
-        let mut cache = HashMap::new();
-        for block in &mut func.inst_blocks {
-            if targets.contains(&block.rv_inst.address()) {
-                cache.clear();
+    prog.funcs
+        .par_iter_mut()
+        .filter(|f| !f.is_opaque)
+        .for_each(|func| {
+            let mut targets = HashSet::new();
+            for block in &func.inst_blocks {
+                match &block.rv_inst {
+                    rv::Inst::Beq { addr, .. }
+                    | rv::Inst::Bne { addr, .. }
+                    | rv::Inst::Blt { addr, .. }
+                    | rv::Inst::Bge { addr, .. }
+                    | rv::Inst::Bltu { addr, .. }
+                    | rv::Inst::Bgeu { addr, .. }
+                    | rv::Inst::Beqz { addr, .. }
+                    | rv::Inst::Bnez { addr, .. }
+                    | rv::Inst::Blez { addr, .. }
+                    | rv::Inst::Bgez { addr, .. }
+                    | rv::Inst::Bltz { addr, .. }
+                    | rv::Inst::Bgtz { addr, .. }
+                    | rv::Inst::J { addr, .. } => targets.insert(*addr),
+                    _ => continue,
+                };
             }
-
-            match &block.rv_inst {
+            let mut cache = HashMap::new();
+            for block in &mut func.inst_blocks {
+                if targets.contains(&block.rv_inst.address()) {
+                    cache.clear();
+                }
+                match &block.rv_inst {
                 rv::Inst::Lb {
                     rd,
                     imm: rv::Imm(imm),
@@ -78,7 +96,7 @@ pub fn run(mut prog: Prog) -> Prog {
                     rs1,
                     ..
                 } => {
-                    use_cache!(rs1, func, block, cache, imm);
+                    use_cache!(rs1, imm, func, block, cache);
                     cache.remove(rd);
                 }
 
@@ -121,7 +139,7 @@ pub fn run(mut prog: Prog) -> Prog {
                     imm: rv::Imm(imm),
                     rs1,
                     ..
-                } => use_cache!(rs1, func, block, cache, imm),
+                } => use_cache!(rs1, imm, func, block, cache),
 
                 // RV32/RV64
                 rv::Inst::Lui {rd,..}
@@ -246,9 +264,7 @@ pub fn run(mut prog: Prog) -> Prog {
                 | rv::Inst::Frrm {rd,..}
                 | rv::Inst::Fsrm {rd,..}
                 | rv::Inst::Frflags {rd,..}
-                | rv::Inst::Fsflags {rd,..} => {
-                    cache.remove(rd);
-                }
+                | rv::Inst::Fsflags {rd,..} => { cache.remove(rd); }
 
                 // Function calls
                 rv::Inst::Jal {rd,..}
@@ -297,31 +313,7 @@ pub fn run(mut prog: Prog) -> Prog {
 
                 _ => continue,
             }
-        }
-    });
-
+            }
+        });
     prog
-}
-
-fn find_jump_targets(func: &Func) -> HashSet<rv::Addr> {
-    let mut targets = HashSet::new();
-    for block in &func.inst_blocks {
-        match &block.rv_inst {
-            rv::Inst::Beq { addr, .. }
-            | rv::Inst::Bne { addr, .. }
-            | rv::Inst::Blt { addr, .. }
-            | rv::Inst::Bge { addr, .. }
-            | rv::Inst::Bltu { addr, .. }
-            | rv::Inst::Bgeu { addr, .. }
-            | rv::Inst::Beqz { addr, .. }
-            | rv::Inst::Bnez { addr, .. }
-            | rv::Inst::Blez { addr, .. }
-            | rv::Inst::Bgez { addr, .. }
-            | rv::Inst::Bltz { addr, .. }
-            | rv::Inst::Bgtz { addr, .. }
-            | rv::Inst::J { addr, .. } => targets.insert(*addr),
-            _ => continue,
-        };
-    }
-    targets
 }

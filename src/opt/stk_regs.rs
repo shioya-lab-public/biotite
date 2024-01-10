@@ -4,124 +4,107 @@ use rayon::prelude::*;
 use std::collections::HashSet;
 
 pub fn run(mut prog: Prog) -> Prog {
-    prog.funcs.par_iter_mut().for_each(|func| {
-        if func.is_opaque {
-            return;
-        }
-        let mut used_regs = HashSet::new();
-        let mut used_fregs = HashSet::new();
-        let mut overwritten_regs = HashSet::new();
-        let mut overwritten_fregs = HashSet::new();
-        let mut branch = false;
-        for block in &func.inst_blocks {
-            if let rv::Inst::Jal { .. }
-            | rv::Inst::Jalr { .. }
-            | rv::Inst::Beq { .. }
-            | rv::Inst::Bne { .. }
-            | rv::Inst::Blt { .. }
-            | rv::Inst::Bge { .. }
-            | rv::Inst::Bltu { .. }
-            | rv::Inst::Bgeu { .. }
-            | rv::Inst::Beqz { .. }
-            | rv::Inst::Bnez { .. }
-            | rv::Inst::Blez { .. }
-            | rv::Inst::Bgez { .. }
-            | rv::Inst::Bltz { .. }
-            | rv::Inst::Bgtz { .. }
-            | rv::Inst::J { .. }
-            | rv::Inst::PseudoJal { .. }
-            | rv::Inst::Jr { .. }
-            | rv::Inst::PseudoJalr { .. }
-            | rv::Inst::OffsetJalr { .. }
-            | rv::Inst::OffsetJr { .. } = block.rv_inst
-            {
-                branch = true;
-            }
-            let (dest_regs, dest_fregs, src_regs, src_fregs) = get_regs(&block.rv_inst);
-
-            used_regs.extend(src_regs);
-            used_fregs.extend(src_fregs);
-            if !branch {
-                for dest_reg in &dest_regs {
-                    if !used_regs.contains(dest_reg) {
-                        overwritten_regs.insert(*dest_reg);
-                    }
-                }
-                for dest_freg in &dest_fregs {
-                    if !used_fregs.contains(dest_freg) {
-                        overwritten_fregs.insert(*dest_freg);
-                    }
-                }
-            }
-            used_regs.extend(dest_regs);
-            used_fregs.extend(dest_fregs);
-
-            if let rv::Inst::J { .. } = &block.rv_inst {
-                if let Inst::Call { .. } = &block.insts[0] {
-                    used_regs.insert(rv::Reg::Ra);
-                }
-            }
-            if let rv::Inst::Jal { .. } | rv::Inst::PseudoJal { .. } = &block.rv_inst {
-                if let Inst::Memcpy { .. }
-                | Inst::Memmove { .. }
-                | Inst::Memset { .. }
-                | Inst::Memcmp { .. } = &block.insts[1]
-                {
-                    used_regs.extend(vec![rv::Reg::A0, rv::Reg::A1, rv::Reg::A2]);
-                }
-            }
-        }
-
-        let synced_regs = &used_regs ^ &overwritten_regs;
-        let synced_fregs = &used_fregs ^ &overwritten_fregs;
-        if func.is_opaque {
-            func.synced_regs = used_regs.clone().into_iter().collect();
-            func.synced_fregs = used_fregs.clone().into_iter().collect();
-        } else {
-            func.synced_regs = synced_regs.into_iter().collect();
-            func.synced_fregs = synced_fregs.into_iter().collect();
-        }
-        func.used_regs = used_regs.into_iter().collect();
-        func.used_fregs = used_fregs.into_iter().collect();
-        func.used_regs.sort_unstable();
-        func.used_fregs.sort_unstable();
-        func.synced_regs.sort_unstable();
-        func.synced_fregs.sort_unstable();
-
-        for block in &mut func.inst_blocks {
-            for inst in &mut block.insts {
-                match inst {
-                    Inst::Call {
-                        used_regs,
-                        used_fregs,
-                        ..
-                    }
-                    | Inst::Dispfunc {
-                        used_regs,
-                        used_fregs,
-                        ..
-                    } => {
-                        *used_regs = func.used_regs.clone();
-                        *used_fregs = func.used_fregs.clone();
-                    }
-                    Inst::Load { ptr, .. } | Inst::Store { ptr, .. } => {
-                        if let Value::Reg(reg) = ptr {
-                            *ptr = Value::StkReg(*reg);
-                        } else if let Value::FReg(freg) = ptr {
-                            *ptr = Value::StkFReg(*freg);
+    prog.funcs
+        .par_iter_mut()
+        .filter(|f| !f.is_opaque)
+        .for_each(|func| {
+            let mut used_regs = HashSet::new();
+            let mut used_fregs = HashSet::new();
+            let mut overwritten_regs = HashSet::new();
+            let mut overwritten_fregs = HashSet::new();
+            let mut branch = false;
+            for block in &func.inst_blocks {
+                let (dest_regs, dest_fregs, src_regs, src_fregs) = get_regs(&block.rv_inst);
+                used_regs.extend(src_regs);
+                used_fregs.extend(src_fregs);
+                if !branch {
+                    for dest_reg in &dest_regs {
+                        if !used_regs.contains(dest_reg) {
+                            overwritten_regs.insert(*dest_reg);
                         }
                     }
-                    Inst::Checkret { stk, .. }
-                    | Inst::Memcpy { stk, .. }
-                    | Inst::Memmove { stk, .. }
-                    | Inst::Memset { stk, .. }
-                    | Inst::Memcmp { stk, .. } => *stk = true,
-                    _ => continue,
+                    for dest_freg in &dest_fregs {
+                        if !used_fregs.contains(dest_freg) {
+                            overwritten_fregs.insert(*dest_freg);
+                        }
+                    }
+                }
+                used_regs.extend(dest_regs);
+                used_fregs.extend(dest_fregs);
+                if let rv::Inst::Jal { .. }
+                | rv::Inst::Jalr { .. }
+                | rv::Inst::Beq { .. }
+                | rv::Inst::Bne { .. }
+                | rv::Inst::Blt { .. }
+                | rv::Inst::Bge { .. }
+                | rv::Inst::Bltu { .. }
+                | rv::Inst::Bgeu { .. }
+                | rv::Inst::Beqz { .. }
+                | rv::Inst::Bnez { .. }
+                | rv::Inst::Blez { .. }
+                | rv::Inst::Bgez { .. }
+                | rv::Inst::Bltz { .. }
+                | rv::Inst::Bgtz { .. }
+                | rv::Inst::J { .. }
+                | rv::Inst::PseudoJal { .. }
+                | rv::Inst::Jr { .. }
+                | rv::Inst::PseudoJalr { .. }
+                | rv::Inst::OffsetJalr { .. }
+                | rv::Inst::OffsetJr { .. } = &block.rv_inst
+                {
+                    branch = true;
+                }
+                if let rv::Inst::Jal { .. } | rv::Inst::PseudoJal { .. } = &block.rv_inst {
+                    if let Inst::Memcpy { .. }
+                    | Inst::Memmove { .. }
+                    | Inst::Memset { .. }
+                    | Inst::Memcmp { .. } = &block.insts[1]
+                    {
+                        used_regs.extend(vec![rv::Reg::A0, rv::Reg::A1, rv::Reg::A2]);
+                    }
                 }
             }
-        }
-    });
-
+            func.synced_regs = (&used_regs - &overwritten_regs).into_iter().collect();
+            func.synced_fregs = (&used_fregs - &overwritten_fregs).into_iter().collect();
+            func.used_regs = used_regs.into_iter().collect();
+            func.used_fregs = used_fregs.into_iter().collect();
+            func.synced_regs.sort_unstable();
+            func.synced_fregs.sort_unstable();
+            func.used_regs.sort_unstable();
+            func.used_fregs.sort_unstable();
+            for block in &mut func.inst_blocks {
+                for inst in &mut block.insts {
+                    match inst {
+                        Inst::Call {
+                            used_regs,
+                            used_fregs,
+                            ..
+                        }
+                        | Inst::Dispfunc {
+                            used_regs,
+                            used_fregs,
+                            ..
+                        } => {
+                            *used_regs = func.used_regs.clone();
+                            *used_fregs = func.used_fregs.clone();
+                        }
+                        Inst::Load { ptr, .. } | Inst::Store { ptr, .. } => {
+                            if let Value::Reg(reg) = ptr {
+                                *ptr = Value::StkReg(*reg);
+                            } else if let Value::FReg(freg) = ptr {
+                                *ptr = Value::StkFReg(*freg);
+                            }
+                        }
+                        Inst::Checkret { stk, .. }
+                        | Inst::Memcpy { stk, .. }
+                        | Inst::Memmove { stk, .. }
+                        | Inst::Memset { stk, .. }
+                        | Inst::Memcmp { stk, .. } => *stk = true,
+                        _ => continue,
+                    }
+                }
+            }
+        });
     prog
 }
 
