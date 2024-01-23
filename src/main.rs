@@ -45,7 +45,7 @@ fn main() {
             .expect("Unable to remove the old src IR directory");
         fs::create_dir(&ir_dir).expect("Unable to create the src IR directory");
     }
-    let ll_prog = riscv2llvm::run(
+    let ll_prog = biotite::run(
         rv_src,
         tdata_src,
         args.arch,
