@@ -91,6 +91,7 @@ enum Type {
     Vector(usize, Box<Type>),
     Array(usize, Box<Type>),
     Struct(String),
+    VarArgs(Box<Type>, Vec<Type>),
 }
 
 impl Display for Type {
@@ -106,6 +107,17 @@ impl Display for Type {
             Vector(sz, ty) => write!(f, "<{sz} x {ty}>"),
             Array(sz, ty) => write!(f, "[{sz} x {ty}]"),
             Struct(name) => write!(f, "%struct.{name}"),
+            VarArgs(rslt_ty, arg_tys) => {
+                let mut arg_tys = arg_tys
+                    .iter()
+                    .map(|ty| ty.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if !arg_tys.is_empty() {
+                    arg_tys += ", ";
+                }
+                write!(f, "{rslt_ty} ({arg_tys}...)")
+            }
         }
     }
 }
@@ -115,6 +127,7 @@ struct Proto {
     rslt_ty: Type,
     func: Ident,
     params: Vec<(Value, Type)>,
+    var_args: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
@@ -161,7 +174,6 @@ impl<'a> LineParser<'a> {
 
     pub fn parse_proto(&mut self) -> Result<Proto, ()> {
         self.assert_word("define")?;
-        let _ = self.assert_word("dso_local");
         let mut zeroext = false;
         let rslt_ty = loop {
             if let Ok(ty) = self.parse_type() {
@@ -187,7 +199,7 @@ impl<'a> LineParser<'a> {
         let func = self.parse_ident()?;
         self.assert_word("(")?;
         let mut params = Vec::new();
-        while self.assert_word(")").is_err() {
+        while self.assert_word("...").is_err() && self.assert_word(")").is_err() {
             let mut param_ty = self.parse_type()?;
             zeroext = false;
             let param = loop {
@@ -211,10 +223,12 @@ impl<'a> LineParser<'a> {
             params.push((param, param_ty));
             let _ = self.assert_word(",");
         }
+        let var_args = self.assert_word(")").is_ok();
         Ok(Proto {
             rslt_ty,
             func,
             params,
+            var_args,
         })
     }
 
@@ -374,14 +388,30 @@ impl<'a> LineParser<'a> {
         let ident = &caps[0];
         self.index += ident.len();
         self.skip_whitespace();
-        match &ident[0..1] {
-            "@" => Ok(Ident::Global(ident[1..].to_string())),
-            "%" => Ok(Ident::Local(ident[1..].to_string())),
-            _ => unreachable!(),
+        if ident == "@main" {
+            Ok(Ident::Global(String::from(".main")))
+        } else if let Some(ident) = ident.strip_prefix('@') {
+            Ok(Ident::Global(ident.to_string()))
+        } else {
+            Ok(Ident::Local(ident[1..].to_string()))
         }
     }
 
     fn parse_type(&mut self) -> Result<Type, ()> {
+        let mut ty = self.parse_simple_type()?;
+        if self.assert_word("(").is_ok() {
+            let mut arg_tys = Vec::new();
+            while self.assert_word("...").is_err() {
+                arg_tys.push(self.parse_type()?);
+                self.assert_word(",")?;
+            }
+            self.assert_word(")")?;
+            ty = Type::VarArgs(Box::new(ty), arg_tys);
+        }
+        Ok(ty)
+    }
+
+    fn parse_simple_type(&mut self) -> Result<Type, ()> {
         if self.assert_word("void").is_ok() {
             Ok(Type::Void)
         } else if let Some(caps) = regex!(r"^i(\d+)").captures(&self.line[self.index..]) {
@@ -456,6 +486,14 @@ pub fn run(
     ir_funcs
 }
 
+fn get_sym_addr<'a>(sym: &str, symbols: &'a HashMap<String, Addr>) -> Option<&'a Addr> {
+    if sym == ".main" {
+        symbols.get("main")
+    } else {
+        symbols.get(sym)
+    }
+}
+
 fn trans_file(
     path: &PathBuf,
     output: &PathBuf,
@@ -496,7 +534,11 @@ fn trans_file(
                 symbols,
                 &mut extern_func_addrs,
             ) {
-                ir_funcs.push(f);
+                if f.name() == ".main" {
+                    ir_funcs.push(Ident::Global(String::from("main")));
+                } else {
+                    ir_funcs.push(f);
+                }
                 lines.extend(ls);
             } else if let Some(true) = lines.last().map(|l| l.is_empty()) {
                 lines.pop();
@@ -528,7 +570,11 @@ fn trans_file(
 @.fa7 = external global double"
             .to_string(),
     );
-    let ir_funcs_set = ir_funcs.iter().map(|f| symbols[f.name()]).collect();
+    let ir_funcs_set = ir_funcs
+        .iter()
+        .filter_map(|f| symbols.get(f.name()))
+        .cloned()
+        .collect();
     let mut extern_func_addrs: Vec<_> = extern_func_addrs.difference(&ir_funcs_set).collect();
     extern_func_addrs.sort_unstable();
     if !extern_func_addrs.is_empty() {
@@ -561,14 +607,21 @@ fn trans_func(
     extern_func_addrs: &mut HashSet<Addr>,
 ) -> Result<(Ident, Vec<String>), ()> {
     let proto = LineParser::new(&lines[proto_idx]).parse_proto()?;
-    let addr = symbols.get(proto.func.name()).ok_or(())?;
-    let mut adaptor = trans_proto(addr, &proto)?;
-    adaptor.push(String::new());
+    let mut adaptor = Vec::new();
+    if let Some(addr) = get_sym_addr(proto.func.name(), symbols) {
+        adaptor.extend(trans_proto(addr, &proto)?);
+        adaptor.push(String::new());
+    }
     let lines = lines
         .into_iter()
         .enumerate()
         .map(|(line_no, line)| {
-            if let Ok(call) = LineParser::new(&line).parse_call() {
+            if let Ok(mut call) = LineParser::new(&line).parse_call() {
+                if call.func.name() == "printf" && get_sym_addr("printf", symbols).is_none() {
+                    call.func = Ident::Global(String::from("__printf_chk"));
+                    call.args
+                        .insert(0, (Value::Const(String::from("1")), Type::Int(32, false)));
+                }
                 trans_call(line_no, &call, symbols, extern_func_addrs)
             } else if let Ok(load) = LineParser::new(&line).parse_load() {
                 trans_load(line_no, &load, symbols)
@@ -643,6 +696,12 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
         }
         args.push(format!("{ty} %arg_{no}"));
     }
+    if proto.var_args {
+        while let Some(reg) = regs.pop() {
+            lines.push(format!("  %var_arg_{reg} = load i64, ptr @.{reg}"));
+            args.push(format!("i64 %var_arg_{reg}"));
+        }
+    }
     let f = &proto.func;
     let arg = args.join(", ");
     match &proto.rslt_ty {
@@ -690,7 +749,7 @@ fn trans_call(
     extern_func_addrs: &mut HashSet<Addr>,
 ) -> Result<Vec<String>, ()> {
     let mut lines = Vec::new();
-    if call.func.name().starts_with("llvm.") {
+    if get_sym_addr(call.func.name(), symbols).is_none() {
         let mut args = Vec::new();
         for (no, (arg, ty)) in call.args.iter().enumerate() {
             if let Type::Ptr = ty {
@@ -755,17 +814,46 @@ fn trans_call(
                         regs.pop().ok_or(())?,
                     ),
                 ]),
-                Type::Float => lines.extend([
-                    format!("  %l{line_no}_arg_{no} = fpext float {arg} to double"),
-                    format!(
-                        "  store double %l{line_no}_arg_{no}, double* @.{}",
+                Type::Float => {
+                    if let Type::VarArgs(_, arg_tys) = &call.rslt_ty {
+                        if arg_tys.len() <= no {
+                            lines.extend([
+                                format!("  %l{line_no}_arg_{no}_d = fpext float {arg} to double"),
+                                format!("  %l{line_no}_arg_{no} = bitcast double %l{line_no}_arg_{no}_d to i64"),
+                                format!(
+                                    "  store i64 %l{line_no}_arg_{no}, i64* @.{}",
+                                    regs.pop().ok_or(())?,
+                                ),
+                            ]);
+                            continue;
+                        }
+                    }
+                    lines.extend([
+                        format!("  %l{line_no}_arg_{no} = fpext float {arg} to double"),
+                        format!(
+                            "  store double %l{line_no}_arg_{no}, double* @.{}",
+                            fregs.pop().ok_or(())?,
+                        ),
+                    ]);
+                }
+                Type::Double => {
+                    if let Type::VarArgs(_, arg_tys) = &call.rslt_ty {
+                        if arg_tys.len() <= no {
+                            lines.extend([
+                                format!("  %l{line_no}_arg_{no} = bitcast double {arg} to i64"),
+                                format!(
+                                    "  store i64 %l{line_no}_arg_{no}, i64* @.{}",
+                                    regs.pop().ok_or(())?,
+                                ),
+                            ]);
+                            continue;
+                        }
+                    }
+                    lines.push(format!(
+                        "  store double {arg}, double* @.{}",
                         fregs.pop().ok_or(())?,
-                    ),
-                ]),
-                Type::Double => lines.push(format!(
-                    "  store double {arg}, double* @.{}",
-                    fregs.pop().ok_or(())?
-                )),
+                    ));
+                }
                 Type::Ptr => lines.extend([
                     format!("  %l{line_no}_arg_{no} = ptrtoint ptr {arg} to i64"),
                     format!(
@@ -778,7 +866,7 @@ fn trans_call(
         }
         match &call.func {
             Ident::Global(func) => {
-                let addr = symbols.get(func).unwrap();
+                let addr = get_sym_addr(func, symbols).unwrap();
                 extern_func_addrs.insert(*addr);
                 lines.push(format!(
                     "  %l{line_no}_ra = call i64 @.u{addr}(i64 u{addr})"
@@ -789,7 +877,11 @@ fn trans_call(
                 format!("  %l{line_no}_ra = call i64 @.disp_func(i64 %l{line_no}_func)"),
             ]),
         }
-        match &call.rslt_ty {
+        let rslt_ty = match &call.rslt_ty {
+            Type::VarArgs(rslt_ty, _) => rslt_ty,
+            rslt_ty => rslt_ty,
+        };
+        match rslt_ty {
             Type::Void => (),
             Type::Int(64, _) => lines.push(format!(
                 "  {} = load i64, ptr @.a0",
@@ -840,7 +932,7 @@ fn trans_load(
     match src {
         Ident::Global(src) => lines.push(format!(
             "  %l{line_no}_src = call ptr @.get_mem_ptr(i64 u{})",
-            symbols.get(src).ok_or(())?
+            get_sym_addr(src, symbols).ok_or(())?,
         )),
         Ident::Local(src) => lines.extend([
             format!("  %l{line_no}_src_i64 = ptrtoint ptr %{src} to i64"),
@@ -890,7 +982,7 @@ fn trans_store(
     match dest {
         Ident::Global(dest) => lines.push(format!(
             "  %l{line_no}_dest = call ptr @.get_mem_ptr(i64 u{})",
-            symbols.get(dest).ok_or(())?
+            get_sym_addr(dest, symbols).ok_or(())?,
         )),
         Ident::Local(dest) => lines.extend([
             format!("  %l{line_no}_dest_i64 = ptrtoint ptr %{dest} to i64"),
@@ -938,7 +1030,7 @@ fn trans_gep(
         .collect::<Vec<_>>()
         .join(", ");
     if let Ident::Global(ptr) = &gep.ptr {
-        if let Some(addr) = symbols.get(ptr) {
+        if let Some(addr) = get_sym_addr(ptr, symbols) {
             return Ok(vec![
                 format!("  %l{line_no}_ptr = call ptr @.get_mem_ptr(i64 u{addr})"),
                 format!(
