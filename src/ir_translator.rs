@@ -1,6 +1,7 @@
 use crate::llvm_isa::Prog;
 use crate::riscv_isa::{Addr, FReg, Reg};
 use crate::riscv_macro::regex;
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs;
@@ -456,7 +457,16 @@ pub fn run(
     symbols: &HashMap<String, Addr>,
     prog: &Prog,
 ) -> Vec<String> {
-    let mut ir_funcs = Vec::new();
+    find_files(srcs, ir_dir)
+        .par_iter()
+        .map(|(path, output)| trans_file(path, output, symbols, prog))
+        .flatten()
+        .map(|ident| ident.name().to_string())
+        .collect()
+}
+
+fn find_files(srcs: Vec<PathBuf>, ir_dir: PathBuf) -> Vec<(PathBuf, PathBuf)> {
+    let mut files = Vec::new();
     for src in srcs {
         let mut ir_dir = ir_dir.clone();
         if src.is_dir() {
@@ -473,17 +483,13 @@ pub fn run(
                         .path()
                 })
                 .collect();
-            ir_funcs.extend(run(paths, ir_dir.clone(), symbols, prog));
+            files.extend(find_files(paths, ir_dir));
         } else if let Some("ll") = src.extension().and_then(|ext| ext.to_str()) {
             ir_dir.push(src.file_name().unwrap());
-            ir_funcs.extend(
-                trans_file(&src, &ir_dir, symbols, prog)
-                    .iter()
-                    .map(|ident| ident.name().to_string()),
-            );
+            files.push((src, ir_dir));
         }
     }
-    ir_funcs
+    files
 }
 
 fn get_sym_addr<'a>(sym: &str, symbols: &'a HashMap<String, Addr>) -> Option<&'a Addr> {
