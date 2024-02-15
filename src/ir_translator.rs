@@ -144,7 +144,6 @@ struct Load {
     ty: Type,
     dest: Ident,
     src: Value,
-    align: Option<Value>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
@@ -152,7 +151,6 @@ struct Store {
     ty: Type,
     dest: Value,
     src: Value,
-    align: Option<Value>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
@@ -266,17 +264,7 @@ impl<'a> LineParser<'a> {
         let ty = self.parse_type()?;
         self.assert_word(", ptr")?;
         let src = self.parse_value()?;
-        let align = if self.assert_word(", align ").is_ok() {
-            Some(self.parse_value()?)
-        } else {
-            None
-        };
-        Ok(Load {
-            ty,
-            dest,
-            src,
-            align,
-        })
+        Ok(Load { ty, dest, src })
     }
 
     pub fn parse_store(&mut self) -> Result<Store, ()> {
@@ -286,17 +274,7 @@ impl<'a> LineParser<'a> {
         let src = self.parse_value()?;
         self.assert_word(", ptr")?;
         let dest = self.parse_value()?;
-        let align = if self.assert_word(", align ").is_ok() {
-            Some(self.parse_value()?)
-        } else {
-            None
-        };
-        Ok(Store {
-            ty,
-            dest,
-            src,
-            align,
-        })
+        Ok(Store { ty, dest, src })
     }
 
     pub fn parse_gep(&mut self) -> Result<Gep, ()> {
@@ -596,13 +574,9 @@ fn trans_file(
         prog.build_memory(true),
         String::new(),
         prog.build_dispatchers(true).1,
+        String::new(),
     ]);
-    if ir_funcs.is_empty() {
-        fs::remove_file(output).unwrap();
-    } else {
-        lines.push(String::new());
-        fs::write(output, lines.join("\n")).unwrap();
-    }
+    fs::write(output, lines.join("\n")).unwrap();
     ir_funcs
 }
 
@@ -945,14 +919,9 @@ fn trans_load(
             format!("  %l{line_no}_src = call ptr @.get_mem_ptr(i64 %l{line_no}_src_i64)"),
         ]),
     }
-    let align = load
-        .align
-        .as_ref()
-        .map(|sz| format!(", align {sz}"))
-        .unwrap_or_default();
     match &load.src {
         Value::Ident(_) => lines.push(format!(
-            "  {} = load {}, ptr %l{line_no}_src{align}",
+            "  {} = load {}, ptr %l{line_no}_src, align 1",
             load.dest, load.ty
         )),
         Value::ConstExp(ConstExp::Getelementptr { ty, idxes, .. }) => {
@@ -964,7 +933,7 @@ fn trans_load(
             lines.extend([
                 format!("  %l{line_no}_gep = getelementptr {ty}, ptr %l{line_no}_src, {idxes}"),
                 format!(
-                    "  {} = load {}, ptr %l{line_no}_gep{align}",
+                    "  {} = load {}, ptr %l{line_no}_gep, align 1",
                     load.dest, load.ty
                 ),
             ]);
@@ -995,14 +964,9 @@ fn trans_store(
             format!("  %l{line_no}_dest = call ptr @.get_mem_ptr(i64 %l{line_no}_dest_i64)"),
         ]),
     }
-    let align = store
-        .align
-        .as_ref()
-        .map(|sz| format!(", align {sz}"))
-        .unwrap_or_default();
     match &store.dest {
         Value::Ident(_) => lines.push(format!(
-            "  store {} {}, ptr %l{line_no}_dest{align}",
+            "  store {} {}, ptr %l{line_no}_dest, align 1",
             store.ty, store.src
         )),
         Value::ConstExp(ConstExp::Getelementptr { ty, idxes, .. }) => {
@@ -1014,7 +978,7 @@ fn trans_store(
             lines.extend([
                 format!("  %l{line_no}_gep = getelementptr {ty}, ptr %l{line_no}_dest, {idxes}"),
                 format!(
-                    "  store {} {}, ptr %l{line_no}_gep{align}",
+                    "  store {} {}, ptr %l{line_no}_gep, align 1",
                     store.ty, store.src
                 ),
             ]);
