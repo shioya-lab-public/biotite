@@ -125,6 +125,7 @@ impl Display for Type {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 struct Proto {
+    fastcc: bool,
     rslt_ty: Type,
     func: Ident,
     params: Vec<(Value, Type)>,
@@ -161,6 +162,13 @@ struct Gep {
     idxes: Vec<(Value, Type)>,
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+struct Phi {
+    rslt: Ident,
+    ty: Type,
+    vals: Vec<(Value, Ident)>,
+}
+
 struct LineParser<'a> {
     line: &'a str,
     index: usize,
@@ -173,6 +181,7 @@ impl<'a> LineParser<'a> {
 
     pub fn parse_proto(&mut self) -> Result<Proto, ()> {
         self.assert_word("define")?;
+        let mut fastcc = false;
         let mut zeroext = false;
         let rslt_ty = loop {
             if let Ok(ty) = self.parse_type() {
@@ -181,6 +190,8 @@ impl<'a> LineParser<'a> {
                 } else {
                     break ty;
                 }
+            } else if self.assert_word("fastcc").is_ok() {
+                fastcc = true;
             } else if self.assert_word("zeroext").is_ok() {
                 zeroext = true;
             } else if self.assert_word("align").is_ok() && self.assert_word("(").is_err() {
@@ -224,6 +235,7 @@ impl<'a> LineParser<'a> {
         }
         let var_args = self.assert_word(")").is_ok();
         Ok(Proto {
+            fastcc,
             rslt_ty,
             func,
             params,
@@ -299,6 +311,23 @@ impl<'a> LineParser<'a> {
             ptr,
             idxes,
         })
+    }
+
+    pub fn parse_phi(&mut self) -> Result<Phi, ()> {
+        self.skip_whitespace();
+        let rslt = self.parse_ident()?;
+        self.assert_word("= phi")?;
+        let ty = self.parse_type()?;
+        let mut vals = Vec::new();
+        while self.assert_word("[").is_ok() {
+            let val = self.parse_value()?;
+            self.assert_word(",")?;
+            let lb = self.parse_ident()?;
+            vals.push((val, lb));
+            self.assert_word("]")?;
+            let _ = self.assert_word(",");
+        }
+        Ok(Phi { rslt, ty, vals })
     }
 
     fn is_end(&self) -> bool {
@@ -582,17 +611,19 @@ fn trans_file(
 
 fn trans_func(
     proto_idx: usize,
-    lines: Vec<String>,
+    mut lines: Vec<String>,
     symbols: &HashMap<String, Addr>,
     extern_func_addrs: &mut HashSet<Addr>,
 ) -> Result<(Ident, Vec<String>), ()> {
     let proto = LineParser::new(&lines[proto_idx]).parse_proto()?;
+    lines.insert(proto_idx + 1, format!("{}:", proto.params.len()));
     let mut adaptor = Vec::new();
     if let Some(addr) = get_sym_addr(proto.func.name(), symbols) {
         adaptor.extend(trans_proto(addr, &proto)?);
         adaptor.push(String::new());
     }
-    let lines = lines
+    let mut trans = HashMap::new();
+    let mut lines = lines
         .into_iter()
         .enumerate()
         .map(|(line_no, line)| {
@@ -609,12 +640,26 @@ fn trans_func(
                 trans_store(line_no, &store, symbols)
             } else if let Ok(gep) = LineParser::new(&line).parse_gep() {
                 trans_gep(line_no, &gep, symbols)
+            } else if let Ok(phi) = LineParser::new(&line).parse_phi() {
+                trans_phi(line_no, &phi, symbols, &mut trans)
             } else {
                 Ok(vec![line])
             }
         })
-        .collect::<Result<Vec<_>, ()>>()?;
-    adaptor.extend(lines.into_iter().flatten());
+        .collect::<Result<Vec<_>, ()>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    for (lb, trans) in trans {
+        let lb_line = &format!("{lb}:")[1..];
+        let mut idx = lines.iter().position(|l| l.starts_with(lb_line)).unwrap();
+        idx += 1;
+        while LineParser::new(&lines[idx]).parse_phi().is_ok() {
+            idx += 1;
+        }
+        lines.splice(idx..idx, trans);
+    }
+    adaptor.extend(lines);
     Ok((proto.func, adaptor))
 }
 
@@ -682,16 +727,17 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
             args.push(format!("i64 %var_arg_{reg}"));
         }
     }
+    let call = if proto.fastcc { "call fastcc" } else { "call" };
     let f = &proto.func;
     let arg = args.join(", ");
     match &proto.rslt_ty {
-        Type::Void => lines.push(format!("  call void {f}({arg})")),
+        Type::Void => lines.push(format!("  {call} void {f}({arg})")),
         Type::Int(64, _) => lines.extend([
-            format!("  %rslt = call i64 {f}({arg})"),
+            format!("  %rslt = {call} i64 {f}({arg})"),
             String::from("  store i64 %rslt, ptr @.a0"),
         ]),
         Type::Int(sz, zeroext) => lines.extend([
-            format!("  %rslt_i{sz} = call i{sz} {f}({arg})"),
+            format!("  %rslt_i{sz} = {call} i{sz} {f}({arg})"),
             format!(
                 "  %rslt = {} i{sz} %rslt_i{sz} to i64",
                 if *zeroext { "zext" } else { "sext" }
@@ -699,16 +745,16 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
             String::from("  store i64 %rslt, ptr @.a0"),
         ]),
         Type::Float => lines.extend([
-            format!("  %rslt_f = call float {f}({arg})"),
+            format!("  %rslt_f = {call} float {f}({arg})"),
             String::from("  %rslt = fpext float %rslt_f to double"),
             String::from("  store double %rslt, ptr @.fa0"),
         ]),
         Type::Double => lines.extend([
-            format!("  %rslt = call double {f}({arg})"),
+            format!("  %rslt = {call} double {f}({arg})"),
             String::from("  store double %rslt, ptr @.fa0"),
         ]),
         Type::Ptr => lines.extend([
-            format!("  %rslt_ptr = call ptr {f}({arg})"),
+            format!("  %rslt_ptr = {call} ptr {f}({arg})"),
             String::from("  %rslt = ptrtoint ptr %rslt_ptr to i64"),
             String::from("  store i64 %rslt, ptr @.a0"),
         ]),
@@ -834,13 +880,25 @@ fn trans_call(
                         fregs.pop().ok_or(())?,
                     ));
                 }
-                Type::Ptr => lines.extend([
-                    format!("  %l{line_no}_arg_{no} = ptrtoint ptr {arg} to i64"),
-                    format!(
-                        "  store i64 %l{line_no}_arg_{no}, ptr @.{}",
-                        regs.pop().ok_or(())?,
-                    ),
-                ]),
+                Type::Ptr => {
+                    if let Value::Ident(Ident::Global(arg)) = arg {
+                        if let Some(addr) = get_sym_addr(arg, symbols) {
+                            lines.extend([
+                                format!("  %l{line_no}_arg_{no}_ptr = call ptr @.get_mem_ptr(i64 u{addr})"),
+                                format!("  %l{line_no}_arg_{no} = ptrtoint ptr %l{line_no}_arg_{no}_ptr to i64"),
+                                format!("  store i64 %l{line_no}_arg_{no}, ptr @.{}", regs.pop().ok_or(())?),
+                            ]);
+                            continue;
+                        }
+                    }
+                    lines.extend([
+                        format!("  %l{line_no}_arg_{no} = ptrtoint ptr {arg} to i64"),
+                        format!(
+                            "  store i64 %l{line_no}_arg_{no}, ptr @.{}",
+                            regs.pop().ok_or(())?
+                        ),
+                    ]);
+                }
                 _ => Err(())?,
             }
         }
@@ -1014,4 +1072,31 @@ fn trans_gep(
         "  {} = getelementptr {}, ptr {}, {}",
         gep.rslt, gep.ty, gep.ptr, idxes
     )])
+}
+
+fn trans_phi(
+    line_no: usize,
+    phi: &Phi,
+    symbols: &HashMap<String, Addr>,
+    trans: &mut HashMap<Ident, Vec<String>>,
+) -> Result<Vec<String>, ()> {
+    let mut lines = Vec::new();
+    let vals = phi
+        .vals
+        .iter()
+        .map(|(val, lb)| {
+            if let Value::Ident(Ident::Global(val)) = val {
+                if let Some(addr) = get_sym_addr(val, symbols) {
+                    trans.entry(lb.clone()).or_default().push(format!(
+                        "  %l{line_no}_{val} = call ptr @.get_mem_ptr(i64 u{addr})"
+                    ));
+                    return format!("[ %l{line_no}_{val}, {lb} ]");
+                }
+            }
+            format!("[ {val}, {lb} ]")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    lines.push(format!("  {} = phi {} {vals}", phi.rslt, phi.ty));
+    Ok(lines)
 }
