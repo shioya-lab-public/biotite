@@ -169,6 +169,15 @@ struct Phi {
     vals: Vec<(Value, Ident)>,
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+struct Select {
+    rslt: Ident,
+    cond: Value,
+    ty: Type,
+    op1: Value,
+    op2: Value,
+}
+
 struct LineParser<'a> {
     line: &'a str,
     index: usize,
@@ -328,6 +337,26 @@ impl<'a> LineParser<'a> {
             let _ = self.assert_word(",");
         }
         Ok(Phi { rslt, ty, vals })
+    }
+
+    pub fn parse_select(&mut self) -> Result<Select, ()> {
+        self.skip_whitespace();
+        let rslt = self.parse_ident()?;
+        self.assert_word("= select i1")?;
+        let cond = self.parse_value()?;
+        self.assert_word(",")?;
+        let ty = self.parse_type()?;
+        let op1 = self.parse_value()?;
+        self.assert_word(",")?;
+        self.parse_type()?;
+        let op2 = self.parse_value()?;
+        Ok(Select {
+            rslt,
+            cond,
+            ty,
+            op1,
+            op2,
+        })
     }
 
     fn is_end(&self) -> bool {
@@ -642,6 +671,8 @@ fn trans_func(
                 trans_gep(line_no, &gep, symbols)
             } else if let Ok(phi) = LineParser::new(&line).parse_phi() {
                 trans_phi(line_no, &phi, symbols, &mut trans)
+            } else if let Ok(select) = LineParser::new(&line).parse_select() {
+                trans_select(line_no, &select, symbols)
             } else {
                 Ok(vec![line])
             }
@@ -1007,6 +1038,17 @@ fn trans_store(
     symbols: &HashMap<String, Addr>,
 ) -> Result<Vec<String>, ()> {
     let mut lines = Vec::new();
+    let src = (|| {
+        if let Value::Ident(Ident::Global(src)) = &store.src {
+            if let Some(addr) = get_sym_addr(src, symbols) {
+                lines.push(format!(
+                    "  %l{line_no}_{src} = call ptr @.get_mem_ptr(i64 u{addr})"
+                ));
+                return format!("%l{line_no}_{src}");
+            }
+        }
+        store.src.to_string()
+    })();
     let dest = match &store.dest {
         Value::Ident(ident) => ident,
         Value::ConstExp(ConstExp::Getelementptr { ptr, .. }) => ptr,
@@ -1024,8 +1066,8 @@ fn trans_store(
     }
     match &store.dest {
         Value::Ident(_) => lines.push(format!(
-            "  store {} {}, ptr %l{line_no}_dest, align 1",
-            store.ty, store.src
+            "  store {} {src}, ptr %l{line_no}_dest, align 1",
+            store.ty
         )),
         Value::ConstExp(ConstExp::Getelementptr { ty, idxes, .. }) => {
             let idxes = idxes
@@ -1035,10 +1077,7 @@ fn trans_store(
                 .join(", ");
             lines.extend([
                 format!("  %l{line_no}_gep = getelementptr {ty}, ptr %l{line_no}_dest, {idxes}"),
-                format!(
-                    "  store {} {}, ptr %l{line_no}_gep, align 1",
-                    store.ty, store.src
-                ),
+                format!("  store {} {src}, ptr %l{line_no}_gep, align 1", store.ty),
             ]);
         }
         _ => unreachable!(),
@@ -1098,5 +1137,32 @@ fn trans_phi(
         .collect::<Vec<_>>()
         .join(", ");
     lines.push(format!("  {} = phi {} {vals}", phi.rslt, phi.ty));
+    Ok(lines)
+}
+
+fn trans_select(
+    line_no: usize,
+    select: &Select,
+    symbols: &HashMap<String, Addr>,
+) -> Result<Vec<String>, ()> {
+    let mut lines = Vec::new();
+    let ops = [&select.op1, &select.op2]
+        .iter()
+        .map(|op| {
+            if let Value::Ident(Ident::Global(op)) = op {
+                if let Some(addr) = get_sym_addr(op, symbols) {
+                    lines.push(format!(
+                        "  %l{line_no}_{op} = call ptr @.get_mem_ptr(i64 u{addr})"
+                    ));
+                    return format!("%l{line_no}_{op}");
+                }
+            }
+            op.to_string()
+        })
+        .collect::<Vec<_>>();
+    lines.push(format!(
+        "  {} = select i1 {}, {} {}, {} {}",
+        select.rslt, select.cond, select.ty, ops[0], select.ty, ops[1]
+    ));
     Ok(lines)
 }
