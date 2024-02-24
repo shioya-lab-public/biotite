@@ -551,7 +551,13 @@ fn trans_file(
     let mut cache: Vec<String> = Vec::new();
     let mut extern_func_addrs = HashSet::new();
     let mut proto_idx = 0;
-    for line in fs::read_to_string(output).unwrap().lines() {
+    let src = fs::read_to_string(output).unwrap();
+    let fastcc_funcs = src
+        .lines()
+        .filter_map(|l| LineParser::new(l).parse_proto().ok())
+        .filter_map(|proto| proto.fastcc.then_some(proto.func))
+        .collect();
+    for line in src.lines() {
         if line.starts_with("define") {
             proto_idx = 0;
             if let Some(line) = cache.pop() {
@@ -574,6 +580,7 @@ fn trans_file(
                 proto_idx,
                 mem::take(&mut cache),
                 symbols,
+                &fastcc_funcs,
                 &mut extern_func_addrs,
             ) {
                 if f.name() == ".main" {
@@ -642,6 +649,7 @@ fn trans_func(
     proto_idx: usize,
     mut lines: Vec<String>,
     symbols: &HashMap<String, Addr>,
+    fastcc_funcs: &HashSet<Ident>,
     extern_func_addrs: &mut HashSet<Addr>,
 ) -> Result<(Ident, Vec<String>), ()> {
     let proto = LineParser::new(&lines[proto_idx]).parse_proto()?;
@@ -662,7 +670,7 @@ fn trans_func(
                     call.args
                         .insert(0, (Value::Const(String::from("1")), Type::Int(32, false)));
                 }
-                trans_call(line_no, &call, symbols, extern_func_addrs)
+                trans_call(line_no, &call, symbols, fastcc_funcs, extern_func_addrs)
             } else if let Ok(load) = LineParser::new(&line).parse_load() {
                 trans_load(line_no, &load, symbols)
             } else if let Ok(store) = LineParser::new(&line).parse_store() {
@@ -803,6 +811,7 @@ fn trans_call(
     line_no: usize,
     call: &Call,
     symbols: &HashMap<String, Addr>,
+    fastcc_funcs: &HashSet<Ident>,
     extern_func_addrs: &mut HashSet<Addr>,
 ) -> Result<Vec<String>, ()> {
     let mut lines = Vec::new();
@@ -821,14 +830,24 @@ fn trans_call(
         }
         if let Some(rslt) = &call.rslt {
             lines.push(format!(
-                "  {rslt} = call {} {}({})",
+                "  {rslt} = call{} {} {}({})",
+                if fastcc_funcs.contains(&call.func) {
+                    " fastcc"
+                } else {
+                    ""
+                },
                 call.rslt_ty,
                 call.func,
                 args.join(", ")
             ));
         } else {
             lines.push(format!(
-                "  call {} {}({})",
+                "  call{} {} {}({})",
+                if fastcc_funcs.contains(&call.func) {
+                    " fastcc"
+                } else {
+                    ""
+                },
                 call.rslt_ty,
                 call.func,
                 args.join(", ")
