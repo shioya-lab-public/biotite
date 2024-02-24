@@ -600,6 +600,7 @@ fn trans_file(
     lines.push(
         "
 @.ra = external global i64
+@.sp = external global i64
 @.a0 = external global i64
 @.a1 = external global i64
 @.a2 = external global i64
@@ -815,193 +816,192 @@ fn trans_call(
     extern_func_addrs: &mut HashSet<Addr>,
 ) -> Result<Vec<String>, ()> {
     let mut lines = Vec::new();
-    if get_sym_addr(call.func.name(), symbols).is_none() {
-        let mut args = Vec::new();
-        for (no, (arg, ty)) in call.args.iter().enumerate() {
-            if let Type::Ptr = ty {
-                lines.extend([
-                    format!("  %l{line_no}_arg_{no}_i64 = ptrtoint ptr {arg} to i64"),
-                    format!("  %l{line_no}_arg_{no} = call ptr @.get_mem_ptr(i64 %l{line_no}_arg_{no}_i64)"),
-                ]);
-                args.push(format!("ptr %l{line_no}_arg_{no}"));
-            } else {
-                args.push(format!("{ty} {arg}"));
-            }
-        }
-        if let Some(rslt) = &call.rslt {
-            lines.push(format!(
-                "  {rslt} = call{} {} {}({})",
-                if fastcc_funcs.contains(&call.func) {
-                    " fastcc"
-                } else {
-                    ""
-                },
-                call.rslt_ty,
-                call.func,
-                args.join(", ")
-            ));
-        } else {
-            lines.push(format!(
-                "  call{} {} {}({})",
-                if fastcc_funcs.contains(&call.func) {
-                    " fastcc"
-                } else {
-                    ""
-                },
-                call.rslt_ty,
-                call.func,
-                args.join(", ")
-            ));
-        }
-    } else {
-        let mut regs = vec![
-            Reg::A7,
-            Reg::A6,
-            Reg::A5,
-            Reg::A4,
-            Reg::A3,
-            Reg::A2,
-            Reg::A1,
-            Reg::A0,
-        ];
-        let mut fregs = vec![
-            FReg::Fa7,
-            FReg::Fa6,
-            FReg::Fa5,
-            FReg::Fa4,
-            FReg::Fa3,
-            FReg::Fa2,
-            FReg::Fa1,
-            FReg::Fa0,
-        ];
-        for (no, (arg, ty)) in call.args.iter().enumerate() {
-            match ty {
-                Type::Int(64, _) => lines.push(format!(
-                    "  store i64 {arg}, ptr @.{}",
-                    regs.pop().ok_or(())?,
-                )),
-                Type::Int(sz, zeroext) => lines.extend([
-                    format!(
-                        "  %l{line_no}_arg_{no} = {} i{sz} {arg} to i64",
-                        if *zeroext { "zext" } else { "sext" }
-                    ),
-                    format!(
-                        "  store i64 %l{line_no}_arg_{no}, ptr @.{}",
-                        regs.pop().ok_or(())?,
-                    ),
-                ]),
-                Type::Float => {
-                    if let Type::VarArgs(_, arg_tys) = &call.rslt_ty {
-                        if arg_tys.len() <= no {
-                            lines.extend([
-                                format!("  %l{line_no}_arg_{no}_d = fpext float {arg} to double"),
-                                format!("  %l{line_no}_arg_{no} = bitcast double %l{line_no}_arg_{no}_d to i64"),
-                                format!(
-                                    "  store i64 %l{line_no}_arg_{no}, i64* @.{}",
-                                    regs.pop().ok_or(())?,
-                                ),
-                            ]);
-                            continue;
-                        }
-                    }
+    if let Ident::Global(func) = &call.func {
+        if get_sym_addr(func, symbols).is_none() {
+            let mut args = Vec::new();
+            for (no, (arg, ty)) in call.args.iter().enumerate() {
+                if let Type::Ptr = ty {
                     lines.extend([
-                        format!("  %l{line_no}_arg_{no} = fpext float {arg} to double"),
-                        format!(
-                            "  store double %l{line_no}_arg_{no}, double* @.{}",
-                            fregs.pop().ok_or(())?,
-                        ),
+                        format!("  %l{line_no}_arg_{no}_i64 = ptrtoint ptr {arg} to i64"),
+                        format!("  %l{line_no}_arg_{no} = call ptr @.get_mem_ptr(i64 %l{line_no}_arg_{no}_i64)"),
                     ]);
+                    args.push(format!("ptr %l{line_no}_arg_{no}"));
+                } else {
+                    args.push(format!("{ty} {arg}"));
                 }
-                Type::Double => {
-                    if let Type::VarArgs(_, arg_tys) = &call.rslt_ty {
-                        if arg_tys.len() <= no {
-                            lines.extend([
-                                format!("  %l{line_no}_arg_{no} = bitcast double {arg} to i64"),
-                                format!(
-                                    "  store i64 %l{line_no}_arg_{no}, i64* @.{}",
-                                    regs.pop().ok_or(())?,
-                                ),
-                            ]);
-                            continue;
-                        }
-                    }
-                    lines.push(format!(
-                        "  store double {arg}, double* @.{}",
-                        fregs.pop().ok_or(())?,
-                    ));
-                }
-                Type::Ptr => {
-                    if let Value::Ident(Ident::Global(arg)) = arg {
-                        if let Some(addr) = get_sym_addr(arg, symbols) {
-                            lines.extend([
-                                format!("  %l{line_no}_arg_{no}_ptr = call ptr @.get_mem_ptr(i64 u{addr})"),
-                                format!("  %l{line_no}_arg_{no} = ptrtoint ptr %l{line_no}_arg_{no}_ptr to i64"),
-                                format!("  store i64 %l{line_no}_arg_{no}, ptr @.{}", regs.pop().ok_or(())?),
-                            ]);
-                            continue;
-                        }
-                    }
-                    lines.extend([
-                        format!("  %l{line_no}_arg_{no} = ptrtoint ptr {arg} to i64"),
-                        format!(
-                            "  store i64 %l{line_no}_arg_{no}, ptr @.{}",
-                            regs.pop().ok_or(())?
-                        ),
-                    ]);
-                }
-                _ => Err(())?,
             }
-        }
-        match &call.func {
-            Ident::Global(func) => {
-                let addr = get_sym_addr(func, symbols).unwrap();
-                extern_func_addrs.insert(*addr);
+            if let Some(rslt) = &call.rslt {
                 lines.push(format!(
-                    "  %l{line_no}_ra = call i64 @.u{addr}(i64 u{addr})"
+                    "  {rslt} = call{} {} {}({})",
+                    if fastcc_funcs.contains(&call.func) {
+                        " fastcc"
+                    } else {
+                        ""
+                    },
+                    call.rslt_ty,
+                    call.func,
+                    args.join(", ")
+                ));
+            } else {
+                lines.push(format!(
+                    "  call{} {} {}({})",
+                    if fastcc_funcs.contains(&call.func) {
+                        " fastcc"
+                    } else {
+                        ""
+                    },
+                    call.rslt_ty,
+                    call.func,
+                    args.join(", ")
                 ));
             }
-            Ident::Local(func) => lines.extend([
-                format!("  %l{line_no}_func = ptrtoint ptr %{func} to i64"),
-                format!("  %l{line_no}_ra = call i64 @.disp_func(i64 %l{line_no}_func)"),
-            ]),
+            return Ok(lines);
         }
-        let rslt_ty = match &call.rslt_ty {
-            Type::VarArgs(rslt_ty, _) => rslt_ty,
-            rslt_ty => rslt_ty,
-        };
-        match rslt_ty {
-            Type::Void => (),
-            Type::Int(64, _) => lines.push(format!(
-                "  {} = load i64, ptr @.a0",
-                call.rslt.as_ref().unwrap()
-            )),
-            Type::Int(sz, _) => lines.extend([
-                format!("  %l{line_no}_rslt = load i64, ptr @.a0"),
+    }
+    let mut regs = vec![
+        Reg::A7,
+        Reg::A6,
+        Reg::A5,
+        Reg::A4,
+        Reg::A3,
+        Reg::A2,
+        Reg::A1,
+        Reg::A0,
+    ];
+    let mut fregs = vec![
+        FReg::Fa7,
+        FReg::Fa6,
+        FReg::Fa5,
+        FReg::Fa4,
+        FReg::Fa3,
+        FReg::Fa2,
+        FReg::Fa1,
+        FReg::Fa0,
+    ];
+    let mut stk = false;
+    lines.extend([
+        format!("  %l{line_no}_sp = load i64, ptr @.sp"),
+        format!("  %l{line_no}_stk = call ptr @.get_mem_ptr(i64 %l{line_no}_sp)"),
+    ]);
+    let mut get_loc = |is_fp| {
+        if (is_fp && fregs.is_empty() || !is_fp && regs.is_empty()) && !stk {
+            stk = true;
+            Ok(format!("%l{line_no}_stk"))
+        } else if is_fp {
+            fregs.pop().map(|r| format!("@.{r}")).ok_or(())
+        } else {
+            regs.pop().map(|r| format!("@.{r}")).ok_or(())
+        }
+    };
+    for (no, (arg, ty)) in call.args.iter().enumerate() {
+        match ty {
+            Type::Int(64, _) => lines.push(format!("  store i64 {arg}, ptr {}", get_loc(false)?)),
+            Type::Int(sz, zeroext) => lines.extend([
                 format!(
-                    "  {} = trunc i64 %l{line_no}_rslt to i{sz}",
-                    call.rslt.as_ref().unwrap()
+                    "  %l{line_no}_arg_{no} = {} i{sz} {arg} to i64",
+                    if *zeroext { "zext" } else { "sext" }
                 ),
+                format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)?),
             ]),
-            Type::Float => lines.extend([
-                format!("  %l{line_no}_rslt = load double, double* @.fa0"),
-                format!(
-                    "  {} = fptrunc double %l{line_no}_rslt to float",
-                    call.rslt.as_ref().unwrap()
-                ),
-            ]),
-            Type::Double => lines.push(format!(
-                "  {} = load double, double* @.fa0",
-                call.rslt.as_ref().unwrap()
-            )),
-            Type::Ptr => lines.extend([
-                format!("  %l{line_no}_rslt = load i64, ptr @.a0"),
-                format!(
-                    "  {} = inttoptr i64 %l{line_no}_rslt to ptr",
-                    call.rslt.as_ref().unwrap()
-                ),
-            ]),
+            Type::Float => {
+                if let Type::VarArgs(_, arg_tys) = &call.rslt_ty {
+                    if arg_tys.len() <= no {
+                        lines.extend([
+                            format!("  %l{line_no}_arg_{no}_d = fpext float {arg} to double"),
+                            format!("  %l{line_no}_arg_{no} = bitcast double %l{line_no}_arg_{no}_d to i64"),
+                            format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)?),
+                        ]);
+                        continue;
+                    }
+                }
+                lines.extend([
+                    format!("  %l{line_no}_arg_{no} = fpext float {arg} to double"),
+                    format!(
+                        "  store double %l{line_no}_arg_{no}, ptr {}",
+                        get_loc(true)?
+                    ),
+                ]);
+            }
+            Type::Double => {
+                if let Type::VarArgs(_, arg_tys) = &call.rslt_ty {
+                    if arg_tys.len() <= no {
+                        lines.extend([
+                            format!("  %l{line_no}_arg_{no} = bitcast double {arg} to i64"),
+                            format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)?),
+                        ]);
+                        continue;
+                    }
+                }
+                lines.push(format!("  store double {arg}, ptr {}", get_loc(true)?));
+            }
+            Type::Ptr => {
+                if let Value::Ident(Ident::Global(arg)) = arg {
+                    if let Some(addr) = get_sym_addr(arg, symbols) {
+                        lines.extend([
+                            format!("  %l{line_no}_arg_{no}_ptr = call ptr @.get_mem_ptr(i64 u{addr})"),
+                            format!("  %l{line_no}_arg_{no} = ptrtoint ptr %l{line_no}_arg_{no}_ptr to i64"),
+                            format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)?,),
+                        ]);
+                        continue;
+                    }
+                }
+                lines.extend([
+                    format!("  %l{line_no}_arg_{no} = ptrtoint ptr {arg} to i64"),
+                    format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)?),
+                ]);
+            }
             _ => Err(())?,
         }
+    }
+    match &call.func {
+        Ident::Global(func) => {
+            let addr = get_sym_addr(func, symbols).unwrap();
+            extern_func_addrs.insert(*addr);
+            lines.push(format!(
+                "  %l{line_no}_ra = call i64 @.u{addr}(i64 u{addr})"
+            ));
+        }
+        Ident::Local(func) => lines.extend([
+            format!("  %l{line_no}_func = ptrtoint ptr %{func} to i64"),
+            format!("  %l{line_no}_ra = call i64 @.disp_func(i64 %l{line_no}_func)"),
+        ]),
+    }
+    let rslt_ty = match &call.rslt_ty {
+        Type::VarArgs(rslt_ty, _) => rslt_ty,
+        rslt_ty => rslt_ty,
+    };
+    match rslt_ty {
+        Type::Void => (),
+        Type::Int(64, _) => lines.push(format!(
+            "  {} = load i64, ptr @.a0",
+            call.rslt.as_ref().unwrap()
+        )),
+        Type::Int(sz, _) => lines.extend([
+            format!("  %l{line_no}_rslt = load i64, ptr @.a0"),
+            format!(
+                "  {} = trunc i64 %l{line_no}_rslt to i{sz}",
+                call.rslt.as_ref().unwrap()
+            ),
+        ]),
+        Type::Float => lines.extend([
+            format!("  %l{line_no}_rslt = load double, ptr @.fa0"),
+            format!(
+                "  {} = fptrunc double %l{line_no}_rslt to float",
+                call.rslt.as_ref().unwrap()
+            ),
+        ]),
+        Type::Double => lines.push(format!(
+            "  {} = load double, ptr @.fa0",
+            call.rslt.as_ref().unwrap()
+        )),
+        Type::Ptr => lines.extend([
+            format!("  %l{line_no}_rslt = load i64, ptr @.a0"),
+            format!(
+                "  {} = inttoptr i64 %l{line_no}_rslt to ptr",
+                call.rslt.as_ref().unwrap()
+            ),
+        ]),
+        _ => Err(())?,
     }
     Ok(lines)
 }

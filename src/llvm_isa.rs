@@ -947,7 +947,7 @@ impl Display for Inst {
                 let call = if !stack_storing.is_empty() {
                     format!("{stack_storing}
   {rslt} = call i64 @.{target}(i64 {target})
-{stack_loading}")
+  {stack_loading}")
                 } else {
                     format!("{rslt} = call i64 @.{target}(i64 {target})")
                 };
