@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::mem;
 
-pub fn run(mut src: String, tdata: String) -> (Prog, HashMap<String, Addr>) {
+pub fn run(mut src: String, tdata: String) -> (Prog, HashMap<String, Vec<Addr>>) {
     // Make sure the last block is properly processed
     src.push('\n');
 
@@ -25,6 +25,10 @@ pub fn run(mut src: String, tdata: String) -> (Prog, HashMap<String, Addr>) {
         .into_iter()
         .filter_map(|((name, _), (_, is_func))| if is_func { Some(name) } else { None })
         .collect();
+    let mut syms: HashMap<_, Vec<Addr>> = HashMap::new();
+    for ((name, addr), (_, _)) in symbols {
+        syms.entry(name).or_default().push(addr);
+    }
     (
         Prog {
             entry,
@@ -33,10 +37,7 @@ pub fn run(mut src: String, tdata: String) -> (Prog, HashMap<String, Addr>) {
             tdata,
             func_syms,
         },
-        symbols
-            .into_iter()
-            .map(|((name, addr), (_, _))| (name, addr))
-            .collect(),
+        syms,
     )
 }
 

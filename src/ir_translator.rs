@@ -1,3 +1,4 @@
+use crate::llvm_isa as ll;
 use crate::llvm_isa::Prog;
 use crate::riscv_isa::{Addr, FReg, Reg};
 use crate::riscv_macro::regex;
@@ -490,7 +491,7 @@ impl<'a> LineParser<'a> {
 pub fn run(
     srcs: Vec<PathBuf>,
     ir_dir: PathBuf,
-    symbols: &HashMap<String, Addr>,
+    symbols: &HashMap<String, Vec<Addr>>,
     prog: &Prog,
 ) -> Vec<String> {
     find_files(srcs, ir_dir)
@@ -528,7 +529,7 @@ fn find_files(srcs: Vec<PathBuf>, ir_dir: PathBuf) -> Vec<(PathBuf, PathBuf)> {
     files
 }
 
-fn get_sym_addr<'a>(sym: &str, symbols: &'a HashMap<String, Addr>) -> Option<&'a Addr> {
+fn get_sym_addrs<'a>(sym: &str, symbols: &'a HashMap<String, Vec<Addr>>) -> Option<&'a Vec<Addr>> {
     if sym == ".main" {
         symbols.get("main")
     } else {
@@ -536,10 +537,14 @@ fn get_sym_addr<'a>(sym: &str, symbols: &'a HashMap<String, Addr>) -> Option<&'a
     }
 }
 
+fn get_first_sym_addr<'a>(sym: &str, symbols: &'a HashMap<String, Vec<Addr>>) -> Option<&'a Addr> {
+    get_sym_addrs(sym, symbols).map(|addrs| &addrs[0])
+}
+
 fn trans_file(
     path: &PathBuf,
     output: &PathBuf,
-    symbols: &HashMap<String, Addr>,
+    symbols: &HashMap<String, Vec<Addr>>,
     prog: &Prog,
 ) -> Vec<Ident> {
     Command::new("cp")
@@ -623,6 +628,7 @@ fn trans_file(
     let ir_funcs_set = ir_funcs
         .iter()
         .filter_map(|f| symbols.get(f.name()))
+        .flatten()
         .cloned()
         .collect();
     let mut extern_func_addrs: Vec<_> = extern_func_addrs.difference(&ir_funcs_set).collect();
@@ -649,16 +655,18 @@ fn trans_file(
 fn trans_func(
     proto_idx: usize,
     mut lines: Vec<String>,
-    symbols: &HashMap<String, Addr>,
+    symbols: &HashMap<String, Vec<Addr>>,
     fastcc_funcs: &HashSet<Ident>,
     extern_func_addrs: &mut HashSet<Addr>,
 ) -> Result<(Ident, Vec<String>), ()> {
     let proto = LineParser::new(&lines[proto_idx]).parse_proto()?;
     lines.insert(proto_idx + 1, format!("{}:", proto.params.len()));
     let mut adaptor = Vec::new();
-    if let Some(addr) = get_sym_addr(proto.func.name(), symbols) {
-        adaptor.extend(trans_proto(addr, &proto)?);
-        adaptor.push(String::new());
+    if let Some(addrs) = get_sym_addrs(proto.func.name(), symbols) {
+        for addr in addrs {
+            adaptor.extend(trans_proto(addr, &proto)?);
+            adaptor.push(String::new());
+        }
     }
     let mut trans = HashMap::new();
     let mut lines = lines
@@ -666,7 +674,7 @@ fn trans_func(
         .enumerate()
         .map(|(line_no, line)| {
             if let Ok(mut call) = LineParser::new(&line).parse_call() {
-                if call.func.name() == "printf" && get_sym_addr("printf", symbols).is_none() {
+                if call.func.name() == "printf" && get_first_sym_addr("printf", symbols).is_none() {
                     call.func = Ident::Global(String::from("__printf_chk"));
                     call.args
                         .insert(0, (Value::Const(String::from("1")), Type::Int(32, false)));
@@ -706,55 +714,49 @@ fn trans_func(
 fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
     let mut lines = vec![format!("define dso_local i64 @.u{addr}(i64) {{")];
     let mut regs = vec![
-        Reg::A7,
-        Reg::A6,
-        Reg::A5,
-        Reg::A4,
-        Reg::A3,
-        Reg::A2,
-        Reg::A1,
-        Reg::A0,
+        ll::Value::Reg(Reg::A7),
+        ll::Value::Reg(Reg::A6),
+        ll::Value::Reg(Reg::A5),
+        ll::Value::Reg(Reg::A4),
+        ll::Value::Reg(Reg::A3),
+        ll::Value::Reg(Reg::A2),
+        ll::Value::Reg(Reg::A1),
+        ll::Value::Reg(Reg::A0),
     ];
     let mut fregs = vec![
-        FReg::Fa7,
-        FReg::Fa6,
-        FReg::Fa5,
-        FReg::Fa4,
-        FReg::Fa3,
-        FReg::Fa2,
-        FReg::Fa1,
-        FReg::Fa0,
+        ll::Value::FReg(FReg::Fa7),
+        ll::Value::FReg(FReg::Fa6),
+        ll::Value::FReg(FReg::Fa5),
+        ll::Value::FReg(FReg::Fa4),
+        ll::Value::FReg(FReg::Fa3),
+        ll::Value::FReg(FReg::Fa2),
+        ll::Value::FReg(FReg::Fa1),
+        ll::Value::FReg(FReg::Fa0),
     ];
     let mut args = Vec::new();
     for (no, (_, ty)) in proto.params.iter().enumerate() {
         match ty {
             Type::Int(64, _) => lines.push(format!(
-                "  %arg_{no} = load i64, ptr @.{}",
+                "  %arg_{no} = load i64, ptr {}",
                 regs.pop().ok_or(())?,
             )),
             Type::Int(sz, _) => lines.extend([
-                format!(
-                    "  %arg_{no}_i64 = load i64, ptr @.{}",
-                    regs.pop().ok_or(())?,
-                ),
+                format!("  %arg_{no}_i64 = load i64, ptr {}", regs.pop().ok_or(())?,),
                 format!("  %arg_{no} = trunc i64 %arg_{no}_i64 to i{sz}"),
             ]),
             Type::Float => lines.extend([
                 format!(
-                    "  %arg_{no}_d = load double, ptr @.{}",
+                    "  %arg_{no}_d = load double, ptr {}",
                     fregs.pop().ok_or(())?,
                 ),
                 format!("  %arg_{no} = fptrunc double %arg_{no}_d to float"),
             ]),
             Type::Double => lines.push(format!(
-                "  %arg_{no} = load double, ptr @.{}",
+                "  %arg_{no} = load double, ptr {}",
                 fregs.pop().ok_or(())?,
             )),
             Type::Ptr => lines.extend([
-                format!(
-                    "  %arg_{no}_i64 = load i64, ptr @.{}",
-                    regs.pop().ok_or(())?,
-                ),
+                format!("  %arg_{no}_i64 = load i64, ptr {}", regs.pop().ok_or(())?,),
                 format!("  %arg_{no} = inttoptr i64 %arg_{no}_i64 to ptr"),
             ]),
             _ => Err(())?,
@@ -811,13 +813,13 @@ fn trans_proto(addr: &Addr, proto: &Proto) -> Result<Vec<String>, ()> {
 fn trans_call(
     line_no: usize,
     call: &Call,
-    symbols: &HashMap<String, Addr>,
+    symbols: &HashMap<String, Vec<Addr>>,
     fastcc_funcs: &HashSet<Ident>,
     extern_func_addrs: &mut HashSet<Addr>,
 ) -> Result<Vec<String>, ()> {
     let mut lines = Vec::new();
     if let Ident::Global(func) = &call.func {
-        if get_sym_addr(func, symbols).is_none() {
+        if get_first_sym_addr(func, symbols).is_none() {
             let mut args = Vec::new();
             for (no, (arg, ty)) in call.args.iter().enumerate() {
                 if let Type::Ptr = ty {
@@ -859,49 +861,54 @@ fn trans_call(
         }
     }
     let mut regs = vec![
-        Reg::A7,
-        Reg::A6,
-        Reg::A5,
-        Reg::A4,
-        Reg::A3,
-        Reg::A2,
-        Reg::A1,
-        Reg::A0,
+        ll::Value::Reg(Reg::A7),
+        ll::Value::Reg(Reg::A6),
+        ll::Value::Reg(Reg::A5),
+        ll::Value::Reg(Reg::A4),
+        ll::Value::Reg(Reg::A3),
+        ll::Value::Reg(Reg::A2),
+        ll::Value::Reg(Reg::A1),
+        ll::Value::Reg(Reg::A0),
     ];
     let mut fregs = vec![
-        FReg::Fa7,
-        FReg::Fa6,
-        FReg::Fa5,
-        FReg::Fa4,
-        FReg::Fa3,
-        FReg::Fa2,
-        FReg::Fa1,
-        FReg::Fa0,
+        ll::Value::FReg(FReg::Fa7),
+        ll::Value::FReg(FReg::Fa6),
+        ll::Value::FReg(FReg::Fa5),
+        ll::Value::FReg(FReg::Fa4),
+        ll::Value::FReg(FReg::Fa3),
+        ll::Value::FReg(FReg::Fa2),
+        ll::Value::FReg(FReg::Fa1),
+        ll::Value::FReg(FReg::Fa0),
     ];
-    let mut stk = false;
-    lines.extend([
-        format!("  %l{line_no}_sp = load i64, ptr @.sp"),
-        format!("  %l{line_no}_stk = call ptr @.get_mem_ptr(i64 %l{line_no}_sp)"),
-    ]);
+    lines.push(format!("  %l{line_no}_sp = load i64, ptr @.sp"));
+    if call.args.len() > 8 {
+        for i in 0..call.args.len() - 8 {
+            lines.extend([
+                format!("  %l{line_no}_sp_{i} = add i64 %l{line_no}_sp, {}", i * 8),
+                format!("  %l{line_no}_stk_{i} = call ptr @.get_mem_ptr(i64 %l{line_no}_sp_{i})"),
+            ]);
+        }
+    }
+    let mut stk = -1;
     let mut get_loc = |is_fp| {
-        if (is_fp && fregs.is_empty() || !is_fp && regs.is_empty()) && !stk {
-            stk = true;
-            Ok(format!("%l{line_no}_stk"))
+        if is_fp && fregs.is_empty() || !is_fp && regs.is_empty() {
+            stk += 1;
+            format!("%l{line_no}_stk_{stk}")
         } else if is_fp {
-            fregs.pop().map(|r| format!("@.{r}")).ok_or(())
+            fregs.pop().unwrap().to_string()
         } else {
-            regs.pop().map(|r| format!("@.{r}")).ok_or(())
+            regs.pop().unwrap().to_string()
         }
     };
     for (no, (arg, ty)) in call.args.iter().enumerate() {
         match ty {
-            Type::Int(64, _) => lines.push(format!("  store i64 {arg}, ptr {}", get_loc(false)?)),
+            Type::Int(64, _) => lines.push(format!("  store i64 {arg}, ptr {}", get_loc(false))),
             Type::Int(sz, zeroext) => lines.extend([
                 format!(
                     "  %l{line_no}_arg_{no} = {} i{sz} {arg} to i64",
                     if *zeroext { "zext" } else { "sext" }
                 ),
-                format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)?),
+                format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)),
             ]),
             Type::Float => {
                 if let Type::VarArgs(_, arg_tys) = &call.rslt_ty {
@@ -909,17 +916,14 @@ fn trans_call(
                         lines.extend([
                             format!("  %l{line_no}_arg_{no}_d = fpext float {arg} to double"),
                             format!("  %l{line_no}_arg_{no} = bitcast double %l{line_no}_arg_{no}_d to i64"),
-                            format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)?),
+                            format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)),
                         ]);
                         continue;
                     }
                 }
                 lines.extend([
                     format!("  %l{line_no}_arg_{no} = fpext float {arg} to double"),
-                    format!(
-                        "  store double %l{line_no}_arg_{no}, ptr {}",
-                        get_loc(true)?
-                    ),
+                    format!("  store double %l{line_no}_arg_{no}, ptr {}", get_loc(true)),
                 ]);
             }
             Type::Double => {
@@ -927,27 +931,27 @@ fn trans_call(
                     if arg_tys.len() <= no {
                         lines.extend([
                             format!("  %l{line_no}_arg_{no} = bitcast double {arg} to i64"),
-                            format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)?),
+                            format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)),
                         ]);
                         continue;
                     }
                 }
-                lines.push(format!("  store double {arg}, ptr {}", get_loc(true)?));
+                lines.push(format!("  store double {arg}, ptr {}", get_loc(true)));
             }
             Type::Ptr => {
                 if let Value::Ident(Ident::Global(arg)) = arg {
-                    if let Some(addr) = get_sym_addr(arg, symbols) {
+                    if let Some(addr) = get_first_sym_addr(arg, symbols) {
                         lines.extend([
                             format!("  %l{line_no}_arg_{no}_ptr = call ptr @.get_mem_ptr(i64 u{addr})"),
                             format!("  %l{line_no}_arg_{no} = ptrtoint ptr %l{line_no}_arg_{no}_ptr to i64"),
-                            format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)?,),
+                            format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false),),
                         ]);
                         continue;
                     }
                 }
                 lines.extend([
                     format!("  %l{line_no}_arg_{no} = ptrtoint ptr {arg} to i64"),
-                    format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)?),
+                    format!("  store i64 %l{line_no}_arg_{no}, ptr {}", get_loc(false)),
                 ]);
             }
             _ => Err(())?,
@@ -955,7 +959,7 @@ fn trans_call(
     }
     match &call.func {
         Ident::Global(func) => {
-            let addr = get_sym_addr(func, symbols).unwrap();
+            let addr = get_first_sym_addr(func, symbols).unwrap();
             extern_func_addrs.insert(*addr);
             lines.push(format!(
                 "  %l{line_no}_ra = call i64 @.u{addr}(i64 u{addr})"
@@ -1009,7 +1013,7 @@ fn trans_call(
 fn trans_load(
     line_no: usize,
     load: &Load,
-    symbols: &HashMap<String, Addr>,
+    symbols: &HashMap<String, Vec<Addr>>,
 ) -> Result<Vec<String>, ()> {
     let mut lines = Vec::new();
     let src = match &load.src {
@@ -1020,7 +1024,7 @@ fn trans_load(
     match src {
         Ident::Global(src) => lines.push(format!(
             "  %l{line_no}_src = call ptr @.get_mem_ptr(i64 u{})",
-            get_sym_addr(src, symbols).ok_or(())?,
+            get_first_sym_addr(src, symbols).ok_or(())?,
         )),
         Ident::Local(src) => lines.extend([
             format!("  %l{line_no}_src_i64 = ptrtoint ptr %{src} to i64"),
@@ -1054,12 +1058,12 @@ fn trans_load(
 fn trans_store(
     line_no: usize,
     store: &Store,
-    symbols: &HashMap<String, Addr>,
+    symbols: &HashMap<String, Vec<Addr>>,
 ) -> Result<Vec<String>, ()> {
     let mut lines = Vec::new();
     let src = (|| {
         if let Value::Ident(Ident::Global(src)) = &store.src {
-            if let Some(addr) = get_sym_addr(src, symbols) {
+            if let Some(addr) = get_first_sym_addr(src, symbols) {
                 lines.push(format!(
                     "  %l{line_no}_{src} = call ptr @.get_mem_ptr(i64 u{addr})"
                 ));
@@ -1076,7 +1080,7 @@ fn trans_store(
     match dest {
         Ident::Global(dest) => lines.push(format!(
             "  %l{line_no}_dest = call ptr @.get_mem_ptr(i64 u{})",
-            get_sym_addr(dest, symbols).ok_or(())?,
+            get_first_sym_addr(dest, symbols).ok_or(())?,
         )),
         Ident::Local(dest) => lines.extend([
             format!("  %l{line_no}_dest_i64 = ptrtoint ptr %{dest} to i64"),
@@ -1107,7 +1111,7 @@ fn trans_store(
 fn trans_gep(
     line_no: usize,
     gep: &Gep,
-    symbols: &HashMap<String, Addr>,
+    symbols: &HashMap<String, Vec<Addr>>,
 ) -> Result<Vec<String>, ()> {
     let idxes = gep
         .idxes
@@ -1116,7 +1120,7 @@ fn trans_gep(
         .collect::<Vec<_>>()
         .join(", ");
     if let Ident::Global(ptr) = &gep.ptr {
-        if let Some(addr) = get_sym_addr(ptr, symbols) {
+        if let Some(addr) = get_first_sym_addr(ptr, symbols) {
             return Ok(vec![
                 format!("  %l{line_no}_ptr = call ptr @.get_mem_ptr(i64 u{addr})"),
                 format!(
@@ -1135,20 +1139,33 @@ fn trans_gep(
 fn trans_phi(
     line_no: usize,
     phi: &Phi,
-    symbols: &HashMap<String, Addr>,
+    symbols: &HashMap<String, Vec<Addr>>,
     trans: &mut HashMap<Ident, Vec<String>>,
 ) -> Result<Vec<String>, ()> {
     let mut lines = Vec::new();
     let vals = phi
         .vals
         .iter()
-        .map(|(val, lb)| {
+        .enumerate()
+        .map(|(i, (val, lb))| {
             if let Value::Ident(Ident::Global(val)) = val {
-                if let Some(addr) = get_sym_addr(val, symbols) {
-                    trans.entry(lb.clone()).or_default().push(format!(
-                        "  %l{line_no}_{val} = call ptr @.get_mem_ptr(i64 u{addr})"
-                    ));
-                    return format!("[ %l{line_no}_{val}, {lb} ]");
+                if let Some(addr) = get_first_sym_addr(val, symbols) {
+                    trans.entry(lb.clone()).or_default().push(format!("  %l{line_no}_{val}_{i} = call ptr @.get_mem_ptr(i64 u{addr})"));
+                    return format!("[ %l{line_no}_{val}_{i}, {lb} ]");
+                }
+            }
+            if let Value::ConstExp(ConstExp::Getelementptr { ty, ptr: Ident::Global(ptr), idxes }) = val {
+                if let Some(addr) = get_first_sym_addr(ptr, symbols) {
+                    let idxes = idxes
+                        .iter()
+                        .map(|(idx, ty)| format!("{ty} {idx}"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    trans.entry(lb.clone()).or_default().extend([
+                        format!("  %l{line_no}_gep_{i}_ptr = call ptr @.get_mem_ptr(i64 u{addr})"),
+                        format!("  %l{line_no}_gep_{i} = getelementptr {ty}, ptr %l{line_no}_gep_{i}_ptr, {idxes}"),
+                    ]);
+                    return format!("[ %l{line_no}_gep_{i}, {lb} ]");
                 }
             }
             format!("[ {val}, {lb} ]")
@@ -1162,18 +1179,33 @@ fn trans_phi(
 fn trans_select(
     line_no: usize,
     select: &Select,
-    symbols: &HashMap<String, Addr>,
+    symbols: &HashMap<String, Vec<Addr>>,
 ) -> Result<Vec<String>, ()> {
     let mut lines = Vec::new();
     let ops = [&select.op1, &select.op2]
         .iter()
-        .map(|op| {
+        .enumerate()
+        .map(|(i, op)| {
             if let Value::Ident(Ident::Global(op)) = op {
-                if let Some(addr) = get_sym_addr(op, symbols) {
+                if let Some(addr) = get_first_sym_addr(op, symbols) {
                     lines.push(format!(
                         "  %l{line_no}_{op} = call ptr @.get_mem_ptr(i64 u{addr})"
                     ));
                     return format!("%l{line_no}_{op}");
+                }
+            }
+            if let Value::ConstExp(ConstExp::Getelementptr { ty, ptr: Ident::Global(ptr), idxes }) = op {
+                if let Some(addr) = get_first_sym_addr(ptr, symbols) {
+                    let idxes = idxes
+                        .iter()
+                        .map(|(idx, ty)| format!("{ty} {idx}"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    lines.extend([
+                        format!("  %l{line_no}_gep_{i}_ptr = call ptr @.get_mem_ptr(i64 u{addr})"),
+                        format!("  %l{line_no}_gep_{i} = getelementptr {ty}, ptr %l{line_no}_gep_{i}_ptr, {idxes}"),
+                    ]);
+                    return format!("%l{line_no}_gep_{i}");
                 }
             }
             op.to_string()
