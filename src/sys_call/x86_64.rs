@@ -182,8 +182,7 @@ pub const DEFS: &[(&str, i32, &str)] = &[
     (
         "mmap",
         222,
-        "  ; Ignore the address hint in `arg1`
-  %rslt = call i64 (i64, ...) @syscall(i64 9, i64 0, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6)",
+        "  %rslt = call i64 (i64, ...) @syscall(i64 9, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6)",
     ),
     (
         "munmap",
@@ -417,5 +416,30 @@ pub const DEFS: &[(&str, i32, &str)] = &[
         "pselect6",
         72,
         "  %rslt = call i64 (i64, ...) @syscall(i64 270, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6)",
+    ),
+    (
+        "timer_create",
+        107,
+        "  %rslt = call i64 (i64, ...) @syscall(i64 222, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6)",
+    ),
+    (
+        "timer_gettime",
+        108,
+        "  %rslt = call i64 (i64, ...) @syscall(i64 224, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6)",
+    ),
+    (
+        "timer_getoverrun",
+        109,
+        "  %rslt = call i64 (i64, ...) @syscall(i64 225, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6)",
+    ),
+    (
+        "timer_settime",
+        110,
+        "  %rslt = call i64 (i64, ...) @syscall(i64 223, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6)",
+    ),
+    (
+        "timer_delete",
+        111,
+        "  %rslt = call i64 (i64, ...) @syscall(i64 226, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4, i64 %arg5, i64 %arg6)",
     ),
 ];
