@@ -22,6 +22,7 @@ pub fn run(rv_prog: rv::Prog) -> Prog {
         func_syms: rv_prog.func_syms,
         native_mem_utils: false,
         sys_call: None,
+        module_size: 0,
     }
 }
 

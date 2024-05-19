@@ -1,7 +1,6 @@
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 #[derive(Parser)]
 #[command(version)]
@@ -12,6 +11,9 @@ struct Args {
 
     #[arg(short, long)]
     output: Option<PathBuf>,
+
+    #[arg(long, default_value_t = 0)]
+    module_size: usize,
 
     #[arg(long)]
     arch: Option<String>,
@@ -36,14 +38,9 @@ fn main() {
     let args = Args::parse();
     let rv_src = fs::read_to_string(&args.input).expect("Unable to read the dump file");
     let tdata_src = fs::read_to_string(&args.tdata).expect("Unable to read the tdata file");
-    let ir_dir = args.output.unwrap_or(args.input).with_extension("ir");
-    if !args.srcs.is_empty() {
-        Command::new("rm")
-            .arg("-rf")
-            .arg(&ir_dir)
-            .status()
-            .expect("Unable to remove the old src IR directory");
-        fs::create_dir(&ir_dir).expect("Unable to create the src IR directory");
+    let dir = args.output.unwrap_or(args.input.with_extension(""));
+    if !dir.exists() {
+        fs::create_dir(&dir).expect("Unable to create the output directory");
     }
     let ll_prog = biotite::run(
         rv_src,
@@ -54,12 +51,17 @@ fn main() {
         args.enable_opts,
         args.disable_opts,
         args.srcs,
-        ir_dir.clone(),
+        dir.join("ir"),
+        args.module_size,
     );
-    fs::write(ir_dir.with_extension("ll"), ll_prog.to_string())
-        .expect("Unable to write the translated IR file");
+    let (mk, main, mods) = ll_prog.to_modules();
+    fs::write(dir.join("Makefile"), mk).expect("Unable to write output files");
+    fs::write(dir.join("main.ll"), main).expect("Unable to write output files");
+    for (i, md) in mods.into_iter().enumerate() {
+        fs::write(dir.join(format!("{i}.ll")), md).expect("Unable to write output files");
+    }
     if let Some((asm, ld)) = ll_prog.mem {
-        fs::write(ir_dir.with_extension("s"), asm).expect("Unable to write the memory asssembly");
-        fs::write(ir_dir.with_extension("ld"), ld).expect("Unable to write the linker script");
+        fs::write(dir.join("image.s"), asm).expect("Unable to write output files");
+        fs::write(dir.join("mapping.ld"), ld).expect("Unable to write output files");
     }
 }

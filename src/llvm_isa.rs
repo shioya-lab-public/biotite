@@ -4,6 +4,17 @@ use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result};
 
+const NATIVE_MEM_UTILS: &str = "
+; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: readwrite)
+declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)
+; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: readwrite)
+declare void @llvm.memmove.p0.p0.i64(ptr nocapture writeonly, ptr nocapture readonly, i64, i1 immarg)
+; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: write)
+declare void @llvm.memset.p0.i64(ptr nocapture writeonly, i8, i64, i1 immarg)
+; Function Attrs: nounwind willreturn memory(read)
+declare i32 @memcmp(ptr noundef, ptr noundef, i64 noundef)
+";
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Prog {
     pub entry: Value,
@@ -17,12 +28,13 @@ pub struct Prog {
     pub func_syms: HashSet<String>,
     pub native_mem_utils: bool,
     pub sys_call: Option<String>,
+    pub module_size: usize,
 }
 
-impl Display for Prog {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+impl Prog {
+    pub fn to_modules(&self) -> (String, String, Vec<String>) {
         let (disp_len, disps) = self.build_dispatchers(false);
-        let mut prog = format!(
+        let mut main = format!(
             "define dso_local i32 @main(i32 %argc, ptr %argv, ptr %envp) {{
 {init}
 
@@ -36,7 +48,7 @@ loop:
   br label %loop
 }}
 
-{funcs}
+{func_decls}
 
 {mem}
 
@@ -46,27 +58,72 @@ loop:
 
 {defs}",
             init = self.build_init(),
-            funcs = self.build_funcs(),
+            func_decls = self
+                .funcs
+                .iter()
+                .map(|f| f.to_declaration())
+                .collect::<Vec<_>>()
+                .join("\n"),
             mem = self.build_memory(false),
             rounding_funcs = Self::build_rounding_funcs(),
             defs = include_str!("defs.ll"),
         );
         if self.native_mem_utils {
-            prog += "
-; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: readwrite)
-declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)
-; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: readwrite)
-declare void @llvm.memmove.p0.p0.i64(ptr nocapture writeonly, ptr nocapture readonly, i64, i1 immarg)
-; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: write)
-declare void @llvm.memset.p0.i64(ptr nocapture writeonly, i8, i64, i1 immarg)
-; Function Attrs: nounwind willreturn memory(read)
-declare i32 @memcmp(ptr noundef, ptr noundef, i64 noundef)
-";
+            main += NATIVE_MEM_UTILS;
         };
         if let Some(sys_call) = &self.sys_call {
-            prog += &format!("\n{sys_call}\n");
+            main += &format!("\n{sys_call}\n");
         }
-        write!(f, "{prog}")
+        let module_size = if self.module_size == 0 {
+            self.funcs.len()
+        } else {
+            self.module_size
+        };
+        let mods = self.funcs[..]
+            .chunks(module_size)
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|funcs| {
+                let funcs_set: HashSet<_> = HashSet::from_iter(funcs);
+                let funcs = self
+                    .funcs
+                    .iter()
+                    .map(|func| {
+                        if self.ir_funcs.contains(&func.symbol) && !func.is_fallback
+                            || !funcs_set.contains(func)
+                        {
+                            func.to_declaration()
+                        } else {
+                            func.to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                let mut md = format!(
+                    "{funcs}
+
+{mem}
+
+{disp}
+
+{decls}",
+                    mem = self.build_memory(true),
+                    disp = self.build_dispatchers(true).1,
+                    decls = include_str!("decls.ll"),
+                );
+                if self.native_mem_utils {
+                    md += &format!("\n{NATIVE_MEM_UTILS}\n");
+                };
+                md
+            })
+            .collect::<Vec<_>>();
+        let mk = include_str!("templates/Makefile");
+        let objs = (0..mods.len())
+            .map(|i| format!("{i}.o"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mk = mk.replace("{objs}", &objs);
+        (mk, main, mods)
     }
 }
 
@@ -114,20 +171,6 @@ impl Prog {
             entry = self.entry,
         );
         init
-    }
-
-    fn build_funcs(&self) -> String {
-        self.funcs
-            .par_iter()
-            .map(|func| {
-                if self.ir_funcs.contains(&func.symbol) && !func.is_fallback {
-                    format!("declare i64 @.{}(i64)", func.address)
-                } else {
-                    func.to_string()
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n\n")
     }
 
     pub fn build_memory(&self, external: bool) -> String {
@@ -196,7 +239,7 @@ dynamic:
             );
             for inst_block in &func.inst_blocks {
                 let rv::Addr(addr) = inst_block.rv_inst.address();
-                disp[addr as usize] = fallback_ptr.clone();
+                disp[addr as usize].clone_from(&fallback_ptr);
             }
             let rv::Addr(addr) = func.inst_blocks[0].rv_inst.address();
             func_disp[addr as usize] = ptr;
@@ -231,7 +274,7 @@ ret:
                 size,
                 format!(
                     "@.disp = global [{size} x i64] [{disp}]
-  @.func_disp = global [{size} x i64] [{func_disp}]
+@.func_disp = global [{size} x i64] [{func_disp}]
 
 {disp_func}",
                     disp = disp.join(", "),
@@ -256,7 +299,7 @@ ret:
         for (fp, int, fp_int, int_fp) in variants {
             rounding_funcs += &format!(
                 "; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-define dso_local {int} @.rounding_{fp}_{int}_{fp_int}_{int_fp}({fp} noundef %0, i1 noundef zeroext %1) alwaysinline {{
+define dso_local {int} @.rounding_{fp}_{int}_{fp_int}_{int_fp}({fp} noundef %0, i1 noundef zeroext %1) {{
   %3 = {fp_int} {fp} %0 to {int}
   %4 = {int_fp} {int} %3 to {fp}
   %5 = fcmp une {fp} %4, %0
@@ -430,6 +473,14 @@ ret:
 }
 
 impl Func {
+    pub fn to_declaration(&self) -> String {
+        format!(
+            "declare i64 @.{}{}(i64)",
+            self.address,
+            if self.is_fallback { "_fallback" } else { "" }
+        )
+    }
+
     pub fn build_stack_loading(regs: &[rv::Reg], fregs: &[rv::FReg], prefix: &str) -> String {
         let regs = regs
             .iter()

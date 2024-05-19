@@ -85,8 +85,8 @@ pub fn run(mut prog: Prog) -> Prog {
                             used_fregs,
                             ..
                         } => {
-                            *used_regs = func.used_regs.clone();
-                            *used_fregs = func.used_fregs.clone();
+                            used_regs.clone_from(&func.used_regs);
+                            used_fregs.clone_from(&func.used_fregs);
                         }
                         Inst::Load { ptr, .. } | Inst::Store { ptr, .. } => {
                             if let Value::Reg(reg) = ptr {

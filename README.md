@@ -8,11 +8,11 @@ Biotite is a binary translator that lifts little-endian statically linked RV64GC
 $ llvm-objdump -fhtDz --mattr=a,c,d,f,m example > example.dump
 $ llvm-objdump -sj.tdata example > example.tdata
 $ biotite --arch=x86_64 example.dump example.tdata
-# Static linking is necessary if `.tdata` is not empty.
-$ clang --static example.ll example.s -T example.ld -lm
+$ cd coremark
+$ make
 ```
 
-## Linking with Source Code
+## Linking with Source Code (Outdated)
 
 Suppose you are translating [CoreMark](https://github.com/eembc/coremark/archive/refs/tags/v1.01.tar.gz) and want to compile and link functions in `core_util.c` directly into the final output binary using native Clang. The following commands will do what you want, assuming you are currently inside the `coremark-1.01` folder and have followed instructions on Quick Start to get the `dump` and `tdata` files.
 
@@ -24,7 +24,7 @@ $ clang --static coremark.ll coremark.s coremark.ir/core_util.ll -T coremark.ld 
 
 ## Notes
 
-1. Implementation is based on RISC-V unprivileged ISA specification (version 20191213) and tested with Rust 1.75.0 and Clang/LLVM 17.0.6.
+1. Implementation is based on RISC-V unprivileged ISA specification (version 20191213) and tested with Rust 1.78.0 and Clang/LLVM 17.0.6.
 2. Currently, the system call support is only implemented for x86_64.
 3. Currently unsupported features are listed below:
     - All CSR are ignored. Instructions reading them always return 0. Instructions writting to them are ignored.

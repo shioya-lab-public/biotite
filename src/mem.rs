@@ -2,7 +2,10 @@ use crate::llvm_isa::Prog;
 
 pub fn run(arch: &str, prog: &Prog) -> (String, String) {
     let (asm, ld) = match arch {
-        "x86_64" => (include_str!("mem/x86_64.s"), include_str!("mem/x86_64.ld")),
+        "x86_64" => (
+            include_str!("templates/image.s"),
+            include_str!("templates/x86_64.ld"),
+        ),
         arch => panic!("Unknown architecture `{arch}`"),
     };
     let mmap_min_addr = 0x11000;

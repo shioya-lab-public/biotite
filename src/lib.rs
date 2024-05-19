@@ -23,6 +23,7 @@ pub fn run(
     disable_opts: Vec<String>,
     srcs: Vec<PathBuf>,
     ir_dir: PathBuf,
+    module_size: usize,
 ) -> Prog {
     let (rv_prog, syms) = riscv_parser::run(rv_src, tdata_src);
     let mut ll_prog = llvm_translator::run(rv_prog);
@@ -31,6 +32,7 @@ pub fn run(
         .into_iter()
         .collect();
     ll_prog.sys_call = arch.as_ref().map(|arch| sys_call::run(arch));
+    ll_prog.module_size = module_size;
     opt::run(
         ll_prog,
         enable_all_opts,
