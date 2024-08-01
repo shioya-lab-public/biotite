@@ -573,6 +573,7 @@ pub enum Csr {
     // `Cycleh` is for RV32I only
     // `Timeh` is for RV32I only
     // `Instreth` is for RV32I only
+    Unknown,
 }
 
 impl Csr {
@@ -586,7 +587,7 @@ impl Csr {
             "cycle" => Cycle,
             "time" => Time,
             "instret" => Instret,
-            s => panic!("Unknown CSR `{s}`"),
+            _ => Unknown,
         }
     }
 }

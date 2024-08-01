@@ -5,21 +5,25 @@ Biotite is a binary translator that lifts little-endian statically linked RV64GC
 ## Quick Start
 
 ``` sh
-$ llvm-objdump -fhtDz --mattr=a,c,d,f,m example > example.dump
-$ llvm-objdump -sj.tdata example > example.tdata
-$ biotite --arch=x86_64 example.dump example.tdata
-$ cd coremark
+$ llvm-objdump -fhtDz --no-print-imm-hex example > example.dump
+$ biotite --arch=x86_64 example.dump
+$ cd example.translated
+$ export CLANG=clang
+$ export OPT=0
 $ make
 ```
 
-## Linking with Source Code (Outdated)
+## Linking with Source Code
 
-Suppose you are translating [CoreMark](https://github.com/eembc/coremark/archive/refs/tags/v1.01.tar.gz) and want to compile and link functions in `core_util.c` directly into the final output binary using native Clang. The following commands will do what you want, assuming you are currently inside the `coremark-1.01` folder and have followed instructions on Quick Start to get the `dump` and `tdata` files.
+Suppose you are translating [CoreMark](https://github.com/eembc/coremark/archive/refs/tags/v1.01.tar.gz) and want to compile and link functions in `core_util.c` directly into the final output binary using native Clang. The following commands will do what you want, assuming you are currently inside the `coremark-1.01` folder and have followed instructions on Quick Start to get the `dump` file.
 
 ``` sh
 $ clang -S -emit-llvm -I. -Ilinux64 core_util.c
-$ biotite --arch=x86_64 coremark.dump coremark.tdata --srcs core_util.ll
-$ clang --static coremark.ll coremark.s coremark.ir/core_util.ll -T coremark.ld -lm
+$ biotite --arch=x86_64 coremark.dump --srcs core_util.ll
+$ cd coremark.translated
+$ export CLANG=clang
+$ export OPT=0
+$ make
 ```
 
 ## Notes

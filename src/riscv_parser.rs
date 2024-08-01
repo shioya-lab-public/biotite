@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::mem;
 
-pub fn run(mut src: String, tdata: String) -> (Prog, HashMap<String, Vec<Addr>>) {
+pub fn run(mut src: String) -> (Prog, HashMap<String, Vec<Addr>>) {
     // Make sure the last block is properly processed
     src.push('\n');
 
@@ -15,11 +15,8 @@ pub fn run(mut src: String, tdata: String) -> (Prog, HashMap<String, Vec<Addr>>)
     let (mut data_blocks, mut code_blocks) = parse_disassembly(&mut lines);
     expand_data_blocks(&mut data_blocks, &sections, &symbols);
     split_load_gp(&mut code_blocks, &mut symbols);
-    let tdata = parse_tdata(tdata).map(|(addr, size, block)| {
-        data_blocks.push(block);
-        data_blocks.sort_unstable_by_key(|b| b.address);
-        (addr, size)
-    });
+    let tdata = data_blocks.iter().find(|block| block.section == ".tdata")
+            .map(|block| (block.address, sections[&(String::from(".tdata"), block.address)]));
     let func_syms = symbols
         .clone()
         .into_iter()
@@ -217,32 +214,4 @@ fn split_load_gp(
             }
         }
     }
-}
-
-fn parse_tdata(tdata: String) -> Option<(Addr, usize, DataBlock)> {
-    let lines = tdata.lines().skip(3);
-    let mut address = None;
-    let mut bytes = Vec::new();
-    for line in lines {
-        let caps = regex!(r"([[:xdigit:]]+)\s+(.{36})").captures(line).unwrap();
-        let addr = Addr(u64::from_str_radix(&caps[1], 16).unwrap());
-        address = address.or(Some(addr));
-        let mut byte_str = caps[2].chars().filter(|c| !c.is_whitespace());
-        while let (Some(a), Some(b)) = (byte_str.next(), byte_str.next()) {
-            let byte = u8::from_str_radix(&format!("{a}{b}"), 16).unwrap();
-            bytes.push(byte);
-        }
-    }
-    address.map(|address| {
-        (
-            address,
-            bytes.len(),
-            DataBlock {
-                section: String::from(".tdata"),
-                symbol: String::from(".tdata"),
-                address,
-                bytes,
-            },
-        )
-    })
 }

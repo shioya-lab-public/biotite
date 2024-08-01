@@ -494,6 +494,9 @@ pub fn run(
     symbols: &HashMap<String, Vec<Addr>>,
     prog: &Prog,
 ) -> Vec<String> {
+    if !srcs.is_empty() {
+        fs::create_dir(&ir_dir).expect("Unable to create the IR directory");
+    }
     find_files(srcs, ir_dir)
         .par_iter()
         .map(|(path, output)| trans_file(path, output, symbols, prog))

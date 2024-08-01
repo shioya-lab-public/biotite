@@ -7,8 +7,6 @@ use std::path::PathBuf;
 struct Args {
     input: PathBuf,
 
-    tdata: PathBuf,
-
     #[arg(short, long)]
     output: Option<PathBuf>,
 
@@ -37,14 +35,12 @@ struct Args {
 fn main() {
     let args = Args::parse();
     let rv_src = fs::read_to_string(&args.input).expect("Unable to read the dump file");
-    let tdata_src = fs::read_to_string(&args.tdata).expect("Unable to read the tdata file");
-    let dir = args.output.unwrap_or(args.input.with_extension(""));
+    let dir = args.output.unwrap_or(args.input.with_extension("translated"));
     if !dir.exists() {
         fs::create_dir(&dir).expect("Unable to create the output directory");
     }
     let ll_prog = biotite::run(
         rv_src,
-        tdata_src,
         args.arch,
         args.enable_all_opts,
         args.disable_all_opts,

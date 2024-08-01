@@ -1,4 +1,5 @@
-objs := main.o {objs}
+irs := $(wildcard ir/*.ll)
+objs := main.o {objs} $(irs:.ll=.o)
 out := $(notdir $(CURDIR))
 
 $(out): $(objs) image.s mapping.ld
