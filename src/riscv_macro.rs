@@ -1,6 +1,6 @@
 macro_rules! define_insts {
     ( $( $inst:ident ( $regex:literal $(, $field:ident )* ), )* ) => {
-        use once_cell::sync::Lazy;
+        use std::sync::LazyLock;
         use regex::{Regex, RegexSet};
 
         const RD: &str = r"(?<rd>[[:alpha:]][[:alnum:]]+)";
@@ -18,7 +18,7 @@ macro_rules! define_insts {
         const INST_ADDR: &str = r"(?<inst_addr>[[:xdigit:]]+)";
         const INST_BYTE: &str = r"(?<inst_byte>([[:xdigit:]]{2} )+)";
         const SYM: &str = r"(?<sym>.*)";
-        static REGEXES: Lazy<Vec<(&str, Regex)>> = Lazy::new(|| {
+        static REGEXES: LazyLock<Vec<(&str, Regex)>> = LazyLock::new(|| {
             vec![
                 $(
                     (
@@ -31,7 +31,7 @@ macro_rules! define_insts {
                 )*
             ]
         });
-        static REGEX_SET: Lazy<RegexSet> = Lazy::new(|| {
+        static REGEX_SET: LazyLock<RegexSet> = LazyLock::new(|| {
             RegexSet::new(REGEXES.iter().map(|(_, re)| re.as_str())).unwrap()
         });
 
@@ -211,10 +211,10 @@ macro_rules! rm {
 
 macro_rules! regex {
     ( $re:literal ) => {{
-        use once_cell::sync::OnceCell;
+        use std::sync::OnceLock;
         use regex::Regex;
 
-        static RE: OnceCell<Regex> = OnceCell::new();
+        static RE: OnceLock<Regex> = OnceLock::new();
         RE.get_or_init(|| Regex::new($re).unwrap())
     }};
 }
