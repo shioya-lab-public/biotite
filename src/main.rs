@@ -35,7 +35,9 @@ struct Args {
 fn main() {
     let args = Args::parse();
     let rv_src = fs::read_to_string(&args.input).expect("Unable to read the dump file");
-    let dir = args.output.unwrap_or(args.input.with_extension("translated"));
+    let dir = args
+        .output
+        .unwrap_or(args.input.with_extension("translated"));
     if !dir.exists() {
         fs::create_dir(&dir).expect("Unable to create the output directory");
     }

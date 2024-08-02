@@ -835,6 +835,7 @@ pub enum Inst {
     Fcmp {
         rslt: Value,
         fcond: FCond,
+        ty: Type,
         op1: Value,
         op2: Value,
     },
@@ -990,7 +991,7 @@ impl Display for Inst {
 
             // Other Operations
             Icmp { rslt, cond, op1, op2 } => write!(f, "{rslt} = icmp {cond} i64 {op1}, {op2}"),
-            Fcmp {rslt,fcond,op1,op2} => write!(f, "{rslt} = fcmp {fcond} double {op1}, {op2}"),
+            Fcmp {rslt,fcond, ty,op1,op2} => write!(f, "{rslt} = fcmp {fcond} {ty} {op1}, {op2}"),
             Select {rslt,cond, ty, op1,op2} => write!(f, "{rslt} = select i1 {cond}, {ty} {op1}, {ty} {op2}"),
             Call { rslt, target, next_pc, used_regs, used_fregs } => {
                 let stack_storing = Func::build_stack_storing(used_regs, used_fregs, &format!("{}_s", &rslt.to_string()[1..]));

@@ -731,194 +731,150 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Getmemptr { rslt: _2, addr: _1 },
             Load { rslt: _3, ty: i_32, ptr: _2 },
             Bitcast { rslt: _4, ty1: i_32, val: _3, ty2: f },
-            Fpext { rslt: _5, ty1: f, val: _4, ty2: d },
-            Store { ty: d, val: _5, ptr: frd },
+            Store { ty: f, val: _4, ptr: frd },
         }
         Fsw { frs2, imm, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Add { rslt: _1, ty: i_64, op1: _0, op2: imm },
             Getmemptr { rslt: _2, addr: _1 },
-            Load { rslt: _3, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _4, ty1: d, val: _3, ty2: f },
-            Bitcast { rslt: _5, ty1: f, val: _4, ty2: i_32 },
-            Store { ty: i_32, val: _5, ptr: _2 },
+            Load { rslt: _3, ty: f, ptr: frs2 },
+            Bitcast { rslt: _4, ty1: f, val: _3, ty2: i_32 },
+            Store { ty: i_32, val: _4, ptr: _2 },
         }
         FmaddS { frd, frs1, frs2, frs3, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Load { rslt: _4, ty: d, ptr: frs3 },
-            Fptrunc { rslt: _5, ty1: d, val: _4, ty2: f },
-            Fma { rslt: _6, ty: f, arg1: _1, arg2: _3, arg3: _5 },
-            Fpext { rslt: _7, ty1: f, val: _6, ty2: d },
-            Store { ty: d, val: _7, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Load { rslt: _2, ty: f, ptr: frs3 },
+            Fma { rslt: _3, ty: f, arg1: _0, arg2: _1, arg3: _2 },
+            Store { ty: f, val: _3, ptr: frd },
         }
         FmsubS { frd, frs1, frs2, frs3, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Load { rslt: _4, ty: d, ptr: frs3 },
-            Fptrunc { rslt: _5, ty1: d, val: _4, ty2: f },
-            Fneg { rslt: _6, ty: f, op: _5 },
-            Fma { rslt: _7, ty: f, arg1: _1, arg2: _3, arg3: _6 },
-            Fpext { rslt: _8, ty1: f, val: _7, ty2: d },
-            Store { ty: d, val: _8, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Load { rslt: _2, ty: f, ptr: frs3 },
+            Fneg { rslt: _3, ty: f, op: _2 },
+            Fma { rslt: _4, ty: f, arg1: _0, arg2: _1, arg3: _3 },
+            Store { ty: f, val: _4, ptr: frd },
         }
         FnmsubS { frd, frs1, frs2, frs3, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Load { rslt: _4, ty: d, ptr: frs3 },
-            Fptrunc { rslt: _5, ty1: d, val: _4, ty2: f },
-            Fneg { rslt: _6, ty: f, op: _5 },
-            Fma { rslt: _7, ty: f, arg1: _1, arg2: _3, arg3: _6 },
-            Fneg { rslt: _8, ty: f, op: _7 },
-            Fpext { rslt: _9, ty1: f, val: _8, ty2: d },
-            Store { ty: d, val: _9, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Load { rslt: _2, ty: f, ptr: frs3 },
+            Fneg { rslt: _3, ty: f, op: _2 },
+            Fma { rslt: _4, ty: f, arg1: _0, arg2: _1, arg3: _3 },
+            Fneg { rslt: _5, ty: f, op: _4 },
+            Store { ty: f, val: _5, ptr: frd },
         }
         FnmaddS { frd, frs1, frs2, frs3, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Load { rslt: _4, ty: d, ptr: frs3 },
-            Fptrunc { rslt: _5, ty1: d, val: _4, ty2: f },
-            Fma { rslt: _6, ty: f, arg1: _1, arg2: _3, arg3: _5 },
-            Fneg { rslt: _7, ty: f, op: _6 },
-            Fpext { rslt: _8, ty1: f, val: _7, ty2: d },
-            Store { ty: d, val: _8, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Load { rslt: _2, ty: f, ptr: frs3 },
+            Fma { rslt: _3, ty: f, arg1: _0, arg2: _1, arg3: _2 },
+            Fneg { rslt: _4, ty: f, op: _3 },
+            Store { ty: f, val: _4, ptr: frd },
         }
         FaddS { frd, frs1, frs2, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Fadd { rslt: _4, ty: f, op1: _1, op2: _3 },
-            Fpext { rslt: _5, ty1: f, val: _4, ty2: d },
-            Store { ty: d, val: _5, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Fadd { rslt: _2, ty: f, op1: _0, op2: _1 },
+            Store { ty: f, val: _2, ptr: frd },
         }
         FsubS { frd, frs1, frs2, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Fsub { rslt: _4, ty: f, op1: _1, op2: _3 },
-            Fpext { rslt: _5, ty1: f, val: _4, ty2: d },
-            Store { ty: d, val: _5, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Fsub { rslt: _2, ty: f, op1: _0, op2: _1 },
+            Store { ty: f, val: _2, ptr: frd },
         }
         FmulS { frd, frs1, frs2, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Fmul { rslt: _4, ty: f, op1: _1, op2: _3 },
-            Fpext { rslt: _5, ty1: f, val: _4, ty2: d },
-            Store { ty: d, val: _5, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Fmul { rslt: _2, ty: f, op1: _0, op2: _1 },
+            Store { ty: f, val: _2, ptr: frd },
         }
         FdivS { frd, frs1, frs2, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Fdiv { rslt: _4, ty: f, op1: _1, op2: _3 },
-            Fpext { rslt: _5, ty1: f, val: _4, ty2: d },
-            Store { ty: d, val: _5, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Fdiv { rslt: _2, ty: f, op1: _0, op2: _1 },
+            Store { ty: f, val: _2, ptr: frd },
         }
         FsqrtS { frd, frs1, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Sqrt { rslt: _2, ty: f, arg: _1 },
-            Fpext { rslt: _3, ty1: f, val: _2, ty2: d },
-            Store { ty: d, val: _3, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Sqrt { rslt: _1, ty: f, arg: _0 },
+            Store { ty: f, val: _1, ptr: frd },
         }
         FsgnjS { frd, frs1, frs2 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Copysign { rslt: _4, ty: f, mag: _1, sgn: _3 },
-            Fpext { rslt: _5, ty1: f, val: _4, ty2: d },
-            Store { ty: d, val: _5, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Copysign { rslt: _2, ty: f, mag: _0, sgn: _1 },
+            Store { ty: f, val: _2, ptr: frd },
         }
         FsgnjnS { frd, frs1, frs2 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Load { rslt: _2, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _3, ty1: d, val: _2, ty2: f },
-            Fneg { rslt: _4, ty: f, op: _3 },
-            Copysign { rslt: _5, ty: f, mag: _1, sgn: _4 },
-            Fpext { rslt: _6, ty1: f, val: _5, ty2: d },
-            Store { ty: d, val: _6, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Fneg { rslt: _2, ty: f, op: _1 },
+            Copysign { rslt: _3, ty: f, mag: _0, sgn: _2 },
+            Store { ty: f, val: _3, ptr: frd },
         }
         FsgnjxS { frd, frs1, frs2 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Bitcast { rslt: _2, ty1: f, val: _1, ty2: i_32 },
-            Load { rslt: _3, ty: d, ptr: frs2 },
-            Fptrunc { rslt: _4, ty1: d, val: _3, ty2: f },
-            Bitcast { rslt: _5, ty1: f, val: _4, ty2: i_32 },
-            Xor { rslt: _6, ty: i_32, op1: _2, op2: _5 },
-            Bitcast { rslt: _7, ty1: i_32, val: _6, ty2: f },
-            Copysign { rslt: _8, ty: f, mag: _1, sgn: _7 },
-            Fpext { rslt: _9, ty1: f, val: _8, ty2: d },
-            Store { ty: d, val: _9, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Bitcast { rslt: _1, ty1: f, val: _0, ty2: i_32 },
+            Load { rslt: _2, ty: f, ptr: frs2 },
+            Bitcast { rslt: _3, ty1: f, val: _2, ty2: i_32 },
+            Xor { rslt: _4, ty: i_32, op1: _1, op2: _3 },
+            Bitcast { rslt: _5, ty1: i_32, val: _4, ty2: f },
+            Copysign { rslt: _6, ty: f, mag: _0, sgn: _5 },
+            Store { ty: f, val: _6, ptr: frd },
         }
         FminS { frd, frs1, frs2 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Load { rslt: _1, ty: d, ptr: frs2 },
-            Fcmp { rslt: _2, fcond: { FCond::Olt }, op1: _0, op2: _1 },
-            Select { rslt: _3, cond: _2, ty: d, op1: _0, op2: _1 },
-            Store { ty: d, val: _3, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Fcmp { rslt: _2, fcond: { FCond::Olt }, ty: f, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, ty: f, op1: _0, op2: _1 },
+            Store { ty: f, val: _3, ptr: frd },
         }
         FmaxS { frd, frs1, frs2 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Load { rslt: _1, ty: d, ptr: frs2 },
-            Fcmp { rslt: _2, fcond: { FCond::Olt }, op1: _0, op2: _1 },
-            Select { rslt: _3, cond: _2, ty: d, op1: _1, op2: _0 },
-            Store { ty: d, val: _3, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Fcmp { rslt: _2, fcond: { FCond::Olt }, ty: f, op1: _0, op2: _1 },
+            Select { rslt: _3, cond: _2, ty: f, op1: _1, op2: _0 },
+            Store { ty: f, val: _3, ptr: frd },
         }
         FcvtWS { rd, frs1, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fptosi { rslt: _2, ty1: f, val: _1, ty2: i_32, rm: rm },
-            Sext {rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
-            Store { ty: i_64, val: _3, ptr: rd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Fptosi { rslt: _1, ty1: f, val: _0, ty2: i_32, rm: rm },
+            Sext {rslt: _2, ty1: i_32, val: _1, ty2: i_64 },
+            Store { ty: i_64, val: _2, ptr: rd },
         }
         FcvtWuS { rd, frs1, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fptoui { rslt: _2, ty1: f, val: _1, ty2: i_32, rm: rm },
-            Zext {rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
-            Store { ty: i_64, val: _3, ptr: rd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Fptoui { rslt: _1, ty1: f, val: _0, ty2: i_32, rm: rm },
+            Zext {rslt: _2, ty1: i_32, val: _1, ty2: i_64 },
+            Store { ty: i_64, val: _2, ptr: rd },
         }
         FmvXW { rd, frs1 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Bitcast { rslt: _2, ty1: f, val: _1, ty2: i_32 },
-            Sext {rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
-            Store { ty: i_64, val: _3, ptr: rd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Bitcast { rslt: _1, ty1: f, val: _0, ty2: i_32 },
+            Sext {rslt: _2, ty1: i_32, val: _1, ty2: i_64 },
+            Store { ty: i_64, val: _2, ptr: rd },
         }
         FeqS { rd, frs1, frs2 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Load { rslt: _1, ty: d, ptr: frs2 },
-            Fcmp { rslt: _2, fcond: { FCond::Oeq }, op1: _0, op2: _1 },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Fcmp { rslt: _2, fcond: { FCond::Oeq }, ty: f, op1: _0, op2: _1 },
             Zext { rslt: _3, ty1: i_1, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
         FltS { rd, frs1, frs2 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Load { rslt: _1, ty: d, ptr: frs2 },
-            Fcmp { rslt: _2, fcond: { FCond::Olt }, op1: _0, op2: _1 },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Fcmp { rslt: _2, fcond: { FCond::Olt }, ty: f, op1: _0, op2: _1 },
             Zext { rslt: _3, ty1: i_1, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
         FleS { rd, frs1, frs2 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Load { rslt: _1, ty: d, ptr: frs2 },
-            Fcmp { rslt: _2, fcond: { FCond::Ole }, op1: _0, op2: _1 },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Load { rslt: _1, ty: f, ptr: frs2 },
+            Fcmp { rslt: _2, fcond: { FCond::Ole }, ty: f, op1: _0, op2: _1 },
             Zext { rslt: _3, ty1: i_1, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
@@ -929,48 +885,41 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
             Sitofp { rslt: _2, ty1: i_32, val: _1, ty2: f },
-            Fpext {rslt: _3, ty1: f, val: _2, ty2: d },
-            Store { ty: d, val: _3, ptr: frd },
+            Store { ty: f, val: _2, ptr: frd },
         }
         FcvtSWu { frd, rs1, rm } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
             Uitofp { rslt: _2, ty1: i_32, val: _1, ty2: f },
-            Fpext {rslt: _3, ty1: f, val: _2, ty2: d },
-            Store { ty: d, val: _3, ptr: frd },
+            Store { ty: f, val: _2, ptr: frd },
         }
         FmvWX { frd, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
             Bitcast { rslt: _2, ty1: i_32, val: _1, ty2: f },
-            Fpext {rslt: _3, ty1: f, val: _2, ty2: d },
-            Store { ty: d, val: _3, ptr: frd },
+            Store { ty: f, val: _2, ptr: frd },
         }
 
         // RV64F (in addition to RV32F)
         FcvtLS { rd, frs1, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fptosi { rslt: _2, ty1: f, val: _1, ty2: i_64, rm: rm },
-            Store { ty: i_64, val: _2, ptr: rd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Fptosi { rslt: _1, ty1: f, val: _0, ty2: i_64, rm: rm },
+            Store { ty: i_64, val: _1, ptr: rd },
         }
         FcvtLuS { rd, frs1, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fptoui { rslt: _2, ty1: f, val: _1, ty2: i_64, rm: rm },
-            Store { ty: i_64, val: _2, ptr: rd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Fptoui { rslt: _1, ty1: f, val: _0, ty2: i_64, rm: rm },
+            Store { ty: i_64, val: _1, ptr: rd },
         }
         FcvtSL { frd, rs1, rm } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Sitofp { rslt: _1, ty1: i_64, val: _0, ty2: f },
-            Fpext {rslt: _2, ty1: f, val: _1, ty2: d },
-            Store { ty: d, val: _2, ptr: frd },
+            Store { ty: f, val: _1, ptr: frd },
         }
         FcvtSLu { frd, rs1, rm } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Uitofp { rslt: _1, ty1: i_64, val: _0, ty2: f },
-            Fpext {rslt: _2, ty1: f, val: _1, ty2: d },
-            Store { ty: d, val: _2, ptr: frd },
+            Store { ty: f, val: _1, ptr: frd },
         }
 
         // RV32D
@@ -1077,45 +1026,45 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
         FminD { frd, frs1, frs2 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Load { rslt: _1, ty: d, ptr: frs2 },
-            Fcmp { rslt: _2, fcond: { FCond::Olt }, op1: _0, op2: _1 },
+            Fcmp { rslt: _2, fcond: { FCond::Olt }, ty: d, op1: _0, op2: _1 },
             Select { rslt: _3, cond: _2, ty: d, op1: _0, op2: _1 },
             Store { ty: d, val: _3, ptr: frd },
         }
         FmaxD { frd, frs1, frs2 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Load { rslt: _1, ty: d, ptr: frs2 },
-            Fcmp { rslt: _2, fcond: { FCond::Olt }, op1: _0, op2: _1 },
+            Fcmp { rslt: _2, fcond: { FCond::Olt }, ty: d, op1: _0, op2: _1 },
             Select { rslt: _3, cond: _2, ty: d, op1: _1, op2: _0 },
             Store { ty: d, val: _3, ptr: frd },
         }
         FcvtSD { frd, frs1, rm } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Fptrunc { rslt: _1, ty1: d, val: _0, ty2: f },
-            Fpext {rslt: _2, ty1: f, val: _1, ty2: d },
-            Store { ty: d, val: _2, ptr: frd },
+            Store { ty: f, val: _1, ptr: frd },
         }
         FcvtDS { frd, frs1, rm } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Store { ty: d, val: _0, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Fpext {rslt: _1, ty1: f, val: _0, ty2: d },
+            Store { ty: d, val: _1, ptr: frd },
         }
         FeqD { rd, frs1, frs2 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Load { rslt: _1, ty: d, ptr: frs2 },
-            Fcmp { rslt: _2, fcond: { FCond::Oeq }, op1: _0, op2: _1 },
+            Fcmp { rslt: _2, fcond: { FCond::Oeq }, ty: d, op1: _0, op2: _1 },
             Zext { rslt: _3, ty1: i_1, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
         FltD { rd, frs1, frs2 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Load { rslt: _1, ty: d, ptr: frs2 },
-            Fcmp { rslt: _2, fcond: { FCond::Olt }, op1: _0, op2: _1 },
+            Fcmp { rslt: _2, fcond: { FCond::Olt }, ty: d, op1: _0, op2: _1 },
             Zext { rslt: _3, ty1: i_1, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
         FleD { rd, frs1, frs2 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },
             Load { rslt: _1, ty: d, ptr: frs2 },
-            Fcmp { rslt: _2, fcond: { FCond::Ole }, op1: _0, op2: _1 },
+            Fcmp { rslt: _2, fcond: { FCond::Ole }, ty: d, op1: _0, op2: _1 },
             Zext { rslt: _3, ty1: i_1, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
@@ -1237,18 +1186,18 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
         }
 
         FmvS { frd, frs1 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Store { ty: d, val: _0, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Store { ty: f, val: _0, ptr: frd },
         }
         FabsS { frd, frs1 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fabs { rslt: _1, ty: d, arg: _0 },
-            Store { ty: d, val: _1, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Fabs { rslt: _1, ty: f, arg: _0 },
+            Store { ty: f, val: _1, ptr: frd },
         }
         FnegS { frd, frs1 } => {
-            Load { rslt: _0, ty: d, ptr: frs1 },
-            Fneg { rslt: _1, ty: d, op: _0 },
-            Store { ty: d, val: _1, ptr: frd },
+            Load { rslt: _0, ty: f, ptr: frs1 },
+            Fneg { rslt: _1, ty: f, op: _0 },
+            Store { ty: f, val: _1, ptr: frd },
         }
         FmvD { frd, frs1 } => {
             Load { rslt: _0, ty: d, ptr: frs1 },

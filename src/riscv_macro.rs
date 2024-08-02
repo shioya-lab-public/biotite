@@ -211,8 +211,8 @@ macro_rules! rm {
 
 macro_rules! regex {
     ( $re:literal ) => {{
-        use std::sync::OnceLock;
         use regex::Regex;
+        use std::sync::OnceLock;
 
         static RE: OnceLock<Regex> = OnceLock::new();
         RE.get_or_init(|| Regex::new($re).unwrap())

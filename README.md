@@ -5,7 +5,7 @@ Biotite is a binary translator that lifts little-endian statically linked RV64GC
 ## Quick Start
 
 ``` sh
-$ llvm-objdump -fhtDz --no-print-imm-hex example > example.dump
+$ llvm-objdump -fhtDz --mattr=a,c,d,f,m --no-print-imm-hex example > example.dump
 $ biotite --arch=x86_64 example.dump
 $ cd example.translated
 $ export CLANG=clang

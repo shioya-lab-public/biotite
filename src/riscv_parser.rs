@@ -15,8 +15,15 @@ pub fn run(mut src: String) -> (Prog, HashMap<String, Vec<Addr>>) {
     let (mut data_blocks, mut code_blocks) = parse_disassembly(&mut lines);
     expand_data_blocks(&mut data_blocks, &sections, &symbols);
     split_load_gp(&mut code_blocks, &mut symbols);
-    let tdata = data_blocks.iter().find(|block| block.section == ".tdata")
-            .map(|block| (block.address, sections[&(String::from(".tdata"), block.address)]));
+    let tdata = data_blocks
+        .iter()
+        .find(|block| block.section == ".tdata")
+        .map(|block| {
+            (
+                block.address,
+                sections[&(String::from(".tdata"), block.address)],
+            )
+        });
     let func_syms = symbols
         .clone()
         .into_iter()
