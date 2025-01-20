@@ -3,7 +3,7 @@ name = "biotite"
 version = "0.2.0"
 edition = "2021"
 description = "A binary translator that lifts RISC-V to LLVM IR."
-license = "MIT"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 clap = { version = "4.5.13", features = ["derive"] }
