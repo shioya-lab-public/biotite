@@ -12,6 +12,9 @@ int8_t* copy_envp(int8_t* host_envp[], int8_t* guest_envp[]) {
 #include <sys/auxv.h>
 
 void init_auxv(int64_t* auxv, int8_t* phdr, int64_t phdr_addr, int64_t tdata, int64_t tdata_len) {
+    if (!tdata) {
+        return;
+    }
     // Initialize `AT_PHDR`.
     Elf64_Phdr* host_phdr = (Elf64_Phdr*) getauxval(AT_PHDR);
     int64_t host_phnum = getauxval(AT_PHNUM);

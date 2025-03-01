@@ -1,11 +1,12 @@
 [package]
 name = "biotite"
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 description = "A binary translator that lifts RISC-V to LLVM IR."
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-clap = { version = "4.5.13", features = ["derive"] }
+clap = { version = "4.5.28", features = ["derive"] }
 rayon = "1.10.0"
-regex = "1.10.5"
+regex = "1.11.1"
+indoc = "2.0.5"

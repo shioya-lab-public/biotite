@@ -1,79 +1,50 @@
 use crate::llvm_macro::next_pc;
 use crate::riscv_isa as rv;
+use indoc::{formatdoc, writedoc};
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result};
-
-const NATIVE_MEM_UTILS: &str = "
-; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: readwrite)
-declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)
-; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: readwrite)
-declare void @llvm.memmove.p0.p0.i64(ptr nocapture writeonly, ptr nocapture readonly, i64, i1 immarg)
-; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: write)
-declare void @llvm.memset.p0.i64(ptr nocapture writeonly, i8, i64, i1 immarg)
-; Function Attrs: nounwind willreturn memory(read)
-declare i32 @memcmp(ptr noundef, ptr noundef, i64 noundef)
-";
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Prog {
     pub entry: Value,
     pub image: Vec<u8>,
     pub sp: Value,
-    pub tdata: Option<(Value, usize)>,
     pub phdr: Value,
-    pub mem: Option<(String, String)>,
+    pub tdata: (Value, usize),
     pub funcs: Vec<Func>,
     pub ir_funcs: HashSet<String>,
-    pub func_syms: HashSet<String>,
-    pub native_mem_utils: bool,
-    pub sys_call: Option<String>,
+    pub func_syms: HashSet<Value>,
+    pub native_mem_utils: &'static str,
+    pub sys_call: String,
+    pub mem: Option<(String, String)>,
     pub module_size: usize,
 }
 
 impl Prog {
     pub fn to_modules(&self) -> (String, String, Vec<String>) {
         let (disp_len, disps) = self.build_dispatchers(false);
-        let mut main = format!(
-            "define dso_local i32 @main(i32 %argc, ptr %argv, ptr %envp) {{
-{init}
-
-loop:
-  %entry = load i64, ptr %entry_ptr
-  %func_addr_ptr = getelementptr [{disp_len} x i64], ptr @.disp, i64 0, i64 %entry
-  %func_addr = load i64, ptr %func_addr_ptr
-  %func = inttoptr i64 %func_addr to ptr
-  %next = call i64 %func(i64 %entry)
-  store i64 %next, ptr %entry_ptr
-  br label %loop
-}}
-
-{func_decls}
-
-{mem}
-
-{disps}
-
-{rounding_funcs}
-
-{defs}",
-            init = self.build_init(),
+        let main = format!(
+            include_str!("templates/main.ll"),
             func_decls = self
                 .funcs
                 .iter()
                 .map(|f| f.to_declaration())
                 .collect::<Vec<_>>()
                 .join("\n"),
+            sp = self.sp,
+            phdr = self.phdr,
+            addr = self.tdata.0,
+            size = self.tdata.1,
+            entry = self.entry,
+            disp_len = disp_len,
             mem = self.build_memory(false),
+            native_mem_utils = self.native_mem_utils,
+            disps = disps,
             rounding_funcs = Self::build_rounding_funcs(),
-            defs = include_str!("defs.ll"),
+            defs = include_str!("templates/defs.ll"),
+            sys_call = self.sys_call,
         );
-        if self.native_mem_utils {
-            main += NATIVE_MEM_UTILS;
-        };
-        if let Some(sys_call) = &self.sys_call {
-            main += &format!("\n{sys_call}\n");
-        }
         let module_size = if self.module_size == 0 {
             self.funcs.len()
         } else {
@@ -84,7 +55,7 @@ loop:
             .collect::<Vec<_>>()
             .into_par_iter()
             .map(|funcs| {
-                let funcs_set: HashSet<_> = HashSet::from_iter(funcs);
+                let funcs_set = HashSet::<_>::from_iter(funcs);
                 let funcs = self
                     .funcs
                     .iter()
@@ -99,121 +70,67 @@ loop:
                     })
                     .collect::<Vec<_>>()
                     .join("\n\n");
-                let mut md = format!(
-                    "{funcs}
-
-{mem}
-
-{disp}
-
-{decls}",
-                    mem = self.build_memory(true),
-                    disp = self.build_dispatchers(true).1,
-                    decls = include_str!("decls.ll"),
-                );
-                if self.native_mem_utils {
-                    md += &format!("\n{NATIVE_MEM_UTILS}\n");
-                };
-                md
+                let mem = self.build_memory(true);
+                let disps = self.build_dispatchers(true).1;
+                let decls = include_str!("templates/decls.ll");
+                [&funcs, &mem, &disps, decls, self.native_mem_utils].join("\n\n")
             })
             .collect::<Vec<_>>();
-        let mk = include_str!("templates/Makefile");
         let objs = (0..mods.len())
             .map(|i| format!("{i}.o"))
             .collect::<Vec<_>>()
             .join(" ");
-        let mk = mk.replace("{objs}", &objs);
+        let mk = format!(include_str!("templates/Makefile"), objs = &objs);
         (mk, main, mods)
     }
 }
 
 impl Prog {
-    fn build_init(&self) -> String {
-        let mut init = format!(
-            "  ; Initialize the stack pointer
-  store i64 {sp}, ptr @.sp
-
-  ; Initialize `argc`
-  %argc_dest = call ptr @.get_mem_ptr(i64 {sp})
-  store i32 %argc, ptr %argc_dest
-
-  ; Initialize `argv`
-  %argv_addr = add i64 {sp}, 8
-  %argv_dest = call ptr @.get_mem_ptr(i64 %argv_addr)
-  %argc_i64 = sext i32 %argc to i64
-  %argv_byte_cnt = mul i64 %argc_i64, 8
-  call void @.mem_copy(ptr %argv_dest, ptr %argv, i64 %argv_byte_cnt)
-
-  ; Initialize `envp`
-  %argv_offset = add i64 %argv_byte_cnt, 8
-  %envp_addr = add i64 %argv_addr, %argv_offset
-  %envp_dest = call ptr @.get_mem_ptr(i64 %envp_addr)
-  %auxv = call ptr @.copy_envp(ptr %envp, ptr %envp_dest)",
-            sp = self.sp,
-        );
-        if let Some((addr, size)) = self.tdata {
-            init += &format!(
-                "
-
-  ; Initialize `auxv`
-  %phdr = call ptr @.get_mem_ptr(i64 {phdr})
-  call void @.init_auxv(ptr %auxv, ptr %phdr, i64 {phdr}, i64 {addr}, i64 {size})",
-                phdr = self.phdr,
-            );
-        }
-        init += &format!(
-            "
-
-  ; Load the entry address
-  %entry_ptr= alloca i64
-  store i64 {entry}, ptr %entry_ptr
-  br label %loop",
-            entry = self.entry,
-        );
-        init
-    }
-
     pub fn build_memory(&self, external: bool) -> String {
         if self.mem.is_some() {
-            String::from(
-                "define internal ptr @.get_mem_ptr(i64 %addr) alwaysinline {
-  %ptr = inttoptr i64 %addr to ptr
-  ret ptr %ptr
-}",
+            formatdoc!(
+                "
+                define internal ptr @.get_mem_ptr(i64 %addr) alwaysinline {{
+                  %ptr = inttoptr i64 %addr to ptr
+                  ret ptr %ptr
+                }}",
             )
         } else {
-            let get_mem_ptr = format!(
-                "define internal ptr @.get_mem_ptr(i64 %addr) alwaysinline {{
-  %is_static = icmp ugt i64 {size}, %addr
-  br i1 %is_static, label %static, label %dynamic
-static:
-  %static_ptr = getelementptr [{size} x i8], ptr @.image, i64 0, i64 %addr
-  ret ptr %static_ptr
-dynamic:
-  %dynamic_ptr = inttoptr i64 %addr to ptr
-  ret ptr %dynamic_ptr
-}}",
-                size = self.image.len()
+            let get_mem_ptr = formatdoc!(
+                "
+                define internal ptr @.get_mem_ptr(i64 %addr) alwaysinline {{
+                  %is_static = icmp ugt i64 {size}, %addr
+                  br i1 %is_static, label %static, label %dynamic
+                static:
+                  %static_ptr = getelementptr [{size} x i8], ptr @.image, i64 0, i64 %addr
+                  ret ptr %static_ptr
+                dynamic:
+                  %dynamic_ptr = inttoptr i64 %addr to ptr
+                  ret ptr %dynamic_ptr
+                }}",
+                size = self.image.len(),
             );
             if external {
-                format!(
-                    "@.image = external global [{size} x i8]
+                formatdoc!(
+                    "
+                    @.image = external global [{size} x i8]
 
-{get_mem_ptr}",
-                    size = self.image.len()
+                    {get_mem_ptr}",
+                    size = self.image.len(),
                 )
             } else {
-                format!(
-                    "@.image = global [{size} x i8] [{image}]
+                formatdoc!(
+                    "
+                    @.image = global [{size} x i8] [{image}]
 
-{get_mem_ptr}",
+                    {get_mem_ptr}",
                     size = self.image.len(),
                     image = self
                         .image
                         .iter()
                         .map(|b| format!("i8 {b}"))
                         .collect::<Vec<_>>()
-                        .join(", ")
+                        .join(", "),
                 )
             }
         }
@@ -239,52 +156,56 @@ dynamic:
             );
             for inst_block in &func.inst_blocks {
                 let rv::Addr(addr) = inst_block.rv_inst.address();
-                disp[addr as usize].clone_from(&fallback_ptr);
+                disp[addr as usize] = fallback_ptr.clone();
             }
             let rv::Addr(addr) = func.inst_blocks[0].rv_inst.address();
             func_disp[addr as usize] = ptr;
         }
         let size = disp.len();
-        let disp_func = format!(
-            "define internal i64 @.disp_func(i64 %addr) alwaysinline {{
-  %func_addr_ptr = getelementptr [{size} x i64], ptr @.func_disp, i64 0, i64 %addr
-  %func_addr = load i64, ptr %func_addr_ptr
-  %is_func = icmp ne i64 %func_addr, 0
-  br i1 %is_func, label %call, label %ret
-call:
-  %func = inttoptr i64 %func_addr to ptr
-  %rslt = call i64 %func(i64 %addr)
-  ret i64 %rslt
-ret:
-  ret i64 0
-}}"
+        let find_func = formatdoc!(
+            "
+            define internal i64 @.find_func(i64 %addr) alwaysinline {{
+              %func_addr_ptr = getelementptr [{size} x i64], ptr @.func_disp, i64 0, i64 %addr
+              %func_addr = load i64, ptr %func_addr_ptr
+              %is_func = icmp ne i64 %func_addr, 0
+              br i1 %is_func, label %call, label %ret
+            call:
+              %func = inttoptr i64 %func_addr to ptr
+              %rslt = call i64 %func(i64 %addr)
+              ret i64 %rslt
+            ret:
+              ret i64 0
+            }}"
         );
         if external {
             (
                 size,
-                format!(
-                    "@.disp = external global [{size} x i64]
-@.func_disp = external global [{size} x i64] 
+                formatdoc!(
+                    "
+                    @.disp = external global [{size} x i64]
+                    @.func_disp = external global [{size} x i64] 
 
-{disp_func}"
+                    {find_func}"
                 ),
             )
         } else {
             (
                 size,
-                format!(
-                    "@.disp = global [{size} x i64] [{disp}]
-@.func_disp = global [{size} x i64] [{func_disp}]
+                formatdoc!(
+                    "
+                    @.disp = global [{size} x i64] [{disp}]
+                    @.func_disp = global [{size} x i64] [{func_disp}]
 
-{disp_func}",
+                    {find_func}",
                     disp = disp.join(", "),
-                    func_disp = func_disp.join(", ")
+                    func_disp = func_disp.join(", "),
                 ),
             )
         }
     }
 
     fn build_rounding_funcs() -> String {
+        let mut rounding_funcs = String::new();
         let variants = vec![
             ("float", "i32", "fptosi", "sitofp"),
             ("float", "i32", "fptoui", "uitofp"),
@@ -295,38 +216,14 @@ ret:
             ("double", "i64", "fptosi", "sitofp"),
             ("double", "i64", "fptoui", "uitofp"),
         ];
-        let mut rounding_funcs = String::new();
-        for (fp, int, fp_int, int_fp) in variants {
+        for (fp, int, fptoint, inttofp) in variants {
             rounding_funcs += &format!(
-                "; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-define dso_local {int} @.rounding_{fp}_{int}_{fp_int}_{int_fp}({fp} noundef %0, i1 noundef zeroext %1) {{
-  %3 = {fp_int} {fp} %0 to {int}
-  %4 = {int_fp} {int} %3 to {fp}
-  %5 = fcmp une {fp} %4, %0
-  %6 = fcmp ogt {fp} %0, 0.000000e+00
-  %7 = and i1 %6, %5
-  %8 = xor i1 %7, true
-  %9 = or i1 %8, %1
-  br i1 %9, label %12, label %10
-
-10:                                               ; preds = %2
-  %11 = add nsw {int} %3, 1
-  br label %18
-
-12:                                               ; preds = %2
-  %13 = fcmp olt {fp} %0, 0.000000e+00
-  %14 = and i1 %13, %5
-  %15 = and i1 %14, %1
-  %16 = sext i1 %15 to {int}
-  %17 = add nsw {int} %16, %3
-  br label %18
-
-18:                                               ; preds = %12, %10
-  %19 = phi {int} [ %11, %10 ], [ %17, %12 ]
-  ret {int} %19
-}}
-
-");
+                include_str!("templates/rounding.ll"),
+                fp = fp,
+                int = int,
+                fptoint = fptoint,
+                inttofp = inttofp
+            );
         }
         rounding_funcs.pop();
         rounding_funcs.pop();
@@ -334,7 +231,7 @@ define dso_local {int} @.rounding_{fp}_{int}_{fp_int}_{int_fp}({fp} noundef %0, 
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Func {
     pub section: String,
     pub symbol: String,
@@ -342,93 +239,63 @@ pub struct Func {
     pub inst_blocks: Vec<InstBlock>,
     pub is_opaque: bool,
     pub is_fallback: bool,
-    pub synced_regs: Vec<rv::Reg>,
-    pub synced_fregs: Vec<rv::FReg>,
     pub used_regs: Vec<rv::Reg>,
     pub used_fregs: Vec<rv::FReg>,
+    pub synced_regs: Vec<rv::Reg>,
+    pub synced_fregs: Vec<rv::FReg>,
 }
 
 impl Display for Func {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        let mut func = format!(
-            "; {addr} {sec} <{sym}>
-define dso_local i64 @.{addr}{ver}(i64 %entry) {{
-  %entry_ptr = alloca i64
-",
-            addr = self.address,
-            sec = self.section,
-            sym = self.symbol,
-            ver = if self.is_fallback { "_fallback" } else { "" },
-        );
-        if !self.used_regs.is_empty() {
-            let stack_regs = self
-                .used_regs
-                .iter()
-                .map(|reg| format!("  {reg} = alloca i64", reg = Value::StkReg(*reg)))
-                .collect::<Vec<_>>()
-                .join("\n");
-            func += &format!("\n{stack_regs}\n");
-        }
-        if !self.used_fregs.is_empty() {
-            let stack_fregs = self
-                .used_fregs
-                .iter()
-                .map(|freg| format!("  {freg} = alloca double", freg = Value::StkFReg(*freg)))
-                .collect::<Vec<_>>()
-                .join("\n");
-            func += &format!("\n{stack_fregs}\n");
-        }
+        let stack_regs = self
+            .used_regs
+            .iter()
+            .map(|reg| format!("  {reg} = alloca i64", reg = Value::StkReg(*reg)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let stack_fregs = self
+            .used_fregs
+            .iter()
+            .map(|freg| format!("  {freg} = alloca double", freg = Value::StkFReg(*freg)))
+            .collect::<Vec<_>>()
+            .join("\n");
         let stack_loading =
             Self::build_stack_loading(&self.synced_regs, &self.synced_fregs, "entry");
-        if !stack_loading.is_empty() {
-            func += &format!("\n  {stack_loading}\n");
-        }
-        if self.is_opaque {
-            let mut disp = String::from("switch i64 %addr, label %func_disp [");
-            for inst_block in &self.inst_blocks {
-                let addr = Value::Addr(inst_block.rv_inst.address());
-                disp += &format!("i64 {addr}, label %{addr} ");
-            }
-            disp.pop();
-            disp += "]";
+        let local_disp = if self.is_opaque {
+            let disp = self
+                .inst_blocks
+                .iter()
+                .map(|inst_block| {
+                    let addr = Value::Addr(inst_block.rv_inst.address());
+                    format!("i64 {addr}, label %{addr}")
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
             let stack_storing =
                 Self::build_stack_storing(&self.used_regs, &self.used_fregs, "disp_s");
             let stack_loading =
                 Self::build_stack_loading(&self.used_regs, &self.used_fregs, "disp_l");
-            let disp_func = if !stack_storing.is_empty() {
-                format!(
-                    "{stack_storing}
-  %ra = call i64 @.disp_func(i64 %addr)
-  {stack_loading}"
-                )
-            } else {
-                String::from("%ra = call i64 @.disp_func(i64 %addr)")
-            };
-            func += &format!(
+            formatdoc!(
                 "
-  store i64 %entry, ptr %entry_ptr
-  %local_jalr_ptr = alloca i1, i1 0
-  br label %disp
-
-disp:
-  %addr = load i64, ptr %entry_ptr
-  {disp}
-func_disp:
-  {disp_func}
-  %fail = icmp eq i64 %ra, 0
-  br i1 %fail, label %ret, label %cont
-cont:
-  store i64 %ra, ptr %entry_ptr
-  br label %disp
-"
-            );
+                  store i64 %entry, ptr %entry_ptr
+                  %local_jalr_ptr = alloca i1, i1 0
+                  br label %disp
+                disp:
+                  %addr = load i64, ptr %entry_ptr
+                  switch i64 %addr, label %func_disp [{disp}]
+                func_disp:
+                  {stack_storing}
+                  %ra = call i64 @.find_func(i64 %addr)
+                  {stack_loading}
+                  %fail = icmp eq i64 %ra, 0
+                  br i1 %fail, label %ret, label %cont
+                cont:
+                  store i64 %ra, ptr %entry_ptr
+                  br label %disp"
+            )
         } else {
             let addr = Value::Addr(self.inst_blocks[0].rv_inst.address());
-            func += &format!(
-                "
-  br label %{addr}
-"
-            );
+            format!("br label %{addr}")
         };
         let inst_blocks = self
             .inst_blocks
@@ -436,48 +303,46 @@ cont:
             .map(|block| block.to_string())
             .collect::<Vec<_>>()
             .join("\n");
-        func += &format!("\n{inst_blocks}\n");
         let last_rv_inst = &self.inst_blocks.last().unwrap().rv_inst;
         let next_pc = next_pc!(
             next_pc,
             last_rv_inst.address(),
             last_rv_inst.is_compressed()
         );
-        func += &format!(
-            "
-{next_pc}:
-  store i64 {next_pc}, ptr %entry_ptr
-  br label %ret
-"
-        );
         let stack_storing = Self::build_stack_storing(&self.used_regs, &self.used_fregs, "ret");
-        if !stack_storing.is_empty() {
-            func += &format!(
-                "
-ret:
-  {stack_storing}
-
-  %ret_addr = load i64, ptr %entry_ptr
-  ret i64 %ret_addr
-}}"
-            );
-        } else {
-            func += "
-ret:
-  %ret_addr = load i64, ptr %entry_ptr
-  ret i64 %ret_addr
-}";
-        }
-        write!(f, "{func}")
+        writedoc!(
+            f,
+            "
+            ; {addr} {sec} <{sym}>
+            define i64 @.{addr}{fallback}(i64 %entry) {{
+              %entry_ptr = alloca i64
+              {stack_regs}
+              {stack_fregs}
+              {stack_loading}
+              {local_disp}
+            {inst_blocks}
+            {next_pc}:
+              store i64 {next_pc}, ptr %entry_ptr
+              br label %ret
+            ret:
+              {stack_storing}
+              %ret_addr = load i64, ptr %entry_ptr
+              ret i64 %ret_addr
+            }}",
+            addr = self.address,
+            sec = self.section,
+            sym = self.symbol,
+            fallback = if self.is_fallback { "_fallback" } else { "" },
+        )
     }
 }
 
 impl Func {
     pub fn to_declaration(&self) -> String {
         format!(
-            "declare i64 @.{}{}(i64)",
-            self.address,
-            if self.is_fallback { "_fallback" } else { "" }
+            "declare i64 @.{addr}{fallback}(i64)",
+            addr = self.address,
+            fallback = if self.is_fallback { "_fallback" } else { "" },
         )
     }
 
@@ -548,7 +413,7 @@ impl Func {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct InstBlock {
     pub rv_inst: rv::Inst,
     pub insts: Vec<Inst>,
@@ -562,14 +427,7 @@ impl Display for InstBlock {
             .map(|inst| format!("  {inst}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let mut block = format!(
-            "; {rv_inst:?}
-{addr}:
-{insts}",
-            rv_inst = self.rv_inst,
-            addr = Value::Addr(self.rv_inst.address()),
-        );
-        if !matches!(
+        let cont = if matches!(
             self.insts.last(),
             Some(Inst::Ret { .. })
                 | Some(Inst::Br { .. })
@@ -577,6 +435,8 @@ impl Display for InstBlock {
                 | Some(Inst::Checkret { .. })
                 | Some(Inst::Dispfunc { .. })
         ) {
+            String::new()
+        } else {
             let br = Inst::Br {
                 addr: next_pc!(
                     next_pc,
@@ -584,9 +444,18 @@ impl Display for InstBlock {
                     self.rv_inst.is_compressed()
                 ),
             };
-            block += &format!("\n  {br}");
+            format!("  {br}")
         };
-        write!(f, "{block}")
+        writedoc!(
+            f,
+            "
+            ; {rv_inst:?}
+            {addr}:
+            {insts}
+            {cont}",
+            rv_inst = self.rv_inst,
+            addr = Value::Addr(self.rv_inst.address()),
+        )
     }
 }
 
@@ -904,11 +773,7 @@ pub enum Inst {
         used_regs: Vec<rv::Reg>,
         used_fregs: Vec<rv::FReg>,
     },
-    Memcpy {
-        addr: Value,
-        stk: bool,
-    },
-    Memmove {
+    Memcmp {
         addr: Value,
         stk: bool,
     },
@@ -916,7 +781,11 @@ pub enum Inst {
         addr: Value,
         stk: bool,
     },
-    Memcmp {
+    Memcpy {
+        addr: Value,
+        stk: bool,
+    },
+    Memmove {
         addr: Value,
         stk: bool,
     },
@@ -928,8 +797,9 @@ impl Display for Inst {
 
         match self {
             // Terminator Instructions
-            Ret { val } => write!(f, "store i64 {val}, ptr %entry_ptr
-  br label %ret"),
+            Ret { val } => writedoc!(f, "
+                store i64 {val}, ptr %entry_ptr
+                  br label %ret"),
             Br { addr } => write!(f, "br label %{addr}"),
             Conbr { cond, iftrue, iffalse } => write!(f, "br i1 {cond}, label %{iftrue}, label %{iffalse}"),
             Unreachable => write!(f, "unreachable"),
@@ -996,17 +866,13 @@ impl Display for Inst {
             Call { rslt, target, next_pc, used_regs, used_fregs } => {
                 let stack_storing = Func::build_stack_storing(used_regs, used_fregs, &format!("{}_s", &rslt.to_string()[1..]));
                 let stack_loading = Func::build_stack_loading(used_regs, used_fregs, &format!("{}_l", &rslt.to_string()[1..]));
-                let call = if !stack_storing.is_empty() {
-                    format!("{stack_storing}
-  {rslt} = call i64 @.{target}(i64 {target})
-  {stack_loading}")
-                } else {
-                    format!("{rslt} = call i64 @.{target}(i64 {target})")
-                };
-                write!(f, "{call}
-  store i64 {rslt}, ptr %entry_ptr
-  {rslt}_is_next_pc = icmp eq i64 {rslt}, {next_pc}
-  br i1 {rslt}_is_next_pc, label %{next_pc}, label %ret")
+                writedoc!(f, "
+                    {stack_storing}
+                      {rslt} = call i64 @.{target}(i64 {target})
+                      {stack_loading}
+                      store i64 {rslt}, ptr %entry_ptr
+                      {rslt}_is_next_pc = icmp eq i64 {rslt}, {next_pc}
+                      br i1 {rslt}_is_next_pc, label %{next_pc}, label %ret")
             }
 
             // Standard C/C++ Library Intrinsics
@@ -1019,75 +885,76 @@ impl Display for Inst {
             Getmemptr { rslt, addr } => write!(f, "{rslt} = call ptr @.get_mem_ptr(i64 {addr})"),
             Syscall { rslt, nr, arg1, arg2, arg3, arg4, arg5, arg6 } =>
                 write!(f, "{rslt} = call i64 (i64, i64, i64, i64, i64, i64, i64) @.sys_call(i64 {nr}, i64 {arg1}, i64 {arg2}, i64 {arg3}, i64 {arg4}, i64 {arg5}, i64 {arg6})"),
-            Checkret { addr , stk} => write!(f, "%{addr}_0 = load i64, ptr {ra}
-  store i64 %{addr}_0, ptr %entry_ptr
-  %{addr}_1 = load i1, ptr %local_jalr_ptr
-  %{addr}_2 = icmp eq i1 %{addr}_1, 1
-  br i1 %{addr}_2, label %{addr}_local, label %ret
-{addr}_local:
-  store i1 0, ptr %local_jalr_ptr
-  br label %disp",
+            Checkret { addr , stk} => writedoc!(f, "
+                %{addr}_0 = load i64, ptr {ra}
+                  store i64 %{addr}_0, ptr %entry_ptr
+                  %{addr}_1 = load i1, ptr %local_jalr_ptr
+                  %{addr}_2 = icmp eq i1 %{addr}_1, 1
+                  br i1 %{addr}_2, label %{addr}_local, label %ret
+                {addr}_local:
+                  store i1 0, ptr %local_jalr_ptr
+                  br label %disp",
                 ra = if *stk {Value::StkReg(rv::Reg::Ra)} else {Value::Reg(rv::Reg::Ra)},
             ),
             Dispfunc { addr, target , used_regs, used_fregs} => {
                 let stack_storing = Func::build_stack_storing(used_regs, used_fregs, &format!("{addr}_s"));
                 let stack_loading = Func::build_stack_loading(used_regs, used_fregs, &format!("{addr}_l"));
-                let call = if !stack_storing.is_empty() {
-                    format!("{stack_storing}
-  %{addr}_ra = call i64 @.disp_func(i64 {target})
-  {stack_loading}")
-                } else {
-                    format!("%{addr}_ra = call i64 @.disp_func(i64 {target})")
-                };
-                write!(f, "{call}
-  %{addr}_fail = icmp eq i64 %{addr}_ra, 0
-  br i1 %{addr}_fail, label %{addr}_disp, label %{addr}_cont
-{addr}_disp:
-  store i64 {target}, ptr %entry_ptr
-  store i1 1, ptr %local_jalr_ptr
-  br label %disp
-{addr}_cont:
-  store i64 %{addr}_ra, ptr %entry_ptr
-  br label %disp")
+                writedoc!(f, "
+                    {stack_storing}
+                      %{addr}_ra = call i64 @.find_func(i64 {target})
+                      {stack_loading}
+                      %{addr}_fail = icmp eq i64 %{addr}_ra, 0
+                      br i1 %{addr}_fail, label %{addr}_disp, label %{addr}_cont
+                    {addr}_disp:
+                      store i64 {target}, ptr %entry_ptr
+                      store i1 1, ptr %local_jalr_ptr
+                      br label %disp
+                    {addr}_cont:
+                      store i64 %{addr}_ra, ptr %entry_ptr
+                      br label %disp")
             }
-            Memcpy { addr ,stk} => write!(f, "%{addr}_0 = load i64, ptr {a0}
-  %{addr}_1 = call ptr @.get_mem_ptr(i64 %{addr}_0)
-  %{addr}_2 = load i64, ptr {a1}
-  %{addr}_3 = call ptr @.get_mem_ptr(i64 %{addr}_2)
-  %{addr}_4 = load i64, ptr {a2}
-  call void @llvm.memcpy.p0.p0.i64(ptr %{addr}_1, ptr %{addr}_3, i64 %{addr}_4, i1 false)",
+            Memcmp { addr ,stk} => writedoc!(f, "
+                %{addr}_0 = load i64, ptr {a0}
+                  %{addr}_1 = call ptr @.get_mem_ptr(i64 %{addr}_0)
+                  %{addr}_2 = load i64, ptr {a1}
+                  %{addr}_3 = call ptr @.get_mem_ptr(i64 %{addr}_2)
+                  %{addr}_4 = load i64, ptr {a2}
+                  %{addr}_5 = call i32 @memcmp(ptr %{addr}_1, ptr %{addr}_3, i64 %{addr}_4)
+                  %{addr}_6 = sext i32 %{addr}_5 to i64
+                  store i64 %{addr}_6, ptr {a0}",
                 a0 = if *stk {Value::StkReg(rv::Reg::A0)} else {Value::Reg(rv::Reg::A0)},
                 a1 = if *stk {Value::StkReg(rv::Reg::A1)} else {Value::Reg(rv::Reg::A1)},
                 a2 = if *stk {Value::StkReg(rv::Reg::A2)} else {Value::Reg(rv::Reg::A2)},
             ),
-            Memmove { addr ,stk} => write!(f, "%{addr}_0 = load i64, ptr {a0}
-  %{addr}_1 = call ptr @.get_mem_ptr(i64 %{addr}_0)
-  %{addr}_2 = load i64, ptr {a1}
-  %{addr}_3 = call ptr @.get_mem_ptr(i64 %{addr}_2)
-  %{addr}_4 = load i64, ptr {a2}
-  call void @llvm.memmove.p0.p0.i64(ptr %{addr}_1, ptr %{addr}_3, i64 %{addr}_4, i1 false)",
+            Memset { addr ,stk} => writedoc!(f, "
+                %{addr}_0 = load i64, ptr {a0}
+                  %{addr}_1 = call ptr @.get_mem_ptr(i64 %{addr}_0)
+                  %{addr}_2 = load i64, ptr {a1}
+                  %{addr}_3 = trunc i64 %{addr}_2 to i8
+                  %{addr}_4 = load i64, ptr {a2}
+                  call void @llvm.memset.p0.i64(ptr %{addr}_1, i8 %{addr}_3, i64 %{addr}_4, i1 false)",
                 a0 = if *stk {Value::StkReg(rv::Reg::A0)} else {Value::Reg(rv::Reg::A0)},
                 a1 = if *stk {Value::StkReg(rv::Reg::A1)} else {Value::Reg(rv::Reg::A1)},
                 a2 = if *stk {Value::StkReg(rv::Reg::A2)} else {Value::Reg(rv::Reg::A2)},
             ),
-            Memset { addr ,stk} => write!(f, "%{addr}_0 = load i64, ptr {a0}
-  %{addr}_1 = call ptr @.get_mem_ptr(i64 %{addr}_0)
-  %{addr}_2 = load i64, ptr {a1}
-  %{addr}_3 = trunc i64 %{addr}_2 to i8
-  %{addr}_4 = load i64, ptr {a2}
-  call void @llvm.memset.p0.i64(ptr %{addr}_1, i8 %{addr}_3, i64 %{addr}_4, i1 false)",
+            Memcpy { addr ,stk} => writedoc!(f, "
+                %{addr}_0 = load i64, ptr {a0}
+                  %{addr}_1 = call ptr @.get_mem_ptr(i64 %{addr}_0)
+                  %{addr}_2 = load i64, ptr {a1}
+                  %{addr}_3 = call ptr @.get_mem_ptr(i64 %{addr}_2)
+                  %{addr}_4 = load i64, ptr {a2}
+                  call void @llvm.memcpy.p0.p0.i64(ptr %{addr}_1, ptr %{addr}_3, i64 %{addr}_4, i1 false)",
                 a0 = if *stk {Value::StkReg(rv::Reg::A0)} else {Value::Reg(rv::Reg::A0)},
                 a1 = if *stk {Value::StkReg(rv::Reg::A1)} else {Value::Reg(rv::Reg::A1)},
                 a2 = if *stk {Value::StkReg(rv::Reg::A2)} else {Value::Reg(rv::Reg::A2)},
             ),
-            Memcmp { addr ,stk} => write!(f, "%{addr}_0 = load i64, ptr {a0}
-  %{addr}_1 = call ptr @.get_mem_ptr(i64 %{addr}_0)
-  %{addr}_2 = load i64, ptr {a1}
-  %{addr}_3 = call ptr @.get_mem_ptr(i64 %{addr}_2)
-  %{addr}_4 = load i64, ptr {a2}
-  %{addr}_5 = call i32 @memcmp(ptr %{addr}_1, ptr %{addr}_3, i64 %{addr}_4)
-  %{addr}_6 = sext i32 %{addr}_5 to i64
-  store i64 %{addr}_6, ptr {a0}",
+            Memmove { addr ,stk} => writedoc!(f, "
+                %{addr}_0 = load i64, ptr {a0}
+                  %{addr}_1 = call ptr @.get_mem_ptr(i64 %{addr}_0)
+                  %{addr}_2 = load i64, ptr {a1}
+                  %{addr}_3 = call ptr @.get_mem_ptr(i64 %{addr}_2)
+                  %{addr}_4 = load i64, ptr {a2}
+                  call void @llvm.memmove.p0.p0.i64(ptr %{addr}_1, ptr %{addr}_3, i64 %{addr}_4, i1 false)",
                 a0 = if *stk {Value::StkReg(rv::Reg::A0)} else {Value::Reg(rv::Reg::A0)},
                 a1 = if *stk {Value::StkReg(rv::Reg::A1)} else {Value::Reg(rv::Reg::A1)},
                 a2 = if *stk {Value::StkReg(rv::Reg::A2)} else {Value::Reg(rv::Reg::A2)},

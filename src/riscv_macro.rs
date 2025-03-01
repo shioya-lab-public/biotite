@@ -25,7 +25,7 @@ macro_rules! define_insts {
                         stringify!($inst),
                         Regex::new(&format!(
                             concat!(r"{}:\s+{}\s+", $regex, r"\s*{}"),
-                            INST_ADDR, INST_BYTE, $( $field!("regex"), )* SYM
+                            INST_ADDR, INST_BYTE $(, $field!("regex") )*, SYM
                         )).unwrap()
                     ),
                 )*
@@ -35,7 +35,7 @@ macro_rules! define_insts {
             RegexSet::new(REGEXES.iter().map(|(_, re)| re.as_str())).unwrap()
         });
 
-        #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+        #[derive(Debug, PartialEq, Eq, Clone, Hash)]
         pub enum Inst {
             $(
                 $inst {
@@ -53,7 +53,7 @@ macro_rules! define_insts {
             pub fn new(line: &str) -> Self {
                 use Inst::*;
 
-                let matches: Vec<_> = REGEX_SET.matches(line).into_iter().collect();
+                let matches = REGEX_SET.matches(line).iter().collect::<Vec<_>>();
                 if matches.is_empty() {
                     panic!("Unknown RISC-V instruction `{line}`");
                 }
@@ -209,14 +209,4 @@ macro_rules! rm {
     };
 }
 
-macro_rules! regex {
-    ( $re:literal ) => {{
-        use regex::Regex;
-        use std::sync::OnceLock;
-
-        static RE: OnceLock<Regex> = OnceLock::new();
-        RE.get_or_init(|| Regex::new($re).unwrap())
-    }};
-}
-
-pub(crate) use {addr, csr, define_insts, frd, frs1, frs2, frs3, imm, mo, rd, regex, rm, rs1, rs2};
+pub(crate) use {addr, csr, define_insts, frd, frs1, frs2, frs3, imm, mo, rd, rm, rs1, rs2};

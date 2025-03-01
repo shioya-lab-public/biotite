@@ -30,7 +30,7 @@ pub fn run(
     ll_prog.ir_funcs = ir_translator::run(srcs, ir_dir, &syms, &ll_prog)
         .into_iter()
         .collect();
-    ll_prog.sys_call = arch.as_ref().map(|arch| sys_call::run(arch));
+    ll_prog.sys_call = arch.map(|arch| sys_call::run(&arch)).unwrap_or_default();
     ll_prog.module_size = module_size;
     opt::run(
         ll_prog,

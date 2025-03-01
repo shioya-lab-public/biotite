@@ -95,8 +95,8 @@ pub const DEFS: &[(&str, i32, &str)] = &[
     (
         "renameat",
         38,
-        "  %rslt = call i64 (i64, ...) @syscall(i64 264, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4)"
-                ),
+        "  %rslt = call i64 (i64, ...) @syscall(i64 264, i64 %arg1, i64 %arg2, i64 %arg3, i64 %arg4)",
+    ),
     (
         "chdir",
         49,

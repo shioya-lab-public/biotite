@@ -8,10 +8,10 @@ pub struct Prog {
     pub data_blocks: Vec<DataBlock>,
     pub code_blocks: Vec<CodeBlock>,
     pub tdata: Option<(Addr, usize)>,
-    pub func_syms: HashSet<String>,
+    pub func_syms: HashSet<Addr>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct DataBlock {
     pub address: Addr,
     pub section: String,
@@ -19,7 +19,7 @@ pub struct DataBlock {
     pub bytes: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct CodeBlock {
     pub address: Addr,
     pub section: String,
@@ -221,7 +221,12 @@ define_insts! {
     Not(r"not\s+{},\s+{}", rd, rs1),
     Neg(r"neg\s+{},\s+{}", rd, rs1),
     Negw(r"negw\s+{},\s+{}", rd, rs1),
+    SextB(r"sext\.b\s+{},\s+{}", rd, rs1),
+    SextH(r"sext\.h\s+{},\s+{}", rd, rs1),
     SextW(r"sext\.w\s+{},\s+{}", rd, rs1),
+    ZextB(r"zext\.b\s+{},\s+{}", rd, rs1),
+    ZextH(r"zext\.h\s+{},\s+{}", rd, rs1),
+    ZextW(r"zext\.w\s+{},\s+{}", rd, rs1),
     Seqz(r"seqz\s+{},\s+{}", rd, rs1),
     Snez(r"snez\s+{},\s+{}", rd, rs1),
     Sltz(r"sltz\s+{},\s+{}", rd, rs1),
@@ -279,10 +284,14 @@ define_insts! {
     Frrm(r"frrm\s+{}", rd),
     Fsrm(r"fsrm\s+{},\s+{}", rd, rs1),
     PseudoFsrm(r"fsrm\s+{}", rs1),
+    Fsrmi(r"fsrmi\s+{},\s+{}", rd, imm),
+    PseudoFsrmi(r"fsrmi\s+{}", imm),
 
     Frflags(r"frflags\s+{}", rd),
     Fsflags(r"fsflags\s+{},\s+{}", rd, rs1),
     PseudoFsflags(r"fsflags\s+{}", rs1),
+    Fsflagsi(r"fsflagsi\s+{},\s+{}", rd, imm),
+    PseudoFsflagsi(r"fsflagsi\s+{}", imm),
 
     // Misc
     Unimp(r"unimp"),

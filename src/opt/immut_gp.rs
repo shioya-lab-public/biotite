@@ -118,7 +118,7 @@ pub fn run(mut prog: Prog) -> Prog {
 
 fn compute_gp(prog: &Prog) -> Option<i64> {
     for func in &prog.funcs {
-        for i in 0..(func.inst_blocks.len() - 1) {
+        for i in 0..func.inst_blocks.len() - 1 {
             if let (
                 rv::Inst::Auipc {
                     rd: rv::Reg::Gp,

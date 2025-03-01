@@ -1,25 +1,26 @@
 use crate::llvm_isa::Prog;
 
+const MMAP_MIN_ADDR: usize = 0x11000;
+
 pub fn run(arch: &str, prog: &Prog) -> (String, String) {
-    let (asm, ld) = match arch {
-        "x86_64" => (
-            include_str!("templates/image.s"),
-            include_str!("templates/x86_64.ld"),
-        ),
-        arch => panic!("Unknown architecture `{arch}`"),
-    };
-    let mmap_min_addr = 0x11000;
-    let bytes: Vec<_> = prog
+    let bytes = prog
         .image
         .iter()
-        .skip(mmap_min_addr)
+        .skip(MMAP_MIN_ADDR)
         .map(|b| b.to_string())
-        .collect();
-    let asm = asm
-        .replace("{bytes}", &bytes.join(","))
-        .replace("{size}", &bytes.len().to_string());
-    let ld = ld
-        .replace("{start}", &prog.image.len().to_string())
-        .replace("{mmap_min_addr}", &mmap_min_addr.to_string());
-    (asm, ld)
+        .collect::<Vec<_>>()
+        .join(",");
+    match arch {
+        "x86_64" => (
+            format!(
+                include_str!("templates/image.s"),
+                bytes = bytes,
+                size = bytes.len()
+            ),
+            include_str!("templates/x86_64.ld")
+                .replace("{start}", &prog.image.len().to_string())
+                .replace("{mmap_min_addr}", &MMAP_MIN_ADDR.to_string()),
+        ),
+        arch => panic!("Unknown architecture `{arch}`"),
+    }
 }

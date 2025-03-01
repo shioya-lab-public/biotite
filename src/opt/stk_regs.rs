@@ -55,10 +55,10 @@ pub fn run(mut prog: Prog) -> Prog {
                     branch = true;
                 }
                 if let rv::Inst::Jal { .. } | rv::Inst::PseudoJal { .. } = &block.rv_inst {
-                    if let Inst::Memcpy { .. }
-                    | Inst::Memmove { .. }
+                    if let Inst::Memcmp { .. }
                     | Inst::Memset { .. }
-                    | Inst::Memcmp { .. } = &block.insts[1]
+                    | Inst::Memcpy { .. }
+                    | Inst::Memmove { .. } = &block.insts[1]
                     {
                         used_regs.extend(vec![rv::Reg::A0, rv::Reg::A1, rv::Reg::A2]);
                     }
@@ -96,10 +96,10 @@ pub fn run(mut prog: Prog) -> Prog {
                             }
                         }
                         Inst::Checkret { stk, .. }
-                        | Inst::Memcpy { stk, .. }
-                        | Inst::Memmove { stk, .. }
+                        | Inst::Memcmp { stk, .. }
                         | Inst::Memset { stk, .. }
-                        | Inst::Memcmp { stk, .. } => *stk = true,
+                        | Inst::Memcpy { stk, .. }
+                        | Inst::Memmove { stk, .. } => *stk = true,
                         _ => continue,
                     }
                 }
@@ -396,7 +396,12 @@ fn get_regs(inst: &rv::Inst) -> (Vec<rv::Reg>, Vec<rv::FReg>, Vec<rv::Reg>, Vec<
         Not { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
         Neg { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
         Negw { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
+        SextB { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
+        SextH { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
         SextW { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
+        ZextB { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
+        ZextH { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
+        ZextW { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
         Seqz { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
         Snez { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
         Sltz { rd, rs1, .. } => (vec![rd], vec![], vec![rs1], vec![]),
@@ -444,10 +449,14 @@ fn get_regs(inst: &rv::Inst) -> (Vec<rv::Reg>, Vec<rv::FReg>, Vec<rv::Reg>, Vec<
         Frrm { rd, .. } => (vec![rd], vec![], vec![], vec![]),
         Fsrm { rd, .. } => (vec![rd], vec![], vec![], vec![]),
         PseudoFsrm { .. } => (vec![], vec![], vec![], vec![]),
+        Fsrmi { rd, .. } => (vec![rd], vec![], vec![], vec![]),
+        PseudoFsrmi { .. } => (vec![], vec![], vec![], vec![]),
 
         Frflags { rd, .. } => (vec![rd], vec![], vec![], vec![]),
         Fsflags { rd, .. } => (vec![rd], vec![], vec![], vec![]),
         PseudoFsflags { .. } => (vec![], vec![], vec![], vec![]),
+        Fsflagsi { rd, .. } => (vec![rd], vec![], vec![], vec![]),
+        PseudoFsflagsi { .. } => (vec![], vec![], vec![], vec![]),
 
         // Misc
         Unimp { .. } => (vec![], vec![], vec![], vec![]),

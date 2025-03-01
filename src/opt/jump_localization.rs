@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use std::collections::HashSet;
 
 pub fn run(mut prog: Prog) -> Prog {
-    let funcs: HashSet<_> = prog
+    let funcs = prog
         .funcs
         .iter()
         .map(|func| {
@@ -14,8 +14,8 @@ pub fn run(mut prog: Prog) -> Prog {
             };
             addr
         })
-        .collect();
-    let fallback_funcs: Vec<_> = prog
+        .collect::<HashSet<_>>();
+    let fallback_funcs = prog
         .funcs
         .par_iter_mut()
         .filter_map(|func| {
@@ -38,14 +38,14 @@ pub fn run(mut prog: Prog) -> Prog {
                 None
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
     prog.funcs.extend(fallback_funcs);
     prog.funcs.par_iter_mut().for_each(|func| {
-        let insts: HashSet<_> = func
+        let insts = func
             .inst_blocks
             .iter()
             .map(|block| block.rv_inst.address())
-            .collect();
+            .collect::<HashSet<_>>();
         for block in &mut func.inst_blocks {
             match block.rv_inst {
                 rv::Inst::J {
@@ -60,7 +60,7 @@ pub fn run(mut prog: Prog) -> Prog {
                         next_pc: next_pc!(next_pc, address, is_compressed),
                         used_regs: Vec::new(),
                         used_fregs: Vec::new(),
-                    }]
+                    }];
                 }
                 rv::Inst::Jal {
                     address,
@@ -74,13 +74,14 @@ pub fn run(mut prog: Prog) -> Prog {
                     addr,
                     ..
                 } if matches!(block.insts[1], Inst::Ret { .. }) => {
+                    // We need the test because some `jal` instructions may have been optimized in the `native_mem_utils` pass.
                     block.insts[1] = Inst::Call {
                         rslt: Value::Temp(address, 0),
                         target: Value::Addr(addr),
                         next_pc: next_pc!(next_pc, address, is_compressed),
                         used_regs: Vec::new(),
                         used_fregs: Vec::new(),
-                    }
+                    };
                 }
                 rv::Inst::Jalr { address, .. } | rv::Inst::OffsetJalr { address, .. } => {
                     block.insts[3] = Inst::Dispfunc {
@@ -88,7 +89,7 @@ pub fn run(mut prog: Prog) -> Prog {
                         target: Value::Temp(address, 1),
                         used_regs: Vec::new(),
                         used_fregs: Vec::new(),
-                    }
+                    };
                 }
                 rv::Inst::PseudoJalr { address, .. } => {
                     block.insts[2] = Inst::Dispfunc {
@@ -96,7 +97,7 @@ pub fn run(mut prog: Prog) -> Prog {
                         target: Value::Temp(address, 0),
                         used_regs: Vec::new(),
                         used_fregs: Vec::new(),
-                    }
+                    };
                 }
                 rv::Inst::Jr { address, .. } => {
                     block.insts.splice(
@@ -128,7 +129,7 @@ pub fn run(mut prog: Prog) -> Prog {
                     block.insts = vec![Inst::Checkret {
                         addr: Value::Addr(address),
                         stk: false,
-                    }]
+                    }];
                 }
                 _ => continue,
             }

@@ -5,33 +5,37 @@ use rayon::prelude::*;
 use std::collections::HashSet;
 
 pub fn run(rv_prog: rv::Prog) -> Prog {
-    let (image, sp, phdr) = build_image(&rv_prog.data_blocks);
+    let (image, sp, phdr) = build_image(rv_prog.data_blocks);
     Prog {
         entry: Value::Addr(rv_prog.entry),
         image,
         sp,
-        tdata: rv_prog.tdata.map(|(addr, sz)| (Value::Addr(addr), sz)),
         phdr,
-        mem: None,
+        tdata: rv_prog
+            .tdata
+            .map_or((Value::Addr(rv::Addr(0)), 0), |(addr, sz)| {
+                (Value::Addr(addr), sz)
+            }),
         funcs: rv_prog
             .code_blocks
             .into_par_iter()
             .map(trans_code_block)
             .collect(),
         ir_funcs: HashSet::new(),
-        func_syms: rv_prog.func_syms,
-        native_mem_utils: false,
-        sys_call: None,
+        func_syms: rv_prog.func_syms.into_iter().map(Value::Addr).collect(),
+        native_mem_utils: "",
+        sys_call: String::new(),
+        mem: None,
         module_size: 0,
     }
 }
 
-fn build_image(data_blocks: &Vec<rv::DataBlock>) -> (Vec<u8>, Value, Value) {
+fn build_image(data_blocks: Vec<rv::DataBlock>) -> (Vec<u8>, Value, Value) {
     let mut image = Vec::new();
     for data_block in data_blocks {
         let rv::Addr(start) = data_block.address;
         image.resize(start as usize, 0);
-        image.extend(&data_block.bytes);
+        image.extend(data_block.bytes);
     }
     let stk_len = 8 * 1024 * 1024;
     let sp = Value::Addr(rv::Addr(image.len() as u64 + stk_len - 4096));
@@ -48,10 +52,10 @@ fn trans_code_block(code_block: rv::CodeBlock) -> Func {
         inst_blocks: code_block.insts.into_iter().map(trans_inst).collect(),
         is_opaque: true,
         is_fallback: false,
-        synced_regs: Vec::new(),
-        synced_fregs: Vec::new(),
         used_regs: Vec::new(),
         used_fregs: Vec::new(),
+        synced_regs: Vec::new(),
+        synced_fregs: Vec::new(),
     }
 }
 
@@ -1154,10 +1158,40 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Sext { rslt: _3, ty1: i_32, val: _2, ty2: i_64 },
             Store { ty: i_64, val: _3, ptr: rd },
         }
+        SextB { rd, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_8 },
+            Sext { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        SextH { rd, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_16 },
+            Sext { rslt: _2, ty1: i_16, val: _1, ty2: i_64 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
         SextW { rd, rs1 } => {
             Load { rslt: _0, ty: i_64, ptr: rs1 },
             Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
             Sext { rslt: _2, ty1: i_32, val: _1, ty2: i_64 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        ZextB { rd, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_8 },
+            Zext { rslt: _2, ty1: i_8, val: _1, ty2: i_64 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        ZextH { rd, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_16 },
+            Zext { rslt: _2, ty1: i_16, val: _1, ty2: i_64 },
+            Store { ty: i_64, val: _2, ptr: rd },
+        }
+        ZextW { rd, rs1 } => {
+            Load { rslt: _0, ty: i_64, ptr: rs1 },
+            Trunc { rslt: _1, ty1: i_64, val: _0, ty2: i_32 },
+            Zext { rslt: _2, ty1: i_32, val: _1, ty2: i_64 },
             Store { ty: i_64, val: _2, ptr: rd },
         }
         Seqz { rd, rs1 } => {
@@ -1312,6 +1346,10 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         PseudoFsrm { rs1 } => {}
+        Fsrmi { rd, imm } => {
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
+        }
+        PseudoFsrmi { imm } => {}
 
         Frflags { rd } => {
             Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
@@ -1320,6 +1358,10 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
         }
         PseudoFsflags { rs1 } => {}
+        Fsflagsi { rd, imm } => {
+            Store { ty: i_64, val: { Value::Imm(rv::Imm(0)) }, ptr: rd },
+        }
+        PseudoFsflagsi { imm } => {}
 
         // Misc
         Unimp {} => {}
@@ -1340,11 +1382,11 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
                 rslt,
                 ty,
                 ptr: Value::Reg(rv::Reg::Zero),
-            } => Some(Inst::Add {
+            } => Some(Inst::Bitcast {
                 rslt,
-                ty,
-                op1: Value::Imm(rv::Imm(0)),
-                op2: Value::Imm(rv::Imm(0)),
+                ty1: ty,
+                val: Value::Imm(rv::Imm(0)),
+                ty2: ty,
             }),
             Inst::Store {
                 ptr: Value::Reg(rv::Reg::Zero),

@@ -1,20 +1,33 @@
 use crate::riscv_isa::*;
-use crate::riscv_macro::regex;
 use rayon::prelude::*;
+use regex::Regex;
 use std::collections::HashMap;
 use std::mem;
+use std::sync::LazyLock;
+
+static SECTION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(\S+)\s+([[:xdigit:]]+) ([[:xdigit:]]+)").unwrap());
+static SYMBOL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"([[:xdigit:]]+)\s+\S+\s+(\S+\s+)?\S+\s+([[:xdigit:]]+)\s+(\.hidden\s+)?(\S+)?")
+        .unwrap()
+});
+static INST_SECTION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"Disassembly of section (\S+):").unwrap());
+static INST_SYMBOL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"([[:xdigit:]]+) <(\S+)>:").unwrap());
+static BYTE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r":\s+(([[:xdigit:]][[:xdigit:]] )+)").unwrap());
 
 pub fn run(mut src: String) -> (Prog, HashMap<String, Vec<Addr>>) {
-    // Make sure the last block is properly processed
+    // Make sure the last block is properly processed.
     src.push('\n');
 
     let mut lines = src.lines();
     let entry = parse_entry(&mut lines);
     let sections = parse_sections(&mut lines);
-    let mut symbols = parse_symbols(&mut lines);
-    let (mut data_blocks, mut code_blocks) = parse_disassembly(&mut lines);
-    expand_data_blocks(&mut data_blocks, &sections, &symbols);
-    split_load_gp(&mut code_blocks, &mut symbols);
+    let symbols = parse_symbols(&mut lines);
+    let (mut data_blocks, code_blocks) = parse_disassembly(&mut lines);
+    fill_data_blocks(&mut data_blocks, &sections, &symbols);
     let tdata = data_blocks
         .iter()
         .find(|block| block.section == ".tdata")
@@ -27,11 +40,11 @@ pub fn run(mut src: String) -> (Prog, HashMap<String, Vec<Addr>>) {
     let func_syms = symbols
         .clone()
         .into_iter()
-        .filter_map(|((name, _), (_, is_func))| if is_func { Some(name) } else { None })
+        .filter_map(|((_, addr), (_, is_func))| if is_func { Some(addr) } else { None })
         .collect();
-    let mut syms: HashMap<_, Vec<Addr>> = HashMap::new();
+    let mut syms = HashMap::new();
     for ((name, addr), (_, _)) in symbols {
-        syms.entry(name).or_default().push(addr);
+        syms.entry(name).or_insert_with(Vec::new).push(addr);
     }
     (
         Prog {
@@ -58,11 +71,9 @@ fn parse_entry<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Addr {
 fn parse_sections<'a>(lines: &mut impl Iterator<Item = &'a str>) -> HashMap<(String, Addr), usize> {
     let mut lines = lines.skip(4);
     let mut sections = HashMap::new();
-    while let Some(caps) = regex!(r"(\S+)\s+([[:xdigit:]]+) ([[:xdigit:]]+)").captures(
-        lines
-            .next()
-            .expect("Section headers should end with an empty line"),
-    ) {
+    while let Some(caps) =
+        SECTION.captures(lines.next().expect("EOF while parsing section headers"))
+    {
         let section = (String::from(&caps[1]), Addr::new(&caps[3]));
         let size = usize::from_str_radix(&caps[2], 16).unwrap();
         sections.insert(section, size);
@@ -76,12 +87,7 @@ fn parse_symbols<'a>(
     let mut lines = lines.skip(1);
     let mut symbols = HashMap::new();
     while let Some(caps) =
-        regex!(r"([[:xdigit:]]+)\s+\S+\s+(\S+\s+)?\S+\s+([[:xdigit:]]+)\s+(\.hidden\s+)?(\S+)?")
-            .captures(
-                lines
-                    .next()
-                    .expect("The symbol table should end with an empty line"),
-            )
+        SYMBOL.captures(lines.next().expect("EOF while parsing the symbol table"))
     {
         let addr = Addr::new(&caps[1]);
         let is_func = caps
@@ -108,24 +114,25 @@ fn parse_disassembly<'a>(
     let mut address = Addr(0);
     let mut insts = Vec::new();
     for line in lines {
-        if let Some(caps) = regex!(r"Disassembly of section (\S+):").captures(line) {
+        if let Some(caps) = INST_SECTION.captures(line) {
             section = caps[1].to_string();
-        } else if let Some(caps) = regex!(r"([[:xdigit:]]+) <(\S+)>:").captures(line) {
+        } else if let Some(caps) = INST_SYMBOL.captures(line) {
             address = Addr::new(&caps[1]);
             symbol = caps[2].to_string();
         } else if line.is_empty() {
             let block = (
-                address,
+                mem::replace(&mut address, Addr(0)),
                 section.clone(),
                 mem::take(&mut symbol),
                 mem::take(&mut insts),
             );
-            if block.3.is_empty() {
-                // Skip the empty line after the section name line
+            if block.2.is_empty() {
+                // This is caused by the empty line after the section name line
                 continue;
             } else if block.1 == ".text" {
                 code_blocks.push(block);
             } else if block.0 != Addr(0) {
+                // Keep only meaningful data blocks.
                 data_blocks.push(block);
             }
         } else {
@@ -144,13 +151,11 @@ fn parse_data_block(
     let mut bytes = Vec::new();
     if insts[0] != "..." {
         for inst in insts {
-            let caps = regex!(r":\s+(([[:xdigit:]][[:xdigit:]] )+)")
-                .captures(inst)
-                .unwrap();
+            let caps = BYTE.captures(inst).unwrap();
             bytes.extend(
                 caps[1]
-                    .split(' ')
-                    .filter_map(|s| u8::from_str_radix(s, 16).ok()),
+                    .split_whitespace()
+                    .map(|s| u8::from_str_radix(s, 16).unwrap()),
             );
         }
     }
@@ -173,8 +178,8 @@ fn parse_code_block(
     }
 }
 
-// Expand symbols whose disassembly is simply `...` to their correct lengths
-fn expand_data_blocks(
+// Fill symbols whose disassembly is simply `...` with 0s.
+fn fill_data_blocks(
     data_blocks: &mut Vec<DataBlock>,
     sections: &HashMap<(String, Addr), usize>,
     symbols: &HashMap<(String, Addr), (usize, bool)>,
@@ -189,36 +194,11 @@ fn expand_data_blocks(
                     let section = data_block.section.clone();
                     match sections.get(&(section, address)) {
                         Some(usize) => *usize,
-                        None => unreachable!(),
+                        None => panic!("Unknown symbol at {address}"),
                     }
                 }
             };
             data_block.bytes = vec![0; size];
-        }
-    }
-}
-
-// Recover the `load_gp` function if it is merged into the `_start` function
-fn split_load_gp(
-    code_blocks: &mut Vec<CodeBlock>,
-    symbols: &mut HashMap<(String, Addr), (usize, bool)>,
-) {
-    if let Some(start_pos) = code_blocks
-        .iter()
-        .position(|block| block.symbol == "_start")
-    {
-        let start = &mut code_blocks[start_pos];
-        if let Inst::Jal { addr, .. } | Inst::PseudoJal { addr, .. } = start.insts[0] {
-            if let Some(pos) = start.insts.iter().position(|inst| inst.address() == addr) {
-                let load_gp = CodeBlock {
-                    section: String::from(".text"),
-                    symbol: String::from("load_gp"),
-                    address: addr,
-                    insts: start.insts.split_off(pos),
-                };
-                code_blocks.insert(start_pos + 1, load_gp);
-                symbols.insert((String::from("load_gp"), addr), (0, true));
-            }
         }
     }
 }

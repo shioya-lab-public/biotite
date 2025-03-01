@@ -1,4 +1,4 @@
-mod block_cloning;
+mod block_duplication;
 mod cached_base_ptrs;
 mod immut_gp;
 mod jump_localization;
@@ -23,7 +23,10 @@ macro_rules! opts {
             } else if disable_all_opts {
                 Vec::new()
             } else if !enable_opts.is_empty() {
-                enable_opts.iter().map(|opt| opt.as_str()).collect()
+                [$( stringify!($opt) ),*]
+                    .into_iter()
+                    .filter(|opt| enable_opts.contains(&opt.to_string()))
+                    .collect()
             } else {
                 [$( stringify!($opt) ),*]
                     .into_iter()
@@ -46,7 +49,7 @@ macro_rules! opts {
 opts! {
     immut_gp,
     native_mem_utils,
-    block_cloning,
+    block_duplication,
     native_branches,
     native_direct_jumps,
     jump_localization,

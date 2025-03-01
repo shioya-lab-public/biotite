@@ -35,11 +35,11 @@ struct Args {
 fn main() {
     let args = Args::parse();
     let rv_src = fs::read_to_string(&args.input).expect("Unable to read the dump file");
-    let dir = args
+    let out_dir = args
         .output
         .unwrap_or(args.input.with_extension("translated"));
-    if !dir.exists() {
-        fs::create_dir(&dir).expect("Unable to create the output directory");
+    if !out_dir.exists() {
+        fs::create_dir(&out_dir).expect("Unable to create the output directory");
     }
     let ll_prog = biotite::run(
         rv_src,
@@ -49,17 +49,17 @@ fn main() {
         args.enable_opts,
         args.disable_opts,
         args.srcs,
-        dir.join("ir"),
+        out_dir.join("ir"),
         args.module_size,
     );
     let (mk, main, mods) = ll_prog.to_modules();
-    fs::write(dir.join("Makefile"), mk).expect("Unable to write output files");
-    fs::write(dir.join("main.ll"), main).expect("Unable to write output files");
+    fs::write(out_dir.join("Makefile"), mk).expect("Unable to write output files");
+    fs::write(out_dir.join("main.ll"), main).expect("Unable to write output files");
     for (i, md) in mods.into_iter().enumerate() {
-        fs::write(dir.join(format!("{i}.ll")), md).expect("Unable to write output files");
+        fs::write(out_dir.join(format!("{i}.ll")), md).expect("Unable to write output files");
     }
     if let Some((asm, ld)) = ll_prog.mem {
-        fs::write(dir.join("image.s"), asm).expect("Unable to write output files");
-        fs::write(dir.join("mapping.ld"), ld).expect("Unable to write output files");
+        fs::write(out_dir.join("image.s"), asm).expect("Unable to write output files");
+        fs::write(out_dir.join("mapping.ld"), ld).expect("Unable to write output files");
     }
 }
