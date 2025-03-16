@@ -1,3 +1,5 @@
+//! RISC-V-related macros.
+
 macro_rules! define_insts {
     ( $( $inst:ident ( $regex:literal $(, $field:ident )* ), )* ) => {
         use std::sync::LazyLock;

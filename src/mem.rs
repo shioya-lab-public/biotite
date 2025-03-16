@@ -1,3 +1,5 @@
+//! A transformation pass that implements the image mapping optimization.
+
 use crate::llvm_isa::Prog;
 
 const MMAP_MIN_ADDR: usize = 0x11000;

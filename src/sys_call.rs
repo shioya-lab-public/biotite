@@ -1,3 +1,5 @@
+//! A transformation pass that implements system calls.
+
 mod x86_64;
 
 use indoc::formatdoc;

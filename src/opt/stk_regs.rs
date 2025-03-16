@@ -1,3 +1,6 @@
+//! An optimization pass that lowers global simulated RISC-V registers to stack variables,
+//! which can be further optimized to plain SSA values by LLVM.
+
 use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
 use rayon::prelude::*;
@@ -14,6 +17,8 @@ pub fn run(mut prog: Prog) -> Prog {
             let mut overwritten_fregs = HashSet::new();
             let mut branch = false;
             for block in &func.inst_blocks {
+                // Find all used regs.
+                // Notice only for the entry basic block we try to find registers whose values are overwritten before read.
                 let (dest_regs, dest_fregs, src_regs, src_fregs) = get_regs(&block.rv_inst);
                 used_regs.extend(src_regs);
                 used_fregs.extend(src_fregs);
@@ -31,6 +36,8 @@ pub fn run(mut prog: Prog) -> Prog {
                 }
                 used_regs.extend(dest_regs);
                 used_fregs.extend(dest_fregs);
+
+                // Set `branch` to `true` when we leave the entry basic block.
                 if let rv::Inst::Jal { .. }
                 | rv::Inst::Jalr { .. }
                 | rv::Inst::Beq { .. }
@@ -54,6 +61,8 @@ pub fn run(mut prog: Prog) -> Prog {
                 {
                     branch = true;
                 }
+
+                // Add registers used by native memory functions introduced in the `native_mem_utils` pass.
                 if let rv::Inst::Jal { .. } | rv::Inst::PseudoJal { .. } = &block.rv_inst {
                     if let Inst::Memcmp { .. }
                     | Inst::Memset { .. }
@@ -64,6 +73,9 @@ pub fn run(mut prog: Prog) -> Prog {
                     }
                 }
             }
+
+            // `synced_(f)regs` are used for loading global simulated RISC-V registers at the beginning of each function.
+            // `used_(f)regs` are used in all other synchronization situations.
             func.synced_regs = (&used_regs - &overwritten_regs).into_iter().collect();
             func.synced_fregs = (&used_fregs - &overwritten_fregs).into_iter().collect();
             func.used_regs = used_regs.into_iter().collect();
@@ -72,6 +84,9 @@ pub fn run(mut prog: Prog) -> Prog {
             func.synced_fregs.sort_unstable();
             func.used_regs.sort_unstable();
             func.used_fregs.sort_unstable();
+
+            // Propagate the register usage information to instructions,
+            // because when serializing instructions we have no access to function-level information.
             for block in &mut func.inst_blocks {
                 for inst in &mut block.insts {
                     match inst {
@@ -105,6 +120,7 @@ pub fn run(mut prog: Prog) -> Prog {
                 }
             }
         });
+
     prog
 }
 

@@ -1,6 +1,8 @@
+//! RISC-V-related definitions.
+
 use crate::riscv_macro::*;
 use std::collections::HashSet;
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Prog {
@@ -378,7 +380,7 @@ impl Reg {
 }
 
 impl Display for Reg {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         use Reg::*;
 
         match self {
@@ -497,7 +499,7 @@ impl FReg {
 }
 
 impl Display for FReg {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         use FReg::*;
 
         match self {
@@ -549,7 +551,7 @@ impl Imm {
 }
 
 impl Display for Imm {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let Imm(imm) = self;
         write!(f, "{imm}")
     }
@@ -565,7 +567,7 @@ impl Addr {
 }
 
 impl Display for Addr {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let Addr(addr) = self;
         write!(f, "0x{addr:x}")
     }

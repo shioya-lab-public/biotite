@@ -1,3 +1,5 @@
+//! The runner for optmization passes.
+
 mod block_duplication;
 mod cached_base_ptrs;
 mod immut_gp;

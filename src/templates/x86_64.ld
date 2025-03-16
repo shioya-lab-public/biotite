@@ -1,5 +1,5 @@
 /* Script for -z combreloc -z separate-code */
-/* Copyright (C) 2014-2023 Free Software Foundation, Inc.
+/* Copyright (C) 2014-2024 Free Software Foundation, Inc.
    Copying and distribution of this script, with or without modification,
    are permitted in any medium without royalty provided the copyright
    notice and this notice are preserved.  */
@@ -11,6 +11,8 @@ SEARCH_DIR("=/usr/local/lib/x86_64-linux-gnu"); SEARCH_DIR("=/lib/x86_64-linux-g
 SECTIONS
 {
   PROVIDE (__executable_start = {start}); . = {start} + SIZEOF_HEADERS;
+  /* PROVIDE (__executable_start = SEGMENT_START("text-segment", 0x400000)); . = SEGMENT_START("text-segment", 0x400000) + SIZEOF_HEADERS; */
+
   .interp         : { *(.interp) }
   .note.gnu.build-id  : { *(.note.gnu.build-id) }
   .hash           : { *(.hash) }
@@ -163,7 +165,7 @@ SECTIONS
   }
   .data1          : { *(.data1) }
   _edata = .; PROVIDE (edata = .);
-  . = .;
+  . = ALIGN(ALIGNOF(NEXT_SECTION));
   __bss_start = .;
   .bss            :
   {
@@ -204,7 +206,7 @@ SECTIONS
   .stab.exclstr  0 : { *(.stab.exclstr) }
   .stab.index    0 : { *(.stab.index) }
   .stab.indexstr 0 : { *(.stab.indexstr) }
-  .comment       0 : { *(.comment) }
+  .comment 0 (INFO) : { *(.comment); LINKER_VERSION; }
   .gnu.build.attributes : { *(.gnu.build.attributes .gnu.build.attributes.*) }
   /* DWARF debug sections.
      Symbols in the DWARF debugging sections are relative to the beginning

@@ -1,3 +1,4 @@
+//! An optimization pass that uses the same loaded base address for consecutive memory operations.
 use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
 use rayon::prelude::*;
@@ -5,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 macro_rules! use_cache {
     ( $rs1:ident, $imm:ident, $block:ident, $cache:ident ) => {
+        // The global pointer will be optimized in the `immut_gp` pass.
         if $rs1 != &rv::Reg::Gp {
             let Inst::Getmemptr { rslt, .. } = $block.insts[2] else {
                 unreachable!();
@@ -29,6 +31,7 @@ pub fn run(mut prog: Prog) -> Prog {
         .par_iter_mut()
         .filter(|f| !f.is_opaque)
         .for_each(|func| {
+            // Find all basic blocks in the current transparent function.
             let mut targets = HashSet::new();
             for block in &func.inst_blocks {
                 match &block.rv_inst {
@@ -48,11 +51,15 @@ pub fn run(mut prog: Prog) -> Prog {
                     _ => continue,
                 };
             }
+
+            // Reuse the loaded base address whenever possible.
             let mut cache = HashMap::new();
             for block in &mut func.inst_blocks {
+                // Clear the base address cache when we enter a new basic block.
                 if targets.contains(&block.rv_inst.address()) {
                     cache.clear();
                 }
+
                 match &block.rv_inst {
                     rv::Inst::Lb {
                         rd,
@@ -172,7 +179,6 @@ pub fn run(mut prog: Prog) -> Prog {
                     | rv::Inst::Sllw {rd,..}
                     | rv::Inst::Srlw {rd,..}
                     | rv::Inst::Sraw {rd,..}
-
                     // RV32/RV64 Zicsr
                     | rv::Inst::Csrrw {rd,..}
                     | rv::Inst::Csrrs {rd,..}
@@ -180,7 +186,6 @@ pub fn run(mut prog: Prog) -> Prog {
                     | rv::Inst::Csrrwi {rd,..}
                     | rv::Inst::Csrrsi {rd,..}
                     | rv::Inst::Csrrci {rd,..}
-
                     // RV32M
                     | rv::Inst::Mul {rd,..}
                     | rv::Inst::Mulh {rd,..}
@@ -190,14 +195,12 @@ pub fn run(mut prog: Prog) -> Prog {
                     | rv::Inst::Divu {rd,..}
                     | rv::Inst::Rem {rd,..}
                     | rv::Inst::Remu {rd,..}
-
                     // RV64M (in addition to RV32M)
                     | rv::Inst::Mulw {rd,..}
                     | rv::Inst::Divw {rd,..}
                     | rv::Inst::Divuw {rd,..}
                     | rv::Inst::Remw {rd,..}
                     | rv::Inst::Remuw {rd,..}
-
                     // RV32A
                     | rv::Inst::LrW {rd,..}
                     | rv::Inst::ScW {rd,..}
@@ -210,7 +213,6 @@ pub fn run(mut prog: Prog) -> Prog {
                     | rv::Inst::AmomaxW {rd,..}
                     | rv::Inst::AmominuW {rd,..}
                     | rv::Inst::AmomaxuW {rd,..}
-
                     // RV64A (in addition to RV32A)
                     | rv::Inst::LrD {rd,..}
                     | rv::Inst::ScD {rd,..}
@@ -223,7 +225,6 @@ pub fn run(mut prog: Prog) -> Prog {
                     | rv::Inst::AmomaxD {rd,..}
                     | rv::Inst::AmominuD {rd,..}
                     | rv::Inst::AmomaxuD {rd,..}
-
                     // RV32F/RV64F/RV32D/RV64D
                     | rv::Inst::FcvtWS {rd,..}
                     | rv::Inst::FcvtWuS {rd,..}
@@ -243,7 +244,6 @@ pub fn run(mut prog: Prog) -> Prog {
                     | rv::Inst::FcvtLD {rd,..}
                     | rv::Inst::FcvtLuD {rd,..}
                     | rv::Inst::FmvXD {rd,..}
-
                     // Pseudoinstructions
                     | rv::Inst::Li {rd,..}
                     | rv::Inst::Mv {rd,..}
@@ -322,5 +322,6 @@ pub fn run(mut prog: Prog) -> Prog {
                 }
             }
         });
+
     prog
 }

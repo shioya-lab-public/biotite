@@ -1,8 +1,12 @@
+//! A transformation pass that translates RISC-V instructions to LLVM IR.
+
 use crate::llvm_isa::*;
 use crate::llvm_macro::*;
 use crate::riscv_isa as rv;
 use rayon::prelude::*;
 use std::collections::HashSet;
+
+const STK_LEN: u64 = 8 * 1024 * 1024;
 
 pub fn run(rv_prog: rv::Prog) -> Prog {
     let (image, sp, phdr) = build_image(rv_prog.data_blocks);
@@ -13,8 +17,8 @@ pub fn run(rv_prog: rv::Prog) -> Prog {
         phdr,
         tdata: rv_prog
             .tdata
-            .map_or((Value::Addr(rv::Addr(0)), 0), |(addr, sz)| {
-                (Value::Addr(addr), sz)
+            .map_or((Value::Addr(rv::Addr(0)), 0), |(addr, len)| {
+                (Value::Addr(addr), len)
             }),
         funcs: rv_prog
             .code_blocks
@@ -37,10 +41,9 @@ fn build_image(data_blocks: Vec<rv::DataBlock>) -> (Vec<u8>, Value, Value) {
         image.resize(start as usize, 0);
         image.extend(data_block.bytes);
     }
-    let stk_len = 8 * 1024 * 1024;
-    let sp = Value::Addr(rv::Addr(image.len() as u64 + stk_len - 4096));
-    let phdr = Value::Addr(rv::Addr(image.len() as u64 + stk_len - 2048));
-    image.extend(vec![0; stk_len as usize]);
+    let sp = Value::Addr(rv::Addr(image.len() as u64 + STK_LEN - 4096));
+    let phdr = Value::Addr(rv::Addr(image.len() as u64 + STK_LEN - 2048));
+    image.extend(vec![0; STK_LEN as usize]);
     (image, sp, phdr)
 }
 
@@ -1377,6 +1380,7 @@ fn trans_inst(rv_inst: rv::Inst) -> InstBlock {
             Ret { val: _1 },
         }
     ).into_iter()
+        // The `zero` register in RISC-V is hardwired to 0.
         .filter_map(|inst| match inst {
             Inst::Load {
                 rslt,

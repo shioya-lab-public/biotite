@@ -4,5 +4,4 @@
 .image:
 	.byte	{bytes}
 	.size	.image,{size}
-
 	.section	".note.GNU-stack","",@progbits

@@ -1,5 +1,4 @@
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-define dso_local {int} @.rounding_{fp}_{int}_{fptoint}_{inttofp}({fp} noundef %0, i1 noundef zeroext %1) {{
+define {int} @.round_{fp}_{int}_{fptoint}({fp} %0, i1 zeroext %1) {{
   %3 = {fptoint} {fp} %0 to {int}
   %4 = {inttofp} {int} %3 to {fp}
   %5 = fcmp une {fp} %4, %0
@@ -10,7 +9,7 @@ define dso_local {int} @.rounding_{fp}_{int}_{fptoint}_{inttofp}({fp} noundef %0
   br i1 %9, label %12, label %10
 
 10:                                               ; preds = %2
-  %11 = add nsw {int} %3, 1
+  %11 = add {int} %3, 1
   br label %18
 
 12:                                               ; preds = %2
@@ -18,11 +17,10 @@ define dso_local {int} @.rounding_{fp}_{int}_{fptoint}_{inttofp}({fp} noundef %0
   %14 = and i1 %13, %5
   %15 = and i1 %14, %1
   %16 = sext i1 %15 to {int}
-  %17 = add nsw {int} %16, %3
+  %17 = add {int} %16, %3
   br label %18
 
 18:                                               ; preds = %12, %10
   %19 = phi {int} [ %11, %10 ], [ %17, %12 ]
   ret {int} %19
 }}
-

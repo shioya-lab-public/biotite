@@ -1,3 +1,5 @@
+//! LLVM-related macros.
+
 macro_rules! trans_inst {
     ( $scrutinee: ident,
         $(

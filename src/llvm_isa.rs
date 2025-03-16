@@ -1,9 +1,11 @@
+//! LLVM-related definitions.
+
 use crate::llvm_macro::next_pc;
 use crate::riscv_isa as rv;
 use indoc::{formatdoc, writedoc};
 use rayon::prelude::*;
 use std::collections::HashSet;
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Prog {
@@ -22,6 +24,7 @@ pub struct Prog {
 }
 
 impl Prog {
+    /// Splits translated functions into multiple modules for faster recompilation.
     pub fn to_modules(&self) -> (String, String, Vec<String>) {
         let (disp_len, disps) = self.build_dispatchers(false);
         let main = format!(
@@ -34,12 +37,12 @@ impl Prog {
                 .join("\n"),
             sp = self.sp,
             phdr = self.phdr,
-            addr = self.tdata.0,
-            size = self.tdata.1,
+            tdata_addr = self.tdata.0,
+            tdata_len = self.tdata.1,
             entry = self.entry,
             disp_len = disp_len,
-            mem = self.build_memory(false),
             native_mem_utils = self.native_mem_utils,
+            mem = self.build_memory(false),
             disps = disps,
             rounding_funcs = Self::build_rounding_funcs(),
             defs = include_str!("templates/defs.ll"),
@@ -83,9 +86,7 @@ impl Prog {
         let mk = format!(include_str!("templates/Makefile"), objs = &objs);
         (mk, main, mods)
     }
-}
 
-impl Prog {
     pub fn build_memory(&self, external: bool) -> String {
         if self.mem.is_some() {
             formatdoc!(
@@ -183,7 +184,7 @@ impl Prog {
                 formatdoc!(
                     "
                     @.disp = external global [{size} x i64]
-                    @.func_disp = external global [{size} x i64] 
+                    @.func_disp = external global [{size} x i64]
 
                     {find_func}"
                 ),
@@ -205,8 +206,7 @@ impl Prog {
     }
 
     fn build_rounding_funcs() -> String {
-        let mut rounding_funcs = String::new();
-        let variants = vec![
+        [
             ("float", "i32", "fptosi", "sitofp"),
             ("float", "i32", "fptoui", "uitofp"),
             ("float", "i64", "fptosi", "sitofp"),
@@ -215,19 +215,19 @@ impl Prog {
             ("double", "i32", "fptoui", "uitofp"),
             ("double", "i64", "fptosi", "sitofp"),
             ("double", "i64", "fptoui", "uitofp"),
-        ];
-        for (fp, int, fptoint, inttofp) in variants {
-            rounding_funcs += &format!(
+        ]
+        .iter()
+        .map(|(fp, int, fptoint, inttofp)| {
+            format!(
                 include_str!("templates/rounding.ll"),
                 fp = fp,
                 int = int,
                 fptoint = fptoint,
-                inttofp = inttofp
-            );
-        }
-        rounding_funcs.pop();
-        rounding_funcs.pop();
-        rounding_funcs
+                inttofp = inttofp,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
     }
 }
 
@@ -243,98 +243,6 @@ pub struct Func {
     pub used_fregs: Vec<rv::FReg>,
     pub synced_regs: Vec<rv::Reg>,
     pub synced_fregs: Vec<rv::FReg>,
-}
-
-impl Display for Func {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        let stack_regs = self
-            .used_regs
-            .iter()
-            .map(|reg| format!("  {reg} = alloca i64", reg = Value::StkReg(*reg)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let stack_fregs = self
-            .used_fregs
-            .iter()
-            .map(|freg| format!("  {freg} = alloca double", freg = Value::StkFReg(*freg)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let stack_loading =
-            Self::build_stack_loading(&self.synced_regs, &self.synced_fregs, "entry");
-        let local_disp = if self.is_opaque {
-            let disp = self
-                .inst_blocks
-                .iter()
-                .map(|inst_block| {
-                    let addr = Value::Addr(inst_block.rv_inst.address());
-                    format!("i64 {addr}, label %{addr}")
-                })
-                .collect::<Vec<_>>()
-                .join(" ");
-            let stack_storing =
-                Self::build_stack_storing(&self.used_regs, &self.used_fregs, "disp_s");
-            let stack_loading =
-                Self::build_stack_loading(&self.used_regs, &self.used_fregs, "disp_l");
-            formatdoc!(
-                "
-                  store i64 %entry, ptr %entry_ptr
-                  %local_jalr_ptr = alloca i1, i1 0
-                  br label %disp
-                disp:
-                  %addr = load i64, ptr %entry_ptr
-                  switch i64 %addr, label %func_disp [{disp}]
-                func_disp:
-                  {stack_storing}
-                  %ra = call i64 @.find_func(i64 %addr)
-                  {stack_loading}
-                  %fail = icmp eq i64 %ra, 0
-                  br i1 %fail, label %ret, label %cont
-                cont:
-                  store i64 %ra, ptr %entry_ptr
-                  br label %disp"
-            )
-        } else {
-            let addr = Value::Addr(self.inst_blocks[0].rv_inst.address());
-            format!("br label %{addr}")
-        };
-        let inst_blocks = self
-            .inst_blocks
-            .iter()
-            .map(|block| block.to_string())
-            .collect::<Vec<_>>()
-            .join("\n");
-        let last_rv_inst = &self.inst_blocks.last().unwrap().rv_inst;
-        let next_pc = next_pc!(
-            next_pc,
-            last_rv_inst.address(),
-            last_rv_inst.is_compressed()
-        );
-        let stack_storing = Self::build_stack_storing(&self.used_regs, &self.used_fregs, "ret");
-        writedoc!(
-            f,
-            "
-            ; {addr} {sec} <{sym}>
-            define i64 @.{addr}{fallback}(i64 %entry) {{
-              %entry_ptr = alloca i64
-              {stack_regs}
-              {stack_fregs}
-              {stack_loading}
-              {local_disp}
-            {inst_blocks}
-            {next_pc}:
-              store i64 {next_pc}, ptr %entry_ptr
-              br label %ret
-            ret:
-              {stack_storing}
-              %ret_addr = load i64, ptr %entry_ptr
-              ret i64 %ret_addr
-            }}",
-            addr = self.address,
-            sec = self.section,
-            sym = self.symbol,
-            fallback = if self.is_fallback { "_fallback" } else { "" },
-        )
-    }
 }
 
 impl Func {
@@ -413,6 +321,100 @@ impl Func {
     }
 }
 
+impl Display for Func {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let stack_regs = self
+            .used_regs
+            .iter()
+            .map(|reg| format!("  {reg} = alloca i64", reg = Value::StkReg(*reg)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let stack_fregs = self
+            .used_fregs
+            .iter()
+            .map(|freg| format!("  {freg} = alloca double", freg = Value::StkFReg(*freg)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let stack_loading =
+            Self::build_stack_loading(&self.synced_regs, &self.synced_fregs, "entry");
+        let local_disp = if self.is_opaque {
+            let disp = self
+                .inst_blocks
+                .iter()
+                .map(|inst_block| {
+                    let addr = Value::Addr(inst_block.rv_inst.address());
+                    format!("i64 {addr}, label %{addr}")
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            let stack_storing =
+                Self::build_stack_storing(&self.used_regs, &self.used_fregs, "disp_s");
+            let stack_loading =
+                Self::build_stack_loading(&self.used_regs, &self.used_fregs, "disp_l");
+            formatdoc!(
+                "
+                  store i64 %entry, ptr %entry_ptr
+                  %local_jalr_ptr = alloca i1, i1 0
+                  br label %disp
+                disp:
+                  %addr = load i64, ptr %entry_ptr
+                  switch i64 %addr, label %func_disp [{disp}]
+                func_disp:
+                  {stack_storing}
+                  %ra = call i64 @.find_func(i64 %addr)
+                  {stack_loading}
+                  %fail = icmp eq i64 %ra, 0
+                  br i1 %fail, label %ret, label %cont
+                cont:
+                  store i64 %ra, ptr %entry_ptr
+                  br label %disp"
+            )
+        } else {
+            let addr = Value::Addr(self.inst_blocks[0].rv_inst.address());
+            format!("  br label %{addr}")
+        };
+        let inst_blocks = self
+            .inst_blocks
+            .iter()
+            .map(|block| block.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let last_rv_inst = &self.inst_blocks.last().unwrap().rv_inst;
+        let next_pc = next_pc!(
+            next_pc,
+            last_rv_inst.address(),
+            last_rv_inst.is_compressed()
+        );
+        let stack_storing = Self::build_stack_storing(&self.used_regs, &self.used_fregs, "ret");
+        writedoc!(
+            f,
+            "
+            ; {addr} {sec} <{sym}>
+            define i64 @.{addr}{fallback}(i64 %entry) {{
+              %entry_ptr = alloca i64
+            {stack_regs}
+            {stack_fregs}
+              {stack_loading}
+            {local_disp}
+
+            {inst_blocks}
+
+            {next_pc}:
+              store i64 {next_pc}, ptr %entry_ptr
+              br label %ret
+            ret:
+              {stack_storing}
+              %ret_addr = load i64, ptr %entry_ptr
+              ret i64 %ret_addr
+            }}",
+            addr = self.address,
+            sec = self.section,
+            sym = self.symbol,
+            fallback = if self.is_fallback { "_fallback" } else { "" },
+        )
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct InstBlock {
     pub rv_inst: rv::Inst,
@@ -420,7 +422,7 @@ pub struct InstBlock {
 }
 
 impl Display for InstBlock {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let insts = self
             .insts
             .iter()
@@ -431,6 +433,7 @@ impl Display for InstBlock {
             self.insts.last(),
             Some(Inst::Ret { .. })
                 | Some(Inst::Br { .. })
+                | Some(Inst::Call { .. })
                 | Some(Inst::Conbr { .. })
                 | Some(Inst::Checkret { .. })
                 | Some(Inst::Dispfunc { .. })
@@ -792,7 +795,7 @@ pub enum Inst {
 }
 
 impl Display for Inst {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         use Inst::*;
 
         match self {
@@ -846,13 +849,13 @@ impl Display for Inst {
             Fptrunc { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fptrunc {ty1} {val} to {ty2}"),
             Fpext { rslt, ty1, val, ty2 } => write!(f, "{rslt} = fpext {ty1} {val} to {ty2}"),
             Fptoui { rslt, ty1, val, ty2, rm } => match rm {
-                Rm::Downward => write!(f, "{rslt} = call {ty2} @.rounding_{ty1}_{ty2}_fptoui_uitofp({ty1} {val}, i1 1)"),
-                Rm::Upward => write!(f, "{rslt} = call {ty2} @.rounding_{ty1}_{ty2}_fptoui_uitofp({ty1} {val}, i1 0)"),
+                Rm::Downward => write!(f, "{rslt} = call {ty2} @.round_{ty1}_{ty2}_fptoui({ty1} {val}, i1 1)"),
+                Rm::Upward => write!(f, "{rslt} = call {ty2} @.round_{ty1}_{ty2}_fptoui({ty1} {val}, i1 0)"),
                 _ => write!(f, "{rslt} = fptoui {ty1} {val} to {ty2}"),
             }
             Fptosi { rslt, ty1, val, ty2, rm } => match rm {
-                Rm::Downward => write!(f, "{rslt} = call {ty2} @.rounding_{ty1}_{ty2}_fptosi_sitofp({ty1} {val}, i1 1)"),
-                Rm::Upward => write!(f, "{rslt} = call {ty2} @.rounding_{ty1}_{ty2}_fptosi_sitofp({ty1} {val}, i1 0)"),
+                Rm::Downward => write!(f, "{rslt} = call {ty2} @.round_{ty1}_{ty2}_fptosi({ty1} {val}, i1 1)"),
+                Rm::Upward => write!(f, "{rslt} = call {ty2} @.round_{ty1}_{ty2}_fptosi({ty1} {val}, i1 0)"),
                 _ => write!(f, "{rslt} = fptosi {ty1} {val} to {ty2}"),
             }
             Uitofp { rslt, ty1, val, ty2 } => write!(f, "{rslt} = uitofp {ty1} {val} to {ty2}"),
@@ -976,7 +979,7 @@ pub enum Type {
 }
 
 impl Display for Type {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         use Type::*;
 
         match self {
@@ -1007,7 +1010,7 @@ pub enum Value {
 }
 
 impl Display for Value {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         use Value::*;
 
         match self {
@@ -1038,7 +1041,7 @@ pub enum Cond {
 }
 
 impl Display for Cond {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         use Cond::*;
 
         match self {
@@ -1062,7 +1065,7 @@ pub enum FCond {
 }
 
 impl Display for FCond {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         use FCond::*;
 
         match self {
@@ -1082,7 +1085,7 @@ pub enum Mo {
 }
 
 impl Display for Mo {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         use Mo::*;
 
         match self {
@@ -1108,7 +1111,7 @@ pub enum Op {
 }
 
 impl Display for Op {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
         use Op::*;
 
         match self {

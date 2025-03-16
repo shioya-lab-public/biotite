@@ -1,5 +1,13 @@
 #include <stdint.h>
 
+void mem_copy(int8_t* dest, int8_t* src, int64_t count) {
+    for (int64_t i = 0; i < count; ++i) {
+        *dest++ = *src++;
+    }
+}
+
+#include <stdint.h>
+
 int8_t* copy_envp(int8_t* host_envp[], int8_t* guest_envp[]) {
     while (*host_envp) {
         *guest_envp++ = *host_envp++;
@@ -15,11 +23,12 @@ void init_auxv(int64_t* auxv, int8_t* phdr, int64_t phdr_addr, int64_t tdata, in
     if (!tdata) {
         return;
     }
+
     // Initialize `AT_PHDR`.
-    Elf64_Phdr* host_phdr = (Elf64_Phdr*) getauxval(AT_PHDR);
+    Elf64_Phdr* host_phdr = (Elf64_Phdr*)getauxval(AT_PHDR);
     int64_t host_phnum = getauxval(AT_PHNUM);
     if (host_phdr && host_phnum) {
-        Elf64_Phdr* guest_phdr = (Elf64_Phdr*) phdr;
+        Elf64_Phdr* guest_phdr = (Elf64_Phdr*)phdr;
         for (int64_t i = 0; i < host_phnum; ++i) {
             if (host_phdr->p_type == PT_TLS || host_phdr->p_type == PT_GNU_RELRO) {
                 *guest_phdr = *host_phdr++;
@@ -65,13 +74,5 @@ int64_t rounding(double f, bool is_rdn) {
         return i - 1;
     } else {
         return i;
-    }
-}
-
-#include <stdint.h>
-
-void mem_copy(int8_t* dest, int8_t* src, int64_t count) {
-    for (int64_t i = 0; i < count; ++i) {
-        *dest++ = *src++;
     }
 }

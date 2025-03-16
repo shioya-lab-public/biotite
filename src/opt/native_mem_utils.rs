@@ -1,3 +1,6 @@
+//! An optimization pass that introduces native versions of `memcmp`, `memset`, `memcpy`, and `memmove`.
+//! These four functions are [required by GCC](https://gcc.gnu.org/onlinedocs/gcc/Standards.html).
+
 use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
 use rayon::prelude::*;

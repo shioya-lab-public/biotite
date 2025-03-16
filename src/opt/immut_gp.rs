@@ -1,11 +1,16 @@
+//! An optimization pass that treats the global pointer as a constant.
+
 use crate::llvm_isa::{Inst, Prog, Value};
 use crate::riscv_isa as rv;
 use rayon::prelude::*;
 
 pub fn run(mut prog: Prog) -> Prog {
+    // Skip this pass if we cannot find the initialization sequence.
     let Some(gp) = compute_gp(&prog) else {
         return prog;
     };
+
+    // Use the initialized global pointer as a constant.
     prog.funcs.par_iter_mut().for_each(|func| {
         for block in &mut func.inst_blocks {
             match block.rv_inst {
@@ -95,6 +100,7 @@ pub fn run(mut prog: Prog) -> Prog {
                         }],
                     );
                 }
+
                 rv::Inst::Addi {
                     rs1: rv::Reg::Gp,
                     imm: rv::Imm(imm),
@@ -109,10 +115,12 @@ pub fn run(mut prog: Prog) -> Prog {
                         ptr,
                     }];
                 }
+
                 _ => continue,
             }
         }
     });
+
     prog
 }
 

@@ -1,3 +1,5 @@
+//! An optimization pass that performs the jump localization transformation.
+
 use crate::llvm_isa::{Inst, Prog, Type, Value};
 use crate::llvm_macro::next_pc;
 use crate::riscv_isa as rv;
@@ -5,16 +7,7 @@ use rayon::prelude::*;
 use std::collections::HashSet;
 
 pub fn run(mut prog: Prog) -> Prog {
-    let funcs = prog
-        .funcs
-        .iter()
-        .map(|func| {
-            let Value::Addr(addr) = func.address else {
-                unreachable!();
-            };
-            addr
-        })
-        .collect::<HashSet<_>>();
+    // Construct an opqaue version for each transparent function.
     let fallback_funcs = prog
         .funcs
         .par_iter_mut()
@@ -40,6 +33,19 @@ pub fn run(mut prog: Prog) -> Prog {
         })
         .collect::<Vec<_>>();
     prog.funcs.extend(fallback_funcs);
+
+    // Perform the jump localization transformation.
+    // Notice the return address check is directly implemented in the definition of the `call` instruction.
+    let funcs = prog
+        .funcs
+        .iter()
+        .map(|func| {
+            let Value::Addr(addr) = func.address else {
+                unreachable!();
+            };
+            addr
+        })
+        .collect::<HashSet<_>>();
     prog.funcs.par_iter_mut().for_each(|func| {
         let insts = func
             .inst_blocks
@@ -74,7 +80,8 @@ pub fn run(mut prog: Prog) -> Prog {
                     addr,
                     ..
                 } if matches!(block.insts[1], Inst::Ret { .. }) => {
-                    // We need the test because some `jal` instructions may have been optimized in the `native_mem_utils` pass.
+                    // We need the test because some `jal` instructions may
+                    // have been optimized in the `native_mem_utils` pass.
                     block.insts[1] = Inst::Call {
                         rslt: Value::Temp(address, 0),
                         target: Value::Addr(addr),
@@ -135,5 +142,6 @@ pub fn run(mut prog: Prog) -> Prog {
             }
         }
     });
+
     prog
 }

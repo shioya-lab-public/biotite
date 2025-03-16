@@ -1,3 +1,5 @@
+//! An optimization pass that introduces native branch instructions whenever possible.
+
 use crate::llvm_isa::{Inst, Prog};
 use crate::riscv_isa as rv;
 use rayon::prelude::*;

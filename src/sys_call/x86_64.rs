@@ -1,3 +1,6 @@
+//! System call implementation for x86_64.
+
+/// Auxiliary things that will be parts of the output LLVM IR.
 pub const AUX: &str = "%.sys_stat_x86_64 = type { i64, i64, i64, i32, i32, i32, i32, i64 }
 %.sys_stat_riscv64gc = type { i64, i64, i32, i32, i32, i32, i64 }
 
@@ -21,6 +24,17 @@ define void @.sys_conv_stat(ptr %statbuf) alwaysinline {
   ret void
 }";
 
+/// Each system call is defined using three components:
+/// - A unique name
+/// - The RISC-V system call number
+/// - The implementation (a LLVM IR snippet)
+///
+/// In the implementation, "@syscall" and `%arg1` to `%arg6` are defined,
+/// and the return value of `@syscall` must be named `%rslt`.
+///
+/// Notice if the image mapping optimization is disabled,
+/// in the implmentation you must also perform address translation
+/// for all pointer components contained in the return value.
 pub const DEFS: &[(&str, i32, &str)] = &[
     (
         "exit",

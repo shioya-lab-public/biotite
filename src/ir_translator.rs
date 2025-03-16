@@ -1,5 +1,6 @@
+//! An LLVM IR rewriter that implements free linkage.
+
 use crate::llvm_isa as ll;
-use crate::llvm_isa::Prog;
 use crate::riscv_isa::{Addr, FReg, Reg};
 use rayon::prelude::*;
 use regex::Regex;
@@ -197,6 +198,8 @@ impl<'a> LineParser<'a> {
         self.assert_word("define")?;
         let mut fastcc = false;
         let mut zeroext = false;
+
+        // Parse the result type.
         let rslt_ty = loop {
             if let Ok(ty) = self.parse_type() {
                 if let Type::Int(sz, _) = ty {
@@ -216,7 +219,11 @@ impl<'a> LineParser<'a> {
                 self.skip_whitespace();
             }
         };
+
+        // Parse the function name.
         let func = self.parse_ident()?;
+
+        // Parse the parameters.
         self.assert_word("(")?;
         let mut params = Vec::new();
         while self.assert_word("...").is_err() && self.assert_word(")").is_err() {
@@ -244,6 +251,7 @@ impl<'a> LineParser<'a> {
             let _ = self.assert_word(",");
         }
         let var_args = self.assert_word("...").is_ok();
+
         Ok(Proto {
             fastcc,
             rslt_ty,
@@ -480,7 +488,7 @@ pub fn run(
     srcs: Vec<PathBuf>,
     ir_dir: PathBuf,
     symbols: &HashMap<String, Vec<Addr>>,
-    prog: &Prog,
+    prog: &ll::Prog,
 ) -> Vec<String> {
     if !srcs.is_empty() {
         fs::create_dir(&ir_dir).expect("Unable to create the IR directory");
@@ -520,26 +528,11 @@ fn find_files(srcs: Vec<PathBuf>, ir_dir: PathBuf) -> Vec<(PathBuf, PathBuf)> {
     files
 }
 
-fn get_sym_addr(sym: &str, symbols: &HashMap<String, Vec<Addr>>) -> Option<Addr> {
-    if sym == ".main" {
-        symbols.get("main")
-    } else {
-        symbols.get(sym)
-    }
-    .map(|addrs| {
-        if addrs.len() > 1 {
-            panic!("Multiple symbols named `{sym}` are defined")
-        } else {
-            addrs[0]
-        }
-    })
-}
-
 fn trans_file(
     path: &PathBuf,
     output: &PathBuf,
     symbols: &HashMap<String, Vec<Addr>>,
-    prog: &Prog,
+    prog: &ll::Prog,
 ) -> Vec<Ident> {
     Command::new("cp")
         .args([path, output])
@@ -556,8 +549,10 @@ fn trans_file(
         .filter_map(|l| LineParser::new(l).parse_proto().ok())
         .filter_map(|proto| proto.fastcc.then_some(proto.func))
         .collect();
+
     for line in src.lines() {
         if line.starts_with("define") {
+            // Determine whether these is a leading line for function attributes.
             proto_idx = 0;
             if let Some(line) = cache.pop() {
                 if line.starts_with("; Function Attrs") {
@@ -568,13 +563,16 @@ fn trans_file(
                     lines.extend(mem::take(&mut cache));
                 }
             }
+
             cache.push(line.to_string());
         } else if line == "}" {
-            cache.push(line.to_string());
+            // Rename `@main` to `@.main` to avoid conflicts.
             let idx = cache[proto_idx].chars().position(|c| c == '@').unwrap();
             if &cache[proto_idx][idx..idx + 5] == "@main" {
                 cache[proto_idx].insert(idx + 1, '.');
             }
+
+            cache.push(line.to_string());
             if let Ok((f, ls)) = trans_func(
                 proto_idx,
                 mem::take(&mut cache),
@@ -595,7 +593,11 @@ fn trans_file(
             cache.push(line.to_string());
         }
     }
+
+    // Make sure the remaining lines after the last LLVM function are included in the output.
     lines.extend(cache);
+
+    // Add necessary declarations.
     lines.push(
         "
 @.ra = external global i64
@@ -644,6 +646,7 @@ fn trans_file(
         prog.build_dispatchers(true).1,
         String::new(),
     ]);
+
     fs::write(output, lines.join("\n")).unwrap();
     ir_funcs
 }
@@ -656,23 +659,31 @@ fn trans_func(
     extern_func_addrs: &mut HashSet<Addr>,
 ) -> Result<(Ident, Vec<String>), ()> {
     let proto = LineParser::new(&lines[proto_idx]).parse_proto()?;
+
+    // Add an explicit label for the entry basic block, which will be useful when adjusting `phi` instructions.
     lines.insert(proto_idx + 1, format!("{}:", proto.params.len()));
-    let mut adaptor = Vec::new();
+
+    // Construct the adaptor function.
+    let mut transed_func = Vec::new();
     if let Some(addr) = get_sym_addr(proto.func.name(), symbols) {
-        adaptor.extend(trans_proto(addr, &proto)?);
-        adaptor.push(String::new());
+        transed_func.extend(trans_proto(addr, &proto)?);
+        transed_func.push(String::new());
     }
-    let mut trans = HashMap::new();
+
+    // Translate the function itself.
+    let mut transed_phi = HashMap::new();
     let mut lines = lines
         .into_iter()
         .enumerate()
         .map(|(line_no, line)| {
             if let Ok(mut call) = LineParser::new(&line).parse_call() {
+                // Sometimes `printf` is in fact `__printf_chk`.
                 if call.func.name() == "printf" && get_sym_addr("printf", symbols).is_none() {
                     call.func = Ident::Global(String::from("__printf_chk"));
                     call.args
                         .insert(0, (Value::Const(String::from("1")), Type::Int(32, false)));
                 }
+
                 trans_call(line_no, &call, symbols, fastcc_funcs, extern_func_addrs)
             } else if let Ok(load) = LineParser::new(&line).parse_load() {
                 trans_load(line_no, &load, symbols)
@@ -681,7 +692,7 @@ fn trans_func(
             } else if let Ok(gep) = LineParser::new(&line).parse_gep() {
                 trans_gep(line_no, &gep, symbols)
             } else if let Ok(phi) = LineParser::new(&line).parse_phi() {
-                trans_phi(line_no, &phi, symbols, &mut trans)
+                trans_phi(line_no, &phi, symbols, &mut transed_phi)
             } else if let Ok(select) = LineParser::new(&line).parse_select() {
                 trans_select(line_no, &select, symbols)
             } else {
@@ -692,7 +703,9 @@ fn trans_func(
         .into_iter()
         .flatten()
         .collect::<Vec<_>>();
-    for (lb, trans) in trans {
+
+    // Place translated `phi` instructions after their belonging labels.
+    for (lb, trans) in transed_phi {
         let lb_line = &format!("{lb}:")[1..];
         let mut idx = lines.iter().position(|l| l.starts_with(lb_line)).unwrap();
         idx += 1;
@@ -701,10 +714,13 @@ fn trans_func(
         }
         lines.splice(idx..idx, trans);
     }
-    adaptor.extend(lines);
-    Ok((proto.func, adaptor))
+
+    transed_func.extend(lines);
+    Ok((proto.func, transed_func))
 }
 
+/// Constructs the adaptor function.
+/// Notice currently only simple argument passing using registers is supported.
 fn trans_proto(addr: Addr, proto: &Proto) -> Result<Vec<String>, ()> {
     let mut lines = vec![format!("define i64 @.u{addr}(i64) {{")];
     let mut regs = vec![
@@ -801,6 +817,9 @@ fn trans_call(
     extern_func_addrs: &mut HashSet<Addr>,
 ) -> Result<Vec<String>, ()> {
     let mut lines = Vec::new();
+
+    // If the target function is not found in the symbol table,
+    // we simply assume it is intrinsic LLVM functions that can be directly called.
     if let Ident::Global(func) = &call.func {
         if get_sym_addr(func, symbols).is_none() {
             let mut args = Vec::new();
@@ -843,6 +862,8 @@ fn trans_call(
             return Ok(lines);
         }
     }
+
+    // Set up argument registers and enough stack variables for argument passing.
     let mut regs = vec![
         ll::Value::Reg(Reg::A7),
         ll::Value::Reg(Reg::A6),
@@ -883,6 +904,9 @@ fn trans_call(
             regs.pop().unwrap().to_string()
         }
     };
+
+    // Write arguments to the global simulated state.
+    // Notice currently only simple argument types are supported.
     for (no, (arg, ty)) in call.args.iter().enumerate() {
         match ty {
             Type::Int(64, _) => lines.push(format!("  store i64 {arg}, ptr {}", get_loc(false))),
@@ -937,6 +961,8 @@ fn trans_call(
             _ => Err(())?,
         }
     }
+
+    // Emit the real function call.
     match &call.func {
         Ident::Global(func) => {
             let addr = get_sym_addr(func, symbols).unwrap();
@@ -950,6 +976,8 @@ fn trans_call(
             format!("  %l{line_no}_ra = call i64 @.find_func(i64 %l{line_no}_func)"),
         ]),
     }
+
+    // Load the return value from the simulated global state.
     let rslt_ty = match &call.rslt_ty {
         Type::VarArgs(rslt_ty, _) => rslt_ty,
         rslt_ty => rslt_ty,
@@ -969,6 +997,7 @@ fn trans_call(
         ]),
         _ => Err(())?,
     }
+
     Ok(lines)
 }
 
@@ -1174,4 +1203,19 @@ fn trans_select(
         select.rslt, select.cond, select.ty, ops[0], select.ty, ops[1]
     ));
     Ok(lines)
+}
+
+fn get_sym_addr(sym: &str, symbols: &HashMap<String, Vec<Addr>>) -> Option<Addr> {
+    if sym == ".main" {
+        symbols.get("main")
+    } else {
+        symbols.get(sym)
+    }
+    .map(|addrs| {
+        if addrs.len() > 1 {
+            panic!("Multiple symbols named `{sym}` are defined")
+        } else {
+            addrs[0]
+        }
+    })
 }

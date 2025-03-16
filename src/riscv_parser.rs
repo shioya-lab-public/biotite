@@ -1,3 +1,5 @@
+//! A transformation pass that parses RISC-V disassembly.
+
 use crate::riscv_isa::*;
 use rayon::prelude::*;
 use regex::Regex;
@@ -25,9 +27,10 @@ pub fn run(mut src: String) -> (Prog, HashMap<String, Vec<Addr>>) {
     let mut lines = src.lines();
     let entry = parse_entry(&mut lines);
     let sections = parse_sections(&mut lines);
-    let symbols = parse_symbols(&mut lines);
-    let (mut data_blocks, code_blocks) = parse_disassembly(&mut lines);
+    let mut symbols = parse_symbols(&mut lines);
+    let (mut data_blocks, mut code_blocks) = parse_disassembly(&mut lines);
     fill_data_blocks(&mut data_blocks, &sections, &symbols);
+    split_load_gp(&mut code_blocks, &mut symbols);
     let tdata = data_blocks
         .iter()
         .find(|block| block.section == ".tdata")
@@ -127,7 +130,7 @@ fn parse_disassembly<'a>(
                 mem::take(&mut insts),
             );
             if block.2.is_empty() {
-                // This is caused by the empty line after the section name line
+                // This is caused by the empty line after the section name line.
                 continue;
             } else if block.1 == ".text" {
                 code_blocks.push(block);
@@ -178,7 +181,7 @@ fn parse_code_block(
     }
 }
 
-// Fill symbols whose disassembly is simply `...` with 0s.
+/// Fills symbols whose disassembly is `...` with 0s.
 fn fill_data_blocks(
     data_blocks: &mut Vec<DataBlock>,
     sections: &HashMap<(String, Addr), usize>,
@@ -199,6 +202,31 @@ fn fill_data_blocks(
                 }
             };
             data_block.bytes = vec![0; size];
+        }
+    }
+}
+
+/// Recovers the `load_gp` function if it is merged into the `_start` function.
+fn split_load_gp(
+    code_blocks: &mut Vec<CodeBlock>,
+    symbols: &mut HashMap<(String, Addr), (usize, bool)>,
+) {
+    if let Some(start_pos) = code_blocks
+        .iter()
+        .position(|block| block.symbol == "_start")
+    {
+        let start = &mut code_blocks[start_pos];
+        if let Inst::Jal { addr, .. } | Inst::PseudoJal { addr, .. } = start.insts[0] {
+            if let Some(load_gp_pos) = start.insts.iter().position(|inst| inst.address() == addr) {
+                let load_gp = CodeBlock {
+                    address: addr,
+                    section: String::from(".text"),
+                    symbol: String::from("load_gp"),
+                    insts: start.insts.split_off(load_gp_pos),
+                };
+                code_blocks.insert(start_pos + 1, load_gp);
+                symbols.insert((String::from("load_gp"), addr), (0, true));
+            }
         }
     }
 }

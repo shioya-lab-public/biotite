@@ -1,20 +1,3 @@
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-declare i32 @.rounding_float_i32_fptosi_sitofp(float, i1)
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-declare i32 @.rounding_float_i32_fptoui_uitofp(float, i1)
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-declare i64 @.rounding_float_i64_fptosi_sitofp(float, i1)
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-declare i64 @.rounding_float_i64_fptoui_uitofp(float, i1)
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-declare i32 @.rounding_double_i32_fptosi_sitofp(double, i1)
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-declare i32 @.rounding_double_i32_fptoui_uitofp(double, i1)
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-declare i64 @.rounding_double_i64_fptosi_sitofp(double, i1)
-; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
-declare i64 @.rounding_double_i64_fptoui_uitofp(double, i1)
-
 @.zero = external global i64
 @.ra = external global i64
 @.sp = external global i64
@@ -91,5 +74,14 @@ declare float @llvm.fabs.float(float)
 declare double @llvm.fabs.double(double)
 declare float @llvm.copysign.float(float, float)
 declare double @llvm.copysign.double(double, double)
+
+declare i32 @.round_float_i32_fptosi(float, i1)
+declare i32 @.round_float_i32_fptoui(float, i1)
+declare i64 @.round_float_i64_fptosi(float, i1)
+declare i64 @.round_float_i64_fptoui(float, i1)
+declare i32 @.round_double_i32_fptosi(double, i1)
+declare i32 @.round_double_i32_fptoui(double, i1)
+declare i64 @.round_double_i64_fptosi(double, i1)
+declare i64 @.round_double_i64_fptoui(double, i1)
 
 declare i64 @.sys_call(i64, i64, i64, i64, i64, i64, i64)
